@@ -1,0 +1,3 @@
+cat packages/opencode/src/effect/index.ts >> packages/opencode/src/effect/index.ts.tmp
+echo 'export * from "./trace"' >> packages/opencode/src/effect/index.ts.tmp
+mv packages/opencode/src/effect/index.ts.tmp packages/opencode/src/effect/index.ts

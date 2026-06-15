@@ -1,0 +1,16 @@
+{
+  "name": "@helix/feishu-gateway",
+  "version": "1.0.0",
+  "description": "Feishu/Lark IM Gateway for Helix — bridges Feishu messages to Helix autonomous task execution",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun --watch run src/index.ts"
+  },
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

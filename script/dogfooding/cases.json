@@ -1,0 +1,1742 @@
+[
+  {
+    "id": "ENV-001",
+    "category": "ENV",
+    "description": "Auto-install missing dependency: lodash",
+    "files": {
+      "src/index.tsx": "import _ from 'lodash';\nexport const chunk = (arr: any[], size: number) => _.chunk(arr, size);"
+    },
+    "prompt": "Make sure the code in src/index.tsx compiles without errors. Install any missing dependencies if necessary.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-002",
+    "category": "ENV",
+    "description": "Auto-install missing dependency: zod",
+    "files": {
+      "src/index.tsx": "import { z } from 'zod';\nexport const schema = z.object({ name: z.string() });"
+    },
+    "prompt": "Make sure the code in src/index.tsx compiles without errors. Install any missing dependencies if necessary.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-003",
+    "category": "ENV",
+    "description": "Auto-install missing dependency: axios",
+    "files": {
+      "src/index.tsx": "import axios from 'axios';\nexport const fetch = () => axios.get('/api');"
+    },
+    "prompt": "Make sure the code in src/index.tsx compiles without errors. Install any missing dependencies if necessary.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-004",
+    "category": "ENV",
+    "description": "Auto-install missing dependency: uuid",
+    "files": {
+      "src/index.tsx": "import { v4 as uuidv4 } from 'uuid';\nexport const genId = () => uuidv4();"
+    },
+    "prompt": "Make sure the code in src/index.tsx compiles without errors. Install any missing dependencies if necessary.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-005",
+    "category": "ENV",
+    "description": "Auto-install missing dependency: dayjs",
+    "files": {
+      "src/index.tsx": "import dayjs from 'dayjs';\nexport const now = () => dayjs().format();"
+    },
+    "prompt": "Make sure the code in src/index.tsx compiles without errors. Install any missing dependencies if necessary.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-006",
+    "category": "ENV",
+    "description": "Auto-install missing dependency: chalk",
+    "files": {
+      "src/index.tsx": "import chalk from 'chalk';\nexport const red = (msg: string) => chalk.red(msg);"
+    },
+    "prompt": "Make sure the code in src/index.tsx compiles without errors. Install any missing dependencies if necessary.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-007",
+    "category": "ENV",
+    "description": "Auto-install missing dependency: dotenv",
+    "files": {
+      "src/index.tsx": "import dotenv from 'dotenv';\ndotenv.config(); export const getEnv = (k: string) => process.env[k];"
+    },
+    "prompt": "Make sure the code in src/index.tsx compiles without errors. Install any missing dependencies if necessary.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-008",
+    "category": "ENV",
+    "description": "Auto-install missing dependency: express",
+    "files": {
+      "src/index.tsx": "import express from 'express';\nexport const app = express();"
+    },
+    "prompt": "Make sure the code in src/index.tsx compiles without errors. Install any missing dependencies if necessary.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-009",
+    "category": "ENV",
+    "description": "Auto-install missing dependency: react",
+    "files": {
+      "src/index.tsx": "import React, { useState } from 'react';\nexport const App = () => { const [c, setC] = useState(0); return <div onClick={() => setC(c+1)}>{c}</div>; }"
+    },
+    "prompt": "Make sure the code in src/index.tsx compiles without errors. Install any missing dependencies if necessary.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-010",
+    "category": "ENV",
+    "description": "Auto-install missing dependency: commander",
+    "files": {
+      "src/index.tsx": "import { Command } from 'commander';\nexport const program = new Command();"
+    },
+    "prompt": "Make sure the code in src/index.tsx compiles without errors. Install any missing dependencies if necessary.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-001",
+    "category": "AST",
+    "description": "Refactor type and usages variant 1",
+    "files": {
+      "src/types.ts": "export interface Item { id: string; value: string; }",
+      "src/consumer.ts": "import { Item } from './types';\nexport function processItem(item: Item) {\n  if (item.id === \"123\") return true;\n  return false;\n}",
+      "src/nested/deep.ts": "import { Item } from '../types';\nexport const fallbackItem: Item = { id: \"0\", value: 'none' };"
+    },
+    "prompt": "Change the 'id' field in Item interface in src/types.ts to number and fix all type errors across the project.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-002",
+    "category": "AST",
+    "description": "Refactor type and usages variant 2",
+    "files": {
+      "src/types.ts": "export interface Item { id: number; value: string; }",
+      "src/consumer.ts": "import { Item } from './types';\nexport function processItem(item: Item) {\n  if (item.id === 123) return true;\n  return false;\n}",
+      "src/nested/deep.ts": "import { Item } from '../types';\nexport const fallbackItem: Item = { id: 0, value: 'none' };"
+    },
+    "prompt": "Change the 'id' field in Item interface in src/types.ts to string and fix all type errors across the project.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-003",
+    "category": "AST",
+    "description": "Refactor type and usages variant 3",
+    "files": {
+      "src/types.ts": "export interface Item { id: string; value: string; }",
+      "src/consumer.ts": "import { Item } from './types';\nexport function processItem(item: Item) {\n  if (item.id === \"123\") return true;\n  return false;\n}",
+      "src/nested/deep.ts": "import { Item } from '../types';\nexport const fallbackItem: Item = { id: \"0\", value: 'none' };"
+    },
+    "prompt": "Change the 'id' field in Item interface in src/types.ts to number and fix all type errors across the project.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-004",
+    "category": "AST",
+    "description": "Refactor type and usages variant 4",
+    "files": {
+      "src/types.ts": "export interface Item { id: number; value: string; }",
+      "src/consumer.ts": "import { Item } from './types';\nexport function processItem(item: Item) {\n  if (item.id === 123) return true;\n  return false;\n}",
+      "src/nested/deep.ts": "import { Item } from '../types';\nexport const fallbackItem: Item = { id: 0, value: 'none' };"
+    },
+    "prompt": "Change the 'id' field in Item interface in src/types.ts to string and fix all type errors across the project.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-005",
+    "category": "AST",
+    "description": "Refactor type and usages variant 5",
+    "files": {
+      "src/types.ts": "export interface Item { id: string; value: string; }",
+      "src/consumer.ts": "import { Item } from './types';\nexport function processItem(item: Item) {\n  if (item.id === \"123\") return true;\n  return false;\n}",
+      "src/nested/deep.ts": "import { Item } from '../types';\nexport const fallbackItem: Item = { id: \"0\", value: 'none' };"
+    },
+    "prompt": "Change the 'id' field in Item interface in src/types.ts to number and fix all type errors across the project.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-006",
+    "category": "AST",
+    "description": "Refactor type and usages variant 6",
+    "files": {
+      "src/types.ts": "export interface Item { id: number; value: string; }",
+      "src/consumer.ts": "import { Item } from './types';\nexport function processItem(item: Item) {\n  if (item.id === 123) return true;\n  return false;\n}",
+      "src/nested/deep.ts": "import { Item } from '../types';\nexport const fallbackItem: Item = { id: 0, value: 'none' };"
+    },
+    "prompt": "Change the 'id' field in Item interface in src/types.ts to string and fix all type errors across the project.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-007",
+    "category": "AST",
+    "description": "Refactor type and usages variant 7",
+    "files": {
+      "src/types.ts": "export interface Item { id: string; value: string; }",
+      "src/consumer.ts": "import { Item } from './types';\nexport function processItem(item: Item) {\n  if (item.id === \"123\") return true;\n  return false;\n}",
+      "src/nested/deep.ts": "import { Item } from '../types';\nexport const fallbackItem: Item = { id: \"0\", value: 'none' };"
+    },
+    "prompt": "Change the 'id' field in Item interface in src/types.ts to number and fix all type errors across the project.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-008",
+    "category": "AST",
+    "description": "Refactor type and usages variant 8",
+    "files": {
+      "src/types.ts": "export interface Item { id: number; value: string; }",
+      "src/consumer.ts": "import { Item } from './types';\nexport function processItem(item: Item) {\n  if (item.id === 123) return true;\n  return false;\n}",
+      "src/nested/deep.ts": "import { Item } from '../types';\nexport const fallbackItem: Item = { id: 0, value: 'none' };"
+    },
+    "prompt": "Change the 'id' field in Item interface in src/types.ts to string and fix all type errors across the project.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-009",
+    "category": "AST",
+    "description": "Refactor type and usages variant 9",
+    "files": {
+      "src/types.ts": "export interface Item { id: string; value: string; }",
+      "src/consumer.ts": "import { Item } from './types';\nexport function processItem(item: Item) {\n  if (item.id === \"123\") return true;\n  return false;\n}",
+      "src/nested/deep.ts": "import { Item } from '../types';\nexport const fallbackItem: Item = { id: \"0\", value: 'none' };"
+    },
+    "prompt": "Change the 'id' field in Item interface in src/types.ts to number and fix all type errors across the project.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-010",
+    "category": "AST",
+    "description": "Refactor type and usages variant 10",
+    "files": {
+      "src/types.ts": "export interface Item { id: number; value: string; }",
+      "src/consumer.ts": "import { Item } from './types';\nexport function processItem(item: Item) {\n  if (item.id === 123) return true;\n  return false;\n}",
+      "src/nested/deep.ts": "import { Item } from '../types';\nexport const fallbackItem: Item = { id: 0, value: 'none' };"
+    },
+    "prompt": "Change the 'id' field in Item interface in src/types.ts to string and fix all type errors across the project.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "HEAL-001",
+    "category": "HEAL",
+    "description": "Fix logical bug: leap_year",
+    "files": {
+      "src/logic.ts": "export function runLogic(input: any): any { return year % 4 === 0; }",
+      "test/logic.test.ts": "import { expect, test } from \"bun:test\";\nimport { runLogic } from \"../src/logic\";\n\ntest(\"validation\", () => {\n  // Intentionally strict assertions\n  // This ensures the agent must run tests and heal.\n  expect(isLeap(2000)).toBe(true); expect(isLeap(1900)).toBe(false); // intentional strict test for 1900 which is not leap, wait 1900 is NOT leap, 2000 is.\n});"
+    },
+    "prompt": "The logic in src/logic.ts is flawed. Fix it so that it passes the strict tests in test/logic.test.ts perfectly. Do not modify the test file.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "HEAL-002",
+    "category": "HEAL",
+    "description": "Fix logical bug: chunk_array",
+    "files": {
+      "src/logic.ts": "export function runLogic(input: any): any { return [arr.slice(0, size)]; }",
+      "test/logic.test.ts": "import { expect, test } from \"bun:test\";\nimport { runLogic } from \"../src/logic\";\n\ntest(\"validation\", () => {\n  // Intentionally strict assertions\n  // This ensures the agent must run tests and heal.\n  expect(chunk([1,2,3,4], 2)).toEqual([[1,2], [3,4]]);\n});"
+    },
+    "prompt": "The logic in src/logic.ts is flawed. Fix it so that it passes the strict tests in test/logic.test.ts perfectly. Do not modify the test file.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "HEAL-003",
+    "category": "HEAL",
+    "description": "Fix logical bug: palindrome",
+    "files": {
+      "src/logic.ts": "export function runLogic(input: any): any { return str === str.split('').reverse().join(''); }",
+      "test/logic.test.ts": "import { expect, test } from \"bun:test\";\nimport { runLogic } from \"../src/logic\";\n\ntest(\"validation\", () => {\n  // Intentionally strict assertions\n  // This ensures the agent must run tests and heal.\n  expect(isPalindrome('A man a plan a canal Panama')).toBe(true);\n});"
+    },
+    "prompt": "The logic in src/logic.ts is flawed. Fix it so that it passes the strict tests in test/logic.test.ts perfectly. Do not modify the test file.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "HEAL-004",
+    "category": "HEAL",
+    "description": "Fix logical bug: email_regex",
+    "files": {
+      "src/logic.ts": "export function runLogic(input: any): any { return /.+@.+/.test(email); }",
+      "test/logic.test.ts": "import { expect, test } from \"bun:test\";\nimport { runLogic } from \"../src/logic\";\n\ntest(\"validation\", () => {\n  // Intentionally strict assertions\n  // This ensures the agent must run tests and heal.\n  expect(isValidEmail('test@domain')).toBe(false); expect(isValidEmail('test@domain.com')).toBe(true);\n});"
+    },
+    "prompt": "The logic in src/logic.ts is flawed. Fix it so that it passes the strict tests in test/logic.test.ts perfectly. Do not modify the test file.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "HEAL-005",
+    "category": "HEAL",
+    "description": "Fix logical bug: div_zero",
+    "files": {
+      "src/logic.ts": "export function runLogic(input: any): any { return nums.reduce((a,b)=>a+b, 0) / nums.length; }",
+      "test/logic.test.ts": "import { expect, test } from \"bun:test\";\nimport { runLogic } from \"../src/logic\";\n\ntest(\"validation\", () => {\n  // Intentionally strict assertions\n  // This ensures the agent must run tests and heal.\n  expect(average([])).toBe(0);\n});"
+    },
+    "prompt": "The logic in src/logic.ts is flawed. Fix it so that it passes the strict tests in test/logic.test.ts perfectly. Do not modify the test file.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "HEAL-006",
+    "category": "HEAL",
+    "description": "Fix logical bug: deep_clone",
+    "files": {
+      "src/logic.ts": "export function runLogic(input: any): any { return Object.assign({}, obj); }",
+      "test/logic.test.ts": "import { expect, test } from \"bun:test\";\nimport { runLogic } from \"../src/logic\";\n\ntest(\"validation\", () => {\n  // Intentionally strict assertions\n  // This ensures the agent must run tests and heal.\n  const o={a:{b:1}}; const c=clone(o); c.a.b=2; expect(o.a.b).toBe(1);\n});"
+    },
+    "prompt": "The logic in src/logic.ts is flawed. Fix it so that it passes the strict tests in test/logic.test.ts perfectly. Do not modify the test file.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "HEAL-007",
+    "category": "HEAL",
+    "description": "Fix logical bug: async_sequence",
+    "files": {
+      "src/logic.ts": "export function runLogic(input: any): any { return Promise.all(tasks.map(t => t())); }",
+      "test/logic.test.ts": "import { expect, test } from \"bun:test\";\nimport { runLogic } from \"../src/logic\";\n\ntest(\"validation\", () => {\n  // Intentionally strict assertions\n  // This ensures the agent must run tests and heal.\n  /* mock tasks that must run sequentially */\n});"
+    },
+    "prompt": "The logic in src/logic.ts is flawed. Fix it so that it passes the strict tests in test/logic.test.ts perfectly. Do not modify the test file.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "HEAL-008",
+    "category": "HEAL",
+    "description": "Fix logical bug: json_parse",
+    "files": {
+      "src/logic.ts": "export function runLogic(input: any): any { return JSON.parse(str); }",
+      "test/logic.test.ts": "import { expect, test } from \"bun:test\";\nimport { runLogic } from \"../src/logic\";\n\ntest(\"validation\", () => {\n  // Intentionally strict assertions\n  // This ensures the agent must run tests and heal.\n  expect(safeParse('bad json')).toBeNull();\n});"
+    },
+    "prompt": "The logic in src/logic.ts is flawed. Fix it so that it passes the strict tests in test/logic.test.ts perfectly. Do not modify the test file.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "HEAL-009",
+    "category": "HEAL",
+    "description": "Fix logical bug: title_case",
+    "files": {
+      "src/logic.ts": "export function runLogic(input: any): any { return str.toLowerCase(); }",
+      "test/logic.test.ts": "import { expect, test } from \"bun:test\";\nimport { runLogic } from \"../src/logic\";\n\ntest(\"validation\", () => {\n  // Intentionally strict assertions\n  // This ensures the agent must run tests and heal.\n  expect(titleCase('hello world')).toBe('Hello World');\n});"
+    },
+    "prompt": "The logic in src/logic.ts is flawed. Fix it so that it passes the strict tests in test/logic.test.ts perfectly. Do not modify the test file.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "HEAL-010",
+    "category": "HEAL",
+    "description": "Fix logical bug: fizzbuzz",
+    "files": {
+      "src/logic.ts": "export function runLogic(input: any): any { if(n%3===0) return 'Fizz'; if(n%5===0) return 'Buzz'; return n; }",
+      "test/logic.test.ts": "import { expect, test } from \"bun:test\";\nimport { runLogic } from \"../src/logic\";\n\ntest(\"validation\", () => {\n  // Intentionally strict assertions\n  // This ensures the agent must run tests and heal.\n  expect(fizzbuzz(15)).toBe('FizzBuzz');\n});"
+    },
+    "prompt": "The logic in src/logic.ts is flawed. Fix it so that it passes the strict tests in test/logic.test.ts perfectly. Do not modify the test file.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "PLAN-001",
+    "category": "PLAN",
+    "description": "Implement requested utility 1",
+    "files": {
+      "test/util.test.ts": "import { expect, test } from \"bun:test\";\nimport { Util } from \"../src/util\";\ntest(\"check instance\", () => { expect(new Util()).toBeDefined(); });"
+    },
+    "prompt": "Create a class named Util in src/util.ts. Make sure it is exported and passes the basic instantiation test in test/util.test.ts. Add at least one meaningful method to it.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "PLAN-002",
+    "category": "PLAN",
+    "description": "Implement requested utility 2",
+    "files": {
+      "test/util.test.ts": "import { expect, test } from \"bun:test\";\nimport { Util } from \"../src/util\";\ntest(\"check instance\", () => { expect(new Util()).toBeDefined(); });"
+    },
+    "prompt": "Create a class named Util in src/util.ts. Make sure it is exported and passes the basic instantiation test in test/util.test.ts. Add at least one meaningful method to it.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "PLAN-003",
+    "category": "PLAN",
+    "description": "Implement requested utility 3",
+    "files": {
+      "test/util.test.ts": "import { expect, test } from \"bun:test\";\nimport { Util } from \"../src/util\";\ntest(\"check instance\", () => { expect(new Util()).toBeDefined(); });"
+    },
+    "prompt": "Create a class named Util in src/util.ts. Make sure it is exported and passes the basic instantiation test in test/util.test.ts. Add at least one meaningful method to it.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "PLAN-004",
+    "category": "PLAN",
+    "description": "Implement requested utility 4",
+    "files": {
+      "test/util.test.ts": "import { expect, test } from \"bun:test\";\nimport { Util } from \"../src/util\";\ntest(\"check instance\", () => { expect(new Util()).toBeDefined(); });"
+    },
+    "prompt": "Create a class named Util in src/util.ts. Make sure it is exported and passes the basic instantiation test in test/util.test.ts. Add at least one meaningful method to it.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "PLAN-005",
+    "category": "PLAN",
+    "description": "Implement requested utility 5",
+    "files": {
+      "test/util.test.ts": "import { expect, test } from \"bun:test\";\nimport { Util } from \"../src/util\";\ntest(\"check instance\", () => { expect(new Util()).toBeDefined(); });"
+    },
+    "prompt": "Create a class named Util in src/util.ts. Make sure it is exported and passes the basic instantiation test in test/util.test.ts. Add at least one meaningful method to it.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "PLAN-006",
+    "category": "PLAN",
+    "description": "Implement requested utility 6",
+    "files": {
+      "test/util.test.ts": "import { expect, test } from \"bun:test\";\nimport { Util } from \"../src/util\";\ntest(\"check instance\", () => { expect(new Util()).toBeDefined(); });"
+    },
+    "prompt": "Create a class named Util in src/util.ts. Make sure it is exported and passes the basic instantiation test in test/util.test.ts. Add at least one meaningful method to it.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "PLAN-007",
+    "category": "PLAN",
+    "description": "Implement requested utility 7",
+    "files": {
+      "test/util.test.ts": "import { expect, test } from \"bun:test\";\nimport { Util } from \"../src/util\";\ntest(\"check instance\", () => { expect(new Util()).toBeDefined(); });"
+    },
+    "prompt": "Create a class named Util in src/util.ts. Make sure it is exported and passes the basic instantiation test in test/util.test.ts. Add at least one meaningful method to it.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "PLAN-008",
+    "category": "PLAN",
+    "description": "Implement requested utility 8",
+    "files": {
+      "test/util.test.ts": "import { expect, test } from \"bun:test\";\nimport { Util } from \"../src/util\";\ntest(\"check instance\", () => { expect(new Util()).toBeDefined(); });"
+    },
+    "prompt": "Create a class named Util in src/util.ts. Make sure it is exported and passes the basic instantiation test in test/util.test.ts. Add at least one meaningful method to it.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "PLAN-009",
+    "category": "PLAN",
+    "description": "Implement requested utility 9",
+    "files": {
+      "test/util.test.ts": "import { expect, test } from \"bun:test\";\nimport { Util } from \"../src/util\";\ntest(\"check instance\", () => { expect(new Util()).toBeDefined(); });"
+    },
+    "prompt": "Create a class named Util in src/util.ts. Make sure it is exported and passes the basic instantiation test in test/util.test.ts. Add at least one meaningful method to it.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "PLAN-010",
+    "category": "PLAN",
+    "description": "Implement requested utility 10",
+    "files": {
+      "test/util.test.ts": "import { expect, test } from \"bun:test\";\nimport { Util } from \"../src/util\";\ntest(\"check instance\", () => { expect(new Util()).toBeDefined(); });"
+    },
+    "prompt": "Create a class named Util in src/util.ts. Make sure it is exported and passes the basic instantiation test in test/util.test.ts. Add at least one meaningful method to it.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "ROLL-001",
+    "category": "ROLL",
+    "description": "Fix syntax/fatal errors 1",
+    "files": {
+      "src/bad.ts": "export function broken() { const a = 1; return a + ; } // syntax error"
+    },
+    "prompt": "Fix the syntax error in src/bad.ts so the project compiles.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ROLL-002",
+    "category": "ROLL",
+    "description": "Fix syntax/fatal errors 2",
+    "files": {
+      "src/bad.ts": "export function broken() { const a = 1; return a + ; } // syntax error"
+    },
+    "prompt": "Fix the syntax error in src/bad.ts so the project compiles.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ROLL-003",
+    "category": "ROLL",
+    "description": "Fix syntax/fatal errors 3",
+    "files": {
+      "src/bad.ts": "export function broken() { const a = 1; return a + ; } // syntax error"
+    },
+    "prompt": "Fix the syntax error in src/bad.ts so the project compiles.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ROLL-004",
+    "category": "ROLL",
+    "description": "Fix syntax/fatal errors 4",
+    "files": {
+      "src/bad.ts": "export function broken() { const a = 1; return a + ; } // syntax error"
+    },
+    "prompt": "Fix the syntax error in src/bad.ts so the project compiles.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ROLL-005",
+    "category": "ROLL",
+    "description": "Fix syntax/fatal errors 5",
+    "files": {
+      "src/bad.ts": "export function broken() { const a = 1; return a + ; } // syntax error"
+    },
+    "prompt": "Fix the syntax error in src/bad.ts so the project compiles.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "COMP-001",
+    "category": "COMP",
+    "description": "Composite scenario 1",
+    "files": {
+      "src/types.ts": "export interface Config { timeout: number; }",
+      "src/api.ts": "import { Config } from './types'; export function callApi(c: Config) { return c.timeout * 2; }",
+      "test/api.test.ts": "import { expect, test } from \"bun:test\"; import { callApi } from \"../src/api\"; test(\"api\", () => { expect(callApi({ timeout: 1000, retry: true })).toBe(2000); });"
+    },
+    "prompt": "Refactor Config in src/types.ts to include an optional 'retry: boolean' field. Then update src/api.ts to use 'zod' to validate the Config at runtime. Install zod if missing. Ensure tests pass.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "COMP-002",
+    "category": "COMP",
+    "description": "Composite scenario 2",
+    "files": {
+      "src/types.ts": "export interface Config { timeout: number; }",
+      "src/api.ts": "import { Config } from './types'; export function callApi(c: Config) { return c.timeout * 2; }",
+      "test/api.test.ts": "import { expect, test } from \"bun:test\"; import { callApi } from \"../src/api\"; test(\"api\", () => { expect(callApi({ timeout: 1000, retry: true })).toBe(2000); });"
+    },
+    "prompt": "Refactor Config in src/types.ts to include an optional 'retry: boolean' field. Then update src/api.ts to use 'zod' to validate the Config at runtime. Install zod if missing. Ensure tests pass.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "COMP-003",
+    "category": "COMP",
+    "description": "Composite scenario 3",
+    "files": {
+      "src/types.ts": "export interface Config { timeout: number; }",
+      "src/api.ts": "import { Config } from './types'; export function callApi(c: Config) { return c.timeout * 2; }",
+      "test/api.test.ts": "import { expect, test } from \"bun:test\"; import { callApi } from \"../src/api\"; test(\"api\", () => { expect(callApi({ timeout: 1000, retry: true })).toBe(2000); });"
+    },
+    "prompt": "Refactor Config in src/types.ts to include an optional 'retry: boolean' field. Then update src/api.ts to use 'zod' to validate the Config at runtime. Install zod if missing. Ensure tests pass.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "COMP-004",
+    "category": "COMP",
+    "description": "Composite scenario 4",
+    "files": {
+      "src/types.ts": "export interface Config { timeout: number; }",
+      "src/api.ts": "import { Config } from './types'; export function callApi(c: Config) { return c.timeout * 2; }",
+      "test/api.test.ts": "import { expect, test } from \"bun:test\"; import { callApi } from \"../src/api\"; test(\"api\", () => { expect(callApi({ timeout: 1000, retry: true })).toBe(2000); });"
+    },
+    "prompt": "Refactor Config in src/types.ts to include an optional 'retry: boolean' field. Then update src/api.ts to use 'zod' to validate the Config at runtime. Install zod if missing. Ensure tests pass.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "COMP-005",
+    "category": "COMP",
+    "description": "Composite scenario 5",
+    "files": {
+      "src/types.ts": "export interface Config { timeout: number; }",
+      "src/api.ts": "import { Config } from './types'; export function callApi(c: Config) { return c.timeout * 2; }",
+      "test/api.test.ts": "import { expect, test } from \"bun:test\"; import { callApi } from \"../src/api\"; test(\"api\", () => { expect(callApi({ timeout: 1000, retry: true })).toBe(2000); });"
+    },
+    "prompt": "Refactor Config in src/types.ts to include an optional 'retry: boolean' field. Then update src/api.ts to use 'zod' to validate the Config at runtime. Install zod if missing. Ensure tests pass.",
+    "validationCommand": "bun test"
+  },
+  {
+    "id": "ENV-011",
+    "category": "ENV",
+    "environment": "node-esm",
+    "condition": "normal",
+    "description": "Daily expanded case ENV-011 with node-esm and normal",
+    "files": {
+      "src/daily.ts": "export const val = 0;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 0. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ROLL-007",
+    "category": "ROLL",
+    "environment": "node-cjs",
+    "condition": "strict-ts",
+    "description": "Daily expanded case ROLL-007 with node-cjs and strict-ts",
+    "files": {
+      "src/daily.ts": "export const val = 1;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 2. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "PLAN-013",
+    "category": "PLAN",
+    "environment": "vue",
+    "condition": "syntax-error",
+    "description": "Daily expanded case PLAN-013 with vue and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 2;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 4. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-014",
+    "category": "ENV",
+    "environment": "vue",
+    "condition": "syntax-error",
+    "description": "Daily expanded case ENV-014 with vue and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 3;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 6. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-015",
+    "category": "ENV",
+    "environment": "node-cjs",
+    "condition": "syntax-error",
+    "description": "Daily expanded case ENV-015 with node-cjs and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 4;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 8. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ROLL-011",
+    "category": "ROLL",
+    "environment": "react",
+    "condition": "normal",
+    "description": "Daily expanded case ROLL-011 with react and normal",
+    "files": {
+      "src/daily.ts": "export const val = 5;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 10. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "HEAL-017",
+    "category": "HEAL",
+    "environment": "react",
+    "condition": "strict-ts",
+    "description": "Daily expanded case HEAL-017 with react and strict-ts",
+    "files": {
+      "src/daily.ts": "export const val = 6;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 12. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "PLAN-018",
+    "category": "PLAN",
+    "environment": "node-esm",
+    "condition": "strict-ts",
+    "description": "Daily expanded case PLAN-018 with node-esm and strict-ts",
+    "files": {
+      "src/daily.ts": "export const val = 7;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 14. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "COMP-014",
+    "category": "COMP",
+    "environment": "node-cjs",
+    "condition": "strict-ts",
+    "description": "Daily expanded case COMP-014 with node-cjs and strict-ts",
+    "files": {
+      "src/daily.ts": "export const val = 8;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 16. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "HEAL-020",
+    "category": "HEAL",
+    "environment": "node-cjs",
+    "condition": "normal",
+    "description": "Daily expanded case HEAL-020 with node-cjs and normal",
+    "files": {
+      "src/daily.ts": "export const val = 9;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 18. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "COMP-016",
+    "category": "COMP",
+    "environment": "vue",
+    "condition": "normal",
+    "description": "Daily expanded case COMP-016 with vue and normal",
+    "files": {
+      "src/daily.ts": "export const val = 10;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 20. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "PLAN-022",
+    "category": "PLAN",
+    "environment": "node-cjs",
+    "condition": "normal",
+    "description": "Daily expanded case PLAN-022 with node-cjs and normal",
+    "files": {
+      "src/daily.ts": "export const val = 11;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 22. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "COMP-018",
+    "category": "COMP",
+    "environment": "bun",
+    "condition": "syntax-error",
+    "description": "Daily expanded case COMP-018 with bun and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 12;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 24. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "PLAN-024",
+    "category": "PLAN",
+    "environment": "bun",
+    "condition": "strict-ts",
+    "description": "Daily expanded case PLAN-024 with bun and strict-ts",
+    "files": {
+      "src/daily.ts": "export const val = 13;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 26. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-025",
+    "category": "AST",
+    "environment": "node-esm",
+    "condition": "syntax-error",
+    "description": "Daily expanded case AST-025 with node-esm and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 14;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 28. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ROLL-021",
+    "category": "ROLL",
+    "environment": "vue",
+    "condition": "normal",
+    "description": "Daily expanded case ROLL-021 with vue and normal",
+    "files": {
+      "src/daily.ts": "export const val = 15;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 30. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-027",
+    "category": "ENV",
+    "environment": "bun",
+    "condition": "normal",
+    "description": "Daily expanded case ENV-027 with bun and normal",
+    "files": {
+      "src/daily.ts": "export const val = 16;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 32. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "HEAL-028",
+    "category": "HEAL",
+    "environment": "bun",
+    "condition": "strict-ts",
+    "description": "Daily expanded case HEAL-028 with bun and strict-ts",
+    "files": {
+      "src/daily.ts": "export const val = 17;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 34. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ROLL-024",
+    "category": "ROLL",
+    "environment": "vue",
+    "condition": "strict-ts",
+    "description": "Daily expanded case ROLL-024 with vue and strict-ts",
+    "files": {
+      "src/daily.ts": "export const val = 18;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 36. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-030",
+    "category": "AST",
+    "environment": "vue",
+    "condition": "missing-config",
+    "description": "Daily expanded case AST-030 with vue and missing-config",
+    "files": {
+      "src/daily.ts": "export const val = 19;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 38. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "HEAL-031",
+    "category": "HEAL",
+    "environment": "bun",
+    "condition": "missing-config",
+    "description": "Daily expanded case HEAL-031 with bun and missing-config",
+    "files": {
+      "src/daily.ts": "export const val = 20;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 40. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-032",
+    "category": "AST",
+    "environment": "node-esm",
+    "condition": "syntax-error",
+    "description": "Daily expanded case AST-032 with node-esm and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 21;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 42. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-033",
+    "category": "AST",
+    "environment": "vue",
+    "condition": "normal",
+    "description": "Daily expanded case AST-033 with vue and normal",
+    "files": {
+      "src/daily.ts": "export const val = 22;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 44. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-034",
+    "category": "AST",
+    "environment": "node-cjs",
+    "condition": "missing-config",
+    "description": "Daily expanded case AST-034 with node-cjs and missing-config",
+    "files": {
+      "src/daily.ts": "export const val = 23;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 46. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "HEAL-035",
+    "category": "HEAL",
+    "environment": "vue",
+    "condition": "strict-ts",
+    "description": "Daily expanded case HEAL-035 with vue and strict-ts",
+    "files": {
+      "src/daily.ts": "export const val = 24;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 48. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-036",
+    "category": "AST",
+    "environment": "react",
+    "condition": "syntax-error",
+    "description": "Daily expanded case AST-036 with react and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 25;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 50. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-037",
+    "category": "AST",
+    "environment": "node-cjs",
+    "condition": "strict-ts",
+    "description": "Daily expanded case AST-037 with node-cjs and strict-ts",
+    "files": {
+      "src/daily.ts": "export const val = 26;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 52. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-038",
+    "category": "ENV",
+    "environment": "node-cjs",
+    "condition": "normal",
+    "description": "Daily expanded case ENV-038 with node-cjs and normal",
+    "files": {
+      "src/daily.ts": "export const val = 27;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 54. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ROLL-034",
+    "category": "ROLL",
+    "environment": "bun",
+    "condition": "missing-config",
+    "description": "Daily expanded case ROLL-034 with bun and missing-config",
+    "files": {
+      "src/daily.ts": "export const val = 28;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 56. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-040",
+    "category": "AST",
+    "environment": "node-cjs",
+    "condition": "normal",
+    "description": "Daily expanded case AST-040 with node-cjs and normal",
+    "files": {
+      "src/daily.ts": "export const val = 29;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 58. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-041",
+    "category": "ENV",
+    "environment": "vue",
+    "condition": "strict-ts",
+    "description": "Daily expanded case ENV-041 with vue and strict-ts",
+    "files": {
+      "src/daily.ts": "export const val = 30;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 60. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ROLL-037",
+    "category": "ROLL",
+    "environment": "react",
+    "condition": "missing-config",
+    "description": "Daily expanded case ROLL-037 with react and missing-config",
+    "files": {
+      "src/daily.ts": "export const val = 31;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 62. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-043",
+    "category": "AST",
+    "environment": "node-cjs",
+    "condition": "normal",
+    "description": "Daily expanded case AST-043 with node-cjs and normal",
+    "files": {
+      "src/daily.ts": "export const val = 32;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 64. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-044",
+    "category": "ENV",
+    "environment": "node-cjs",
+    "condition": "syntax-error",
+    "description": "Daily expanded case ENV-044 with node-cjs and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 33;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 66. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-045",
+    "category": "ENV",
+    "environment": "bun",
+    "condition": "syntax-error",
+    "description": "Daily expanded case ENV-045 with bun and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 34;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 68. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "COMP-041",
+    "category": "COMP",
+    "environment": "node-esm",
+    "condition": "normal",
+    "description": "Daily expanded case COMP-041 with node-esm and normal",
+    "files": {
+      "src/daily.ts": "export const val = 35;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 70. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ROLL-042",
+    "category": "ROLL",
+    "environment": "bun",
+    "condition": "normal",
+    "description": "Daily expanded case ROLL-042 with bun and normal",
+    "files": {
+      "src/daily.ts": "export const val = 36;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 72. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "COMP-043",
+    "category": "COMP",
+    "environment": "react",
+    "condition": "syntax-error",
+    "description": "Daily expanded case COMP-043 with react and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 37;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 74. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-049",
+    "category": "AST",
+    "environment": "node-esm",
+    "condition": "syntax-error",
+    "description": "Daily expanded case AST-049 with node-esm and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 38;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 76. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "PLAN-050",
+    "category": "PLAN",
+    "environment": "react",
+    "condition": "normal",
+    "description": "Daily expanded case PLAN-050 with react and normal",
+    "files": {
+      "src/daily.ts": "export const val = 39;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 78. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "COMP-046",
+    "category": "COMP",
+    "environment": "vue",
+    "condition": "normal",
+    "description": "Daily expanded case COMP-046 with vue and normal",
+    "files": {
+      "src/daily.ts": "export const val = 40;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 80. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "HEAL-052",
+    "category": "HEAL",
+    "environment": "bun",
+    "condition": "missing-config",
+    "description": "Daily expanded case HEAL-052 with bun and missing-config",
+    "files": {
+      "src/daily.ts": "export const val = 41;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 82. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-053",
+    "category": "ENV",
+    "environment": "node-cjs",
+    "condition": "syntax-error",
+    "description": "Daily expanded case ENV-053 with node-cjs and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 42;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 84. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "HEAL-054",
+    "category": "HEAL",
+    "environment": "vue",
+    "condition": "syntax-error",
+    "description": "Daily expanded case HEAL-054 with vue and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 43;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 86. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "COMP-050",
+    "category": "COMP",
+    "environment": "bun",
+    "condition": "strict-ts",
+    "description": "Daily expanded case COMP-050 with bun and strict-ts",
+    "files": {
+      "src/daily.ts": "export const val = 44;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 88. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "PLAN-056",
+    "category": "PLAN",
+    "environment": "bun",
+    "condition": "strict-ts",
+    "description": "Daily expanded case PLAN-056 with bun and strict-ts",
+    "files": {
+      "src/daily.ts": "export const val = 45;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 90. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "COMP-052",
+    "category": "COMP",
+    "environment": "node-cjs",
+    "condition": "normal",
+    "description": "Daily expanded case COMP-052 with node-cjs and normal",
+    "files": {
+      "src/daily.ts": "export const val = 46;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 92. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "COMP-053",
+    "category": "COMP",
+    "environment": "node-cjs",
+    "condition": "missing-config",
+    "description": "Daily expanded case COMP-053 with node-cjs and missing-config",
+    "files": {
+      "src/daily.ts": "export const val = 47;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 94. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "HEAL-059",
+    "category": "HEAL",
+    "environment": "node-esm",
+    "condition": "normal",
+    "description": "Daily expanded case HEAL-059 with node-esm and normal",
+    "files": {
+      "src/daily.ts": "export const val = 48;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 96. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "HEAL-060",
+    "category": "HEAL",
+    "environment": "react",
+    "condition": "strict-ts",
+    "description": "Daily expanded case HEAL-060 with react and strict-ts",
+    "files": {
+      "src/daily.ts": "export const val = 49;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 98. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "HEAL-061",
+    "category": "HEAL",
+    "environment": "node-cjs",
+    "condition": "missing-config",
+    "description": "Daily expanded case HEAL-061 with node-cjs and missing-config",
+    "files": {
+      "src/daily.ts": "export const val = 0;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 0. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-055",
+    "category": "ENV",
+    "environment": "node-cjs",
+    "condition": "syntax-error",
+    "description": "Daily expanded case ENV-055 with node-cjs and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 1;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 2. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "HEAL-063",
+    "category": "HEAL",
+    "environment": "react",
+    "condition": "syntax-error",
+    "description": "Daily expanded case HEAL-063 with react and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 2;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 4. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ROLL-046",
+    "category": "ROLL",
+    "environment": "node-esm",
+    "condition": "syntax-error",
+    "description": "Daily expanded case ROLL-046 with node-esm and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 3;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 6. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "COMP-058",
+    "category": "COMP",
+    "environment": "vue",
+    "condition": "syntax-error",
+    "description": "Daily expanded case COMP-058 with vue and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 4;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 8. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-059",
+    "category": "ENV",
+    "environment": "vue",
+    "condition": "missing-config",
+    "description": "Daily expanded case ENV-059 with vue and missing-config",
+    "files": {
+      "src/daily.ts": "export const val = 5;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 10. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "COMP-060",
+    "category": "COMP",
+    "environment": "node-cjs",
+    "condition": "syntax-error",
+    "description": "Daily expanded case COMP-060 with node-cjs and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 6;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 12. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-057",
+    "category": "AST",
+    "environment": "vue",
+    "condition": "normal",
+    "description": "Daily expanded case AST-057 with vue and normal",
+    "files": {
+      "src/daily.ts": "export const val = 7;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 14. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ROLL-051",
+    "category": "ROLL",
+    "environment": "bun",
+    "condition": "normal",
+    "description": "Daily expanded case ROLL-051 with bun and normal",
+    "files": {
+      "src/daily.ts": "export const val = 8;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 16. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "COMP-063",
+    "category": "COMP",
+    "environment": "vue",
+    "condition": "missing-config",
+    "description": "Daily expanded case COMP-063 with vue and missing-config",
+    "files": {
+      "src/daily.ts": "export const val = 9;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 18. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-060",
+    "category": "AST",
+    "environment": "vue",
+    "condition": "syntax-error",
+    "description": "Daily expanded case AST-060 with vue and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 10;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 20. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "PLAN-068",
+    "category": "PLAN",
+    "environment": "react",
+    "condition": "normal",
+    "description": "Daily expanded case PLAN-068 with react and normal",
+    "files": {
+      "src/daily.ts": "export const val = 11;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 22. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "COMP-066",
+    "category": "COMP",
+    "environment": "react",
+    "condition": "normal",
+    "description": "Daily expanded case COMP-066 with react and normal",
+    "files": {
+      "src/daily.ts": "export const val = 12;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 24. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-063",
+    "category": "AST",
+    "environment": "react",
+    "condition": "strict-ts",
+    "description": "Daily expanded case AST-063 with react and strict-ts",
+    "files": {
+      "src/daily.ts": "export const val = 13;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 26. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-068",
+    "category": "ENV",
+    "environment": "react",
+    "condition": "missing-config",
+    "description": "Daily expanded case ENV-068 with react and missing-config",
+    "files": {
+      "src/daily.ts": "export const val = 14;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 28. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "COMP-069",
+    "category": "COMP",
+    "environment": "bun",
+    "condition": "syntax-error",
+    "description": "Daily expanded case COMP-069 with bun and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 15;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 30. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-066",
+    "category": "AST",
+    "environment": "node-esm",
+    "condition": "syntax-error",
+    "description": "Daily expanded case AST-066 with node-esm and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 16;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 32. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-071",
+    "category": "ENV",
+    "environment": "react",
+    "condition": "normal",
+    "description": "Daily expanded case ENV-071 with react and normal",
+    "files": {
+      "src/daily.ts": "export const val = 17;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 34. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "COMP-072",
+    "category": "COMP",
+    "environment": "node-cjs",
+    "condition": "normal",
+    "description": "Daily expanded case COMP-072 with node-cjs and normal",
+    "files": {
+      "src/daily.ts": "export const val = 18;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 36. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "HEAL-080",
+    "category": "HEAL",
+    "environment": "node-cjs",
+    "condition": "strict-ts",
+    "description": "Daily expanded case HEAL-080 with node-cjs and strict-ts",
+    "files": {
+      "src/daily.ts": "export const val = 19;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 38. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "PLAN-077",
+    "category": "PLAN",
+    "environment": "vue",
+    "condition": "normal",
+    "description": "Daily expanded case PLAN-077 with vue and normal",
+    "files": {
+      "src/daily.ts": "export const val = 20;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 40. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "COMP-075",
+    "category": "COMP",
+    "environment": "vue",
+    "condition": "normal",
+    "description": "Daily expanded case COMP-075 with vue and normal",
+    "files": {
+      "src/daily.ts": "export const val = 21;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 42. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-076",
+    "category": "ENV",
+    "environment": "node-cjs",
+    "condition": "missing-config",
+    "description": "Daily expanded case ENV-076 with node-cjs and missing-config",
+    "files": {
+      "src/daily.ts": "export const val = 22;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 44. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "COMP-077",
+    "category": "COMP",
+    "environment": "bun",
+    "condition": "normal",
+    "description": "Daily expanded case COMP-077 with bun and normal",
+    "files": {
+      "src/daily.ts": "export const val = 23;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 46. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-078",
+    "category": "ENV",
+    "environment": "vue",
+    "condition": "syntax-error",
+    "description": "Daily expanded case ENV-078 with vue and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 24;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 48. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "HEAL-086",
+    "category": "HEAL",
+    "environment": "bun",
+    "condition": "missing-config",
+    "description": "Daily expanded case HEAL-086 with bun and missing-config",
+    "files": {
+      "src/daily.ts": "export const val = 25;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 50. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ROLL-069",
+    "category": "ROLL",
+    "environment": "node-esm",
+    "condition": "strict-ts",
+    "description": "Daily expanded case ROLL-069 with node-esm and strict-ts",
+    "files": {
+      "src/daily.ts": "export const val = 26;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 52. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "HEAL-088",
+    "category": "HEAL",
+    "environment": "node-esm",
+    "condition": "normal",
+    "description": "Daily expanded case HEAL-088 with node-esm and normal",
+    "files": {
+      "src/daily.ts": "export const val = 27;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 54. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "PLAN-085",
+    "category": "PLAN",
+    "environment": "vue",
+    "condition": "normal",
+    "description": "Daily expanded case PLAN-085 with vue and normal",
+    "files": {
+      "src/daily.ts": "export const val = 28;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 56. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-083",
+    "category": "ENV",
+    "environment": "react",
+    "condition": "strict-ts",
+    "description": "Daily expanded case ENV-083 with react and strict-ts",
+    "files": {
+      "src/daily.ts": "export const val = 29;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 58. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ROLL-073",
+    "category": "ROLL",
+    "environment": "node-cjs",
+    "condition": "strict-ts",
+    "description": "Daily expanded case ROLL-073 with node-cjs and strict-ts",
+    "files": {
+      "src/daily.ts": "export const val = 30;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 60. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-081",
+    "category": "AST",
+    "environment": "node-cjs",
+    "condition": "normal",
+    "description": "Daily expanded case AST-081 with node-cjs and normal",
+    "files": {
+      "src/daily.ts": "export const val = 31;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 62. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "HEAL-093",
+    "category": "HEAL",
+    "environment": "bun",
+    "condition": "strict-ts",
+    "description": "Daily expanded case HEAL-093 with bun and strict-ts",
+    "files": {
+      "src/daily.ts": "export const val = 32;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 64. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "HEAL-094",
+    "category": "HEAL",
+    "environment": "node-esm",
+    "condition": "syntax-error",
+    "description": "Daily expanded case HEAL-094 with node-esm and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 33;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 66. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-084",
+    "category": "AST",
+    "environment": "node-cjs",
+    "condition": "syntax-error",
+    "description": "Daily expanded case AST-084 with node-cjs and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 34;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 68. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "HEAL-096",
+    "category": "HEAL",
+    "environment": "bun",
+    "condition": "syntax-error",
+    "description": "Daily expanded case HEAL-096 with bun and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 35;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 70. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "PLAN-093",
+    "category": "PLAN",
+    "environment": "vue",
+    "condition": "strict-ts",
+    "description": "Daily expanded case PLAN-093 with vue and strict-ts",
+    "files": {
+      "src/daily.ts": "export const val = 36;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 72. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-087",
+    "category": "AST",
+    "environment": "node-esm",
+    "condition": "missing-config",
+    "description": "Daily expanded case AST-087 with node-esm and missing-config",
+    "files": {
+      "src/daily.ts": "export const val = 37;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 74. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-088",
+    "category": "AST",
+    "environment": "vue",
+    "condition": "normal",
+    "description": "Daily expanded case AST-088 with vue and normal",
+    "files": {
+      "src/daily.ts": "export const val = 38;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 76. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "COMP-093",
+    "category": "COMP",
+    "environment": "react",
+    "condition": "missing-config",
+    "description": "Daily expanded case COMP-093 with react and missing-config",
+    "files": {
+      "src/daily.ts": "export const val = 39;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 78. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "PLAN-097",
+    "category": "PLAN",
+    "environment": "vue",
+    "condition": "syntax-error",
+    "description": "Daily expanded case PLAN-097 with vue and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 40;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 80. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "PLAN-098",
+    "category": "PLAN",
+    "environment": "vue",
+    "condition": "syntax-error",
+    "description": "Daily expanded case PLAN-098 with vue and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 41;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 82. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-096",
+    "category": "ENV",
+    "environment": "node-esm",
+    "condition": "syntax-error",
+    "description": "Daily expanded case ENV-096 with node-esm and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 42;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 84. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "HEAL-104",
+    "category": "HEAL",
+    "environment": "bun",
+    "condition": "syntax-error",
+    "description": "Daily expanded case HEAL-104 with bun and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 43;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 86. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "AST-094",
+    "category": "AST",
+    "environment": "bun",
+    "condition": "strict-ts",
+    "description": "Daily expanded case AST-094 with bun and strict-ts",
+    "files": {
+      "src/daily.ts": "export const val = 44;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 88. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "PLAN-102",
+    "category": "PLAN",
+    "environment": "node-esm",
+    "condition": "syntax-error",
+    "description": "Daily expanded case PLAN-102 with node-esm and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 45;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 90. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ROLL-089",
+    "category": "ROLL",
+    "environment": "vue",
+    "condition": "normal",
+    "description": "Daily expanded case ROLL-089 with vue and normal",
+    "files": {
+      "src/daily.ts": "export const val = 46;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 92. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-101",
+    "category": "ENV",
+    "environment": "bun",
+    "condition": "syntax-error",
+    "description": "Daily expanded case ENV-101 with bun and syntax-error",
+    "files": {
+      "src/daily.ts": "export const val = 47;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 94. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "COMP-102",
+    "category": "COMP",
+    "environment": "react",
+    "condition": "missing-config",
+    "description": "Daily expanded case COMP-102 with react and missing-config",
+    "files": {
+      "src/daily.ts": "export const val = 48;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 96. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  },
+  {
+    "id": "ENV-103",
+    "category": "ENV",
+    "environment": "vue",
+    "condition": "missing-config",
+    "description": "Daily expanded case ENV-103 with vue and missing-config",
+    "files": {
+      "src/daily.ts": "export const val = 49;"
+    },
+    "prompt": "Refactor src/daily.ts to export a function returning 98. Fix any tests.",
+    "validationCommand": "npx tsc --noEmit"
+  }
+]

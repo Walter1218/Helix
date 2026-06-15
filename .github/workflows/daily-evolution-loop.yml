@@ -1,0 +1,67 @@
+name: Daily Evolution Loop (Agentic Flywheel)
+
+on:
+  schedule:
+    # 每天 UTC 时间 03:50 (北京时间 11:50) 自动触发
+    - cron: '50 3 * * *'
+  workflow_dispatch: # 允许手动触发以供测试
+
+jobs:
+  evolution-flywheel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120 # 测试与蒸馏可能需要较长时间
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build CLI
+        run: bun run packages/opencode/script/build.ts
+
+      - name: Step 1 - Generate & Expand Daily Cases
+        run: |
+          echo "🚀 扩充每日测试用例..."
+          bun run script/dogfooding/generate_cases.ts --daily-expand
+
+      - name: Step 2 - Run Beta Evolution Loop (Phase 1: Sandboxed Test)
+        # 此处需要配置模型 API Key，以便智能体在跑测时能够调用模型
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          echo "🚀 开始跑测并产生高质量脏数据 Trace..."
+          bun run script/dogfooding/beta_evolution_loop.ts
+
+      - name: Step 3 - Run DSPy Optimizer (Phase 2: Auto-Distill)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          echo "🚀 启动离线优化器提取规则..."
+          bun run script/dogfooding/optimize_prompt.ts
+
+      - name: Step 4 - Export DPO Dataset (Phase 3: The Flywheel)
+        run: |
+          echo "🚀 打包最新的 DPO 偏好对齐数据集..."
+          bun run script/dogfooding/export_dpo.ts
+
+      - name: Commit & Push New Rules and Cases
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add AGENTS.md script/dogfooding/cases.json .dogfooding/dpo_dataset/
+          # 仅在有改动时提交
+          if ! git diff --staged --empty; then
+            git commit -m "chore(flywheel): auto-update cases, distilled rules and dpo dataset [skip ci]"
+            git push
+          else
+            echo "No changes to commit."
+          fi

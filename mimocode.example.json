@@ -1,0 +1,85 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "_comment": "复制此文件到 ~/.config/mimocode/mimocode.json 并按需修改。所有 API Key 建议使用 ${ENV_VAR} 语法引用环境变量。",
+
+  "model": "xiaomi/mimo-v2.5-pro",
+
+  "agent": {
+    "build": {
+      "model": "xiaomi/mimo-v2.5-pro"
+    }
+  },
+
+  "provider": {
+    "xiaomi": {
+      "name": "MiMo",
+      "npm": "@ai-sdk/openai-compatible",
+      "env": ["MIMO_API_KEY"],
+      "options": {
+        "apiKey": "${MIMO_API_KEY}",
+        "baseURL": "https://api.xiaomimimo.com/v1"
+      },
+      "models": {
+        "mimo-v2.5-pro": {
+          "name": "MiMo V2.5 Pro",
+          "tool_call": true,
+          "reasoning": true,
+          "temperature": true,
+          "limit": { "context": 1000000, "output": 128000 }
+        },
+        "mimo-v2.5": {
+          "name": "MiMo V2.5",
+          "tool_call": true,
+          "reasoning": true,
+          "temperature": true,
+          "limit": { "context": 1000000, "output": 128000 }
+        }
+      }
+    }
+
+    // 以下为第三方模型配置示例，取消注释即可启用。
+    // 更多 provider 配置参考 docs/USAGE.md §2.1
+
+    // "deepseek": {
+    //   "name": "DeepSeek",
+    //   "env": ["DEEPSEEK_API_KEY"],
+    //   "options": {
+    //     "baseURL": "https://api.deepseek.com/v1",
+    //     "apiKey": "${DEEPSEEK_API_KEY}"
+    //   },
+    //   "models": {
+    //     "deepseek-chat": { "limit": { "context": 65536, "output": 8192 } },
+    //     "deepseek-reasoner": { "reasoning": true, "limit": { "context": 65536, "output": 8192 } }
+    //   }
+    // },
+
+    // "openai": {
+    //   "name": "OpenAI",
+    //   "npm": "@ai-sdk/openai",
+    //   "env": ["OPENAI_API_KEY"],
+    //   "options": { "apiKey": "${OPENAI_API_KEY}" },
+    //   "models": {
+    //     "gpt-4o": { "limit": { "context": 128000, "output": 16384 } }
+    //   }
+    // },
+
+    // "anthropic": {
+    //   "name": "Anthropic",
+    //   "npm": "@ai-sdk/anthropic",
+    //   "env": ["ANTHROPIC_API_KEY"],
+    //   "options": { "apiKey": "${ANTHROPIC_API_KEY}" },
+    //   "models": {
+    //     "claude-sonnet-4-20250514": { "limit": { "context": 200000, "output": 8192 } }
+    //   }
+    // }
+  },
+
+  // Vector RAG 语义检索（可选，需本地 LM Studio 运行 embedding 模型）
+  // "memory": {
+  //   "vector": {
+  //     "enabled": false,
+  //     "api_url": "http://localhost:1234/v1/embeddings",
+  //     "model": "text-embedding-nomic-embed-text-v1.5"
+  //   }
+  // }
+}
