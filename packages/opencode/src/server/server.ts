@@ -64,7 +64,12 @@ function create(opts: { cors?: string[] }) {
           .route("/experimental/workspace", WorkspaceRoutes())
           .use(WorkspaceRouterMiddleware(runtime.upgradeWebSocket)),
       )
-      .route("/", InstanceRoutes(runtime.upgradeWebSocket))
+      .route(
+        "/",
+        new Hono()
+          .use(InstanceMiddleware())
+          .route("/", InstanceRoutes(runtime.upgradeWebSocket)),
+      )
       .route("/", UIRoutes()),
     runtime,
   }

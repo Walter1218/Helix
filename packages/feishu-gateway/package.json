@@ -8,7 +8,8 @@
     "dev": "bun --watch run src/index.ts"
   },
   "dependencies": {
-    "@larksuiteoapi/node-sdk": "^1.0.0"
+    "@larksuiteoapi/node-sdk": "^1.61.1",
+    "@mimo-ai/sdk": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest"

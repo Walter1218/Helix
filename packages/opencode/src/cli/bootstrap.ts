@@ -3,13 +3,25 @@ import { InstanceBootstrap } from "../project/bootstrap"
 import { Instance } from "../project/instance"
 import { SessionCheckpoint } from "@/session/checkpoint"
 import { Log } from "@/util"
+import { InstanceRef } from "@/effect/instance-ref"
+import { Effect } from "effect"
 
 const log = Log.create({ service: "cli.bootstrap" })
 
 export async function bootstrap<T>(directory: string, cb: () => Promise<T>) {
   return Instance.provide({
     directory,
-    init: () => AppRuntime.runPromise(InstanceBootstrap),
+    init: () => {
+      // Capture the current Instance context from AsyncLocalStorage
+      // and inject it into the Effect Fiber via InstanceRef.
+      // Without this, Effect.runPromise runs in a Fiber that doesn't
+      // inherit Node.js AsyncLocalStorage context, causing
+      // "No context found for instance" errors.
+      const ctx = Instance.current
+      return AppRuntime.runPromise(
+        InstanceBootstrap.pipe(Effect.provideService(InstanceRef, ctx)),
+      )
+    },
     fn: async () => {
       try {
         return await cb()

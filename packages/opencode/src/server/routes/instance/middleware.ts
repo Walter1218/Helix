@@ -5,6 +5,8 @@ import { AppRuntime } from "@/effect/app-runtime"
 import { AppFileSystem } from "@mimo-ai/shared/filesystem"
 import { WorkspaceContext } from "@/control-plane/workspace-context"
 import { WorkspaceID } from "@/control-plane/schema"
+import { InstanceRef } from "@/effect/instance-ref"
+import { Effect } from "effect"
 
 export function InstanceMiddleware(workspaceID?: WorkspaceID): MiddlewareHandler {
   return async (c, next) => {
@@ -24,7 +26,12 @@ export function InstanceMiddleware(workspaceID?: WorkspaceID): MiddlewareHandler
       async fn() {
         return Instance.provide({
           directory,
-          init: () => AppRuntime.runPromise(InstanceBootstrap),
+          init: () => {
+            const ctx = Instance.current
+            return AppRuntime.runPromise(
+              InstanceBootstrap.pipe(Effect.provideService(InstanceRef, ctx)),
+            )
+          },
           async fn() {
             return next()
           },

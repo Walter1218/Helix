@@ -7,7 +7,7 @@ import * as Project from "./project"
 import * as Vcs from "./vcs"
 import { Bus } from "../bus"
 import { Command } from "../command"
-import { Instance } from "./instance"
+import { Instance, type InstanceContext } from "./instance"
 import { Log } from "@/util"
 import { FileWatcher } from "@/file/watcher"
 import { ShareNext } from "@/share"
@@ -17,9 +17,11 @@ import { Metrics } from "@/metrics"
 import { Memory } from "@/memory"
 import { WorktreeGC } from "@/worktree/gc"
 import { WriterService, BackfillService } from "@/history"
+import { InstanceRef } from "@/effect/instance-ref"
 
 export const InstanceBootstrap = Effect.gen(function* () {
-  Log.Default.info("bootstrapping", { directory: Instance.directory })
+  const ctx = yield* InstanceRef
+  Log.Default.info("bootstrapping", { directory: ctx?.directory ?? "unknown" })
   // everything depends on config so eager load it for nice traces
   yield* Config.Service.use((svc) => svc.get())
   // Plugin can mutate config so it has to be initialized before anything else.
@@ -58,7 +60,7 @@ export const InstanceBootstrap = Effect.gen(function* () {
   yield* Bus.Service.use((svc) =>
     svc.subscribeCallback(Command.Event.Executed, async (payload) => {
       if (payload.properties.name === Command.Default.INIT) {
-        Project.setInitialized(Instance.project.id)
+        if (ctx) Project.setInitialized(ctx.project.id)
       }
     }),
   )

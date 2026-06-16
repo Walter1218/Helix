@@ -7,6 +7,8 @@ import { Log } from "@/util"
 import { LocalContext } from "../util"
 import * as Project from "./project"
 import { WorkspaceContext } from "@/control-plane/workspace-context"
+import { InstanceRef } from "@/effect/instance-ref"
+import { Effect } from "effect"
 
 export interface InstanceContext {
   directory: string

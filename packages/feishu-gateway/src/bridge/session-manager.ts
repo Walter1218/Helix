@@ -1,109 +1,221 @@
+import * as lark from "@larksuiteoapi/node-sdk"
+import { createOpencodeClient, type OpencodeClient } from "@mimo-ai/sdk/v2"
 import { config } from "../config"
 import { Logger } from "../logger"
 
 const log = Logger.create("session")
 
-interface SessionInfo {
-  status?: string
-}
-
 /**
- * Session 管理器：维护飞书用户 open_id ↔ Helix sessionID 的映射。
- * 同一用户的新任务自动复用已有 Session。
+ * Session 管理器：通过 Helix HTTP Server API 执行任务。
+ * 每个 chat_id 对应一个 Helix session，支持多轮对话上下文。
  */
 export class SessionManager {
-  private sessions = new Map<string, { sessionID: string; chatId: string; createdAt: number }>()
-  private tokenCache: { token: string; expiresAt: number } | null = null
+  private sessions = new Map<string, string>() // chatId -> helix sessionID
+  private runningTasks = new Map<string, AbortController>() // chatId -> abort controller
+  public readonly larkClient: lark.Client
+  private sdk: OpencodeClient
 
-  /** 获取或创建 Session */
-  async create(openId: string, chatId: string): Promise<string> {
-    const existing = this.sessions.get(openId)
-    if (existing && Date.now() - existing.createdAt < 600_000) {
-      existing.chatId = chatId // 更新 chatId（可能从群聊切私聊）
-      return existing.sessionID
-    }
-
-    try {
-      const res = await fetch(`${config.helix.url}/api/session`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          directory: config.helix.workDir,
-          model: { providerID: config.helix.modelProvider, modelID: config.helix.model },
-        }),
-      })
-      if (!res.ok) {
-        log.error("创建 Helix Session 失败", { status: res.status })
-        return ""
-      }
-      const data = await res.json() as { id?: string }
-      const sessionID = data.id ?? `feishu-${openId}-${Date.now()}`
-      this.sessions.set(openId, { sessionID, chatId, createdAt: Date.now() })
-      log.info("Session 已创建", { openId, sessionID })
-      return sessionID
-    } catch (err) {
-      log.error("无法连接 Helix", err)
-      return ""
-    }
-  }
-
-  /** 下发 Prompt (Macro Goal) */
-  async sendPrompt(sessionID: string, text: string) {
-    try {
-      await fetch(`${config.helix.url}/api/session/${sessionID}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "prompt", content: text }),
-      })
-    } catch (err) {
-      log.error("下发 Prompt 失败", err)
-    }
-  }
-
-  /** 取消任务 */
-  async cancel(sessionID: string) {
-    try {
-      await fetch(`${config.helix.url}/api/session/${sessionID}`, { method: "DELETE" })
-    } catch {
-      // ignore
-    }
-  }
-
-  /** 获取 Session 信息 */
-  async getSessionInfo(sessionID: string): Promise<SessionInfo | null> {
-    try {
-      const res = await fetch(`${config.helix.url}/api/session/${sessionID}`)
-      if (!res.ok) return null
-      return await res.json() as SessionInfo
-    } catch {
-      return null
-    }
-  }
-
-  getSessionID(openId: string): string | undefined {
-    return this.sessions.get(openId)?.sessionID
-  }
-
-  clear(openId: string) {
-    this.sessions.delete(openId)
-  }
-
-  /** 获取 tenant_access_token（缓存 1 小时） */
-  async getAccessToken(): Promise<string> {
-    if (this.tokenCache && Date.now() < this.tokenCache.expiresAt) {
-      return this.tokenCache.token
-    }
-    const baseHost = config.feishu.domain === "lark" ? "open.larksuite.com" : "open.feishu.cn"
-    const res = await fetch(`https://${baseHost}/open-apis/auth/v3/tenant_access_token/internal`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ app_id: config.feishu.appId, app_secret: config.feishu.appSecret }),
+  constructor() {
+    this.larkClient = new lark.Client({
+      appId: config.feishu.appId,
+      appSecret: config.feishu.appSecret,
+      domain: config.feishu.domain === "lark" ? lark.Domain.Lark : lark.Domain.Feishu,
     })
-    const data = await res.json() as { tenant_access_token?: string }
-    if (data.tenant_access_token) {
-      this.tokenCache = { token: data.tenant_access_token, expiresAt: Date.now() + 3500_000 }
-      return this.tokenCache.token
+
+    // 创建 Helix SDK 客户端
+    const headers: Record<string, string> = {}
+    if (config.helix.password) {
+      const auth = Buffer.from(`mimocode:${config.helix.password}`).toString("base64")
+      headers["Authorization"] = `Basic ${auth}`
     }
-    throw new Error("获取 access token 失败")
+
+    this.sdk = createOpencodeClient({
+      baseUrl: config.helix.url,
+      directory: config.helix.workDir,
+      headers,
+    })
+
+    log.info("Helix SDK 客户端已初始化", { url: config.helix.url })
+  }
+
+  /** 获取或创建 chat_id 对应的 session */
+  async getOrCreateSession(chatId: string): Promise<string> {
+    const existing = this.sessions.get(chatId)
+    if (existing) {
+      // 验证 session 是否仍然有效
+      try {
+        const result = await this.sdk.session.get({ sessionID: existing })
+        if (result.data) return existing
+      } catch {
+        this.sessions.delete(chatId)
+      }
+    }
+
+    // 创建新 session
+    try {
+      log.info("正在创建 session...")
+      const result = await this.sdk.session.create({
+        title: `飞书会话 ${chatId}`,
+      })
+      log.info("session.create 返回", { data: result.data, error: result.error })
+      if (result.data?.id) {
+        this.sessions.set(chatId, result.data.id)
+        log.info("创建新 session", { chatId, sessionID: result.data.id })
+        return result.data.id
+      }
+      log.error("session.create 返回但没有 id", { result })
+    } catch (err: any) {
+      log.error("创建 session 异常", { message: err.message, stack: err.stack, response: err.response })
+    }
+
+    throw new Error("无法创建 Helix session")
+  }
+
+  /** 通过 Helix HTTP API 执行任务，返回输出结果 */
+  async runTask(chatId: string, text: string): Promise<string> {
+    // 取消该 chat 之前未完成的任务
+    this.cancel(chatId)
+
+    const controller = new AbortController()
+    this.runningTasks.set(chatId, controller)
+
+    try {
+      const sessionID = await this.getOrCreateSession(chatId)
+
+      log.info("发送消息到 Helix", { chatId, sessionID, text: text.slice(0, 80) })
+
+      // 使用 promptAsync 发送消息（非阻塞）
+      await this.sdk.session.promptAsync({
+        sessionID,
+        parts: [{ type: "text", text }],
+      })
+
+      // 等待 AI 完成回复
+      const response = await this.waitForCompletion(sessionID, controller.signal)
+
+      return response
+    } catch (err: any) {
+      if (err.name === "AbortError") {
+        return "⏹️ 任务已取消"
+      }
+      log.error("Helix 任务执行失败", { message: err.message, name: err.name, stack: err.stack?.slice(0, 200), response: err.response?.data })
+      return `❌ Agent 执行失败: ${err.message}`
+    } finally {
+      this.runningTasks.delete(chatId)
+    }
+  }
+
+  /** 等待 session 完成回复 */
+  private async waitForCompletion(sessionID: string, signal: AbortSignal): Promise<string> {
+    const maxWait = 5 * 60 * 1000 // 5 分钟超时
+    const pollInterval = 3000 // 3 秒轮询一次
+    const startTime = Date.now()
+
+    // 构建认证头
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    if (config.helix.password) {
+      const auth = Buffer.from(`mimocode:${config.helix.password}`).toString("base64")
+      headers["Authorization"] = `Basic ${auth}`
+    }
+
+    while (Date.now() - startTime < maxWait) {
+      if (signal.aborted) {
+        throw new DOMException("Aborted", "AbortError")
+      }
+
+      try {
+        // 直接调用 API 获取 messages（SDK 会丢失 time.completed 字段）
+        const url = `${config.helix.url}/session/${sessionID}/message`
+        const resp = await fetch(url, { headers })
+        const rawText = await resp.text()
+        const messages: any[] = JSON.parse(rawText)
+        
+        // 调试：打印第一条 assistant 消息的 time
+        const firstAssistant = messages.find((m: any) => m.info?.role === "assistant")
+        if (firstAssistant) {
+          log.info("fetch 返回的 assistant time", { time: firstAssistant.info?.time, rawTime: rawText.match(/"time":\{[^}]*completed[^}]*\}/)?.[0] })
+        }
+        
+        log.info("轮询消息", { sessionID, messageCount: messages.length })
+
+        // 找到最后一个 assistant 消息
+        const assistantMessages = messages.filter((m: any) => m.info?.role === "assistant")
+        
+        // 检查最后一个 assistant 消息是否完成
+        if (assistantMessages.length > 0) {
+          const lastAssistant = assistantMessages[assistantMessages.length - 1]
+          const completed = lastAssistant.info?.time?.completed
+          
+          if (completed) {
+            log.info("任务完成", { completed })
+            const textParts = (lastAssistant.parts ?? [])
+              .filter((p: any) => p.type === "text")
+              .map((p: any) => p.text)
+              .join("\n")
+
+            return textParts || "✅ 任务已完成（无文本输出）"
+          }
+        }
+      } catch (err: any) {
+        if (err.name === "AbortError") throw err
+        log.warn("轮询消息失败", { error: err.message })
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, pollInterval))
+    }
+
+    throw new Error("任务执行超时（5 分钟）")
+  }
+
+  /** 取消正在执行的任务 */
+  cancel(chatId: string): boolean {
+    const controller = this.runningTasks.get(chatId)
+    if (controller) {
+      controller.abort()
+      this.runningTasks.delete(chatId)
+      return true
+    }
+    return false
+  }
+
+  isRunning(chatId: string): boolean {
+    return this.runningTasks.has(chatId)
+  }
+
+  /** 清除 chat 的 session（用于 /new 命令） */
+  clearSession(chatId: string) {
+    this.sessions.delete(chatId)
+  }
+
+  /** 发送文本消息（使用 SDK Client，自动处理 token） */
+  async sendText(chatId: string, text: string) {
+    try {
+      await this.larkClient.im.message.create({
+        params: { receive_id_type: "chat_id" },
+        data: {
+          receive_id: chatId,
+          msg_type: "text",
+          content: JSON.stringify({ text }),
+        },
+      })
+    } catch (err) {
+      log.error("发送消息失败", err)
+    }
+  }
+
+  /** 发送交互式卡片（使用 SDK Client） */
+  async sendCard(chatId: string, card: unknown) {
+    try {
+      await this.larkClient.im.message.create({
+        params: { receive_id_type: "chat_id" },
+        data: {
+          receive_id: chatId,
+          msg_type: "interactive",
+          content: JSON.stringify(card),
+        },
+      })
+    } catch (err) {
+      log.error("发送卡片失败", err)
+    }
   }
 }

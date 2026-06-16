@@ -1,6 +1,7 @@
 import type { Context } from "hono"
 import { Effect } from "effect"
 import { AppRuntime } from "@/effect/app-runtime"
+import { Instance } from "@/project/instance"
 
 type AppEnv = Parameters<typeof AppRuntime.runPromise>[0] extends Effect.Effect<any, any, infer R> ? R : never
 
@@ -49,11 +50,21 @@ export async function jsonRequest<C extends Context, A, E>(
   c: C,
   effect: (c: C) => Effect.gen.Return<A, E, AppEnv>,
 ) {
-  return c.json(
-    await runRequest(
-      name,
-      c,
-      Effect.gen(() => effect(c)),
-    ),
-  )
+  // 捕获当前 Instance 上下文，在 Effect 执行时恢复
+  try {
+    const ctx = Instance.current
+    console.log("[trace] Instance context found:", ctx.directory)
+    return Instance.restore(ctx, async () => {
+      return c.json(
+        await runRequest(
+          name,
+          c,
+          Effect.gen(() => effect(c)),
+        ),
+      )
+    })
+  } catch (err) {
+    console.error("[trace] Instance context error:", err)
+    throw err
+  }
 }

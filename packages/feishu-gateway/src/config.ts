@@ -30,6 +30,7 @@ export const config = {
     workDir: process.env.HELIX_WORK_DIR ?? process.cwd(),
     modelProvider: process.env.HELIX_MODEL_PROVIDER ?? "mimo",
     model: process.env.HELIX_MODEL ?? "mimo-v2.5-pro",
+    password: process.env.MIMOCODE_SERVER_PASSWORD ?? "",
   },
 }
 

@@ -1,6 +1,5 @@
-import type { FeishuEvent } from "../client/feishu-ws"
+import type { MessageEventData } from "../client/feishu-ws"
 import { SessionManager } from "../bridge/session-manager"
-import { EventBridge } from "../bridge/event-bridge"
 import { CardBuilder } from "../cards/card-builder"
 import { CommandHandler } from "./command-handler"
 import { config } from "../config"
@@ -9,35 +8,47 @@ import { Logger } from "../logger"
 const log = Logger.create("router")
 
 /**
- * 消息路由器：解析飞书事件，按类型分发处理。
+ * 消息路由器：解析飞书 SDK 事件数据，按类型分发处理。
+ * Server 模式：通过 Helix HTTP API 执行任务，支持多轮对话上下文。
  */
 export class MessageRouter {
   private commands: CommandHandler
   private sessions: SessionManager
-  private bridge: EventBridge
   private cards: CardBuilder
+  private processedMessages = new Set<string>()
+  private readonly MESSAGE_ID_TTL = 60_000 // 1 分钟过期
 
   constructor() {
     this.commands = new CommandHandler()
     this.sessions = new SessionManager()
-    this.bridge = new EventBridge()
     this.cards = new CardBuilder()
   }
 
-  onMessage: (event: FeishuEvent, raw: string) => Promise<void> = async (event) => {
+  /** SDK EventDispatcher 回调入口 */
+  onMessage = async (data: MessageEventData) => {
     try {
-      const msg = event.event?.message
-      if (!msg || !event.event?.sender) return
+      const msg = data.message
+      const sender = data.sender
+      if (!msg || !sender) return
+
+      // 消息去重（飞书可能会重复推送同一条消息）
+      const messageId = msg.message_id
+      if (this.processedMessages.has(messageId)) {
+        log.info("跳过重复消息", { messageId })
+        return
+      }
+      this.processedMessages.add(messageId)
+      setTimeout(() => this.processedMessages.delete(messageId), this.MESSAGE_ID_TTL)
 
       // 只处理文本消息
       if (msg.message_type !== "text") return
 
-      const senderId = event.event.sender.sender_id?.open_id ?? ""
-      const chatId = msg.chat_id ?? ""
-      const chatType = msg.chat_type ?? "p2p"
-      const content = this.decodeMessageContent(msg.content ?? "")
+      const senderId = sender.sender_id?.open_id ?? ""
+      const chatId = msg.chat_id
+      const chatType = msg.chat_type
+      const content = this.decodeMessageContent(msg.content)
 
-      log.info(`收到消息`, { senderId, chatId, chatType, content: content.slice(0, 80) })
+      log.info("收到消息", { senderId, chatId, chatType, content: content.slice(0, 80) })
 
       // 用户白名单
       if (!this.isAllowed(senderId)) return
@@ -45,7 +56,7 @@ export class MessageRouter {
       // 群聊响应控制
       if (chatType === "group" && config.feishu.groupMode === "off") return
       if (chatType === "group" && config.feishu.groupMode === "mention") {
-        if (!content.includes("@")) return
+        if (!msg.mentions?.length) return
       }
 
       const text = this.stripMention(content)
@@ -56,7 +67,7 @@ export class MessageRouter {
         return
       }
 
-      // 正常任务 → Helix
+      // 正常任务 → Helix (Server 模式)
       await this.dispatchTask(senderId, chatId, text)
     } catch (err) {
       log.error("消息处理异常", err)
@@ -88,65 +99,24 @@ export class MessageRouter {
 
   private async handleCommand(senderId: string, chatId: string, cmd: string) {
     const result = await this.commands.handle(senderId, chatId, cmd, this.sessions)
-    await this.sendText(chatId, result)
+    await this.sessions.sendText(chatId, result)
   }
 
   private async dispatchTask(senderId: string, chatId: string, text: string) {
-    await this.sendText(chatId, `🚀 Helix Agent 已接管任务:\n> ${text.slice(0, 200)}`)
-
-    const sessionID = await this.sessions.create(senderId, chatId)
-    if (!sessionID) {
-      await this.sendText(chatId, "❌ 无法连接 Helix 引擎，请检查 Helix 服务是否启动。")
+    if (this.sessions.isRunning(chatId)) {
+      await this.sessions.sendText(chatId, "⏳ 上一个任务还在执行中，发送 /cancel 取消后再试。")
       return
     }
 
-    // 下发任务 Goal
-    await this.sessions.sendPrompt(sessionID, text)
+    log.info("开始执行任务", { chatId, text: text.slice(0, 80) })
+    await this.sessions.sendText(chatId, `🚀 Helix Agent 已接管任务:\n> ${text.slice(0, 200)}`)
 
-    // 订阅 Helix 事件，反向推飞书
-    this.bridge.subscribe(sessionID, chatId, (msg) => this.sendText(chatId, msg), (card) => this.sendCard(chatId, card))
+    const result = await this.sessions.runTask(chatId, text)
+    log.info("任务执行完成", { chatId, resultLength: result.length, resultPreview: result.slice(0, 100) })
 
-    // 5 分钟后自动清理 session
-    setTimeout(() => this.bridge.unsubscribe(sessionID), 300_000)
-  }
-
-  // ---- 飞书消息发送 ----
-
-  private async sendText(chatId: string, text: string) {
-    try {
-      await this.callBotApi("im/v1/messages", {
-        receive_id: chatId,
-        msg_type: "text",
-        content: JSON.stringify({ text }),
-      })
-    } catch (err) {
-      log.error("发送消息失败", err)
-    }
-  }
-
-  private async sendCard(chatId: string, card: unknown) {
-    try {
-      await this.callBotApi("im/v1/messages", {
-        receive_id: chatId,
-        msg_type: "interactive",
-        content: JSON.stringify(card),
-      })
-    } catch (err) {
-      log.error("发送卡片失败", err)
-    }
-  }
-
-  private async callBotApi(path: string, body: Record<string, unknown>) {
-    const token = await this.sessions.getAccessToken()
-    const baseHost = config.feishu.domain === "lark" ? "https://open.larksuite.com/open-apis" : "https://open.feishu.cn/open-apis"
-    const res = await fetch(`${baseHost}/${path}`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    })
-    return res.json()
+    // 飞书单条消息有长度限制，截断超长输出
+    const trimmed = result.length > 4000 ? result.slice(0, 4000) + "\n\n... (输出过长已截断)" : result
+    await this.sessions.sendText(chatId, trimmed)
+    log.info("回复已发送", { chatId })
   }
 }

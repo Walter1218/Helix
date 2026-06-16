@@ -6,9 +6,10 @@ import { Logger } from "./logger"
 const log = Logger.create("gateway")
 
 async function main() {
-  console.log("\n╔════════════════════════════════════════════╗")
-  console.log("║   🦞 Helix × 飞书 IM Gateway v1.0          ║")
-  console.log("╚════════════════════════════════════════════╝\n")
+  console.log(`\n╔════════════════════════════════════════════╗`)
+  console.log(`║   🦞 Helix × 飞书 IM Gateway v3.0          ║`)
+  console.log(`║   (Server 模式 · 支持多轮对话)            ║`)
+  console.log(`╚════════════════════════════════════════════╝\n`)
 
   // 1. 校验配置
   const errors = validate()
@@ -36,11 +37,10 @@ async function main() {
   // 2. 创建消息路由器
   const router = new MessageRouter()
 
-  // 3. 建立飞书 WebSocket 长连接
+  // 3. 建立飞书 WebSocket 长连接（官方 SDK）
   const client = new FeishuWSClient(
     config.feishu.appId,
     config.feishu.appSecret,
-    config.feishu.domain,
     router.onMessage,
   )
 
@@ -52,6 +52,18 @@ async function main() {
     log.error("Gateway 启动失败", err)
     process.exit(1)
   }
+
+  // 优雅退出
+  process.on("SIGINT", () => {
+    console.log("\n🛑 正在关闭 Gateway...")
+    client.close()
+    process.exit(0)
+  })
+
+  process.on("SIGTERM", () => {
+    client.close()
+    process.exit(0)
+  })
 }
 
 main()
