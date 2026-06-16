@@ -4,9 +4,20 @@
 
 set -e
 
-FEISHU_APP_ID="cli_a9666023f638dbcd"
-FEISHU_APP_SECRET="mdjZNYMAwOg0trr7Wjd4kbwUhiy0iSi7"
-TESTER_ID="ou_3bdc2ffeec5944976f8ec8d27454a62f"
+# 飞书凭证从环境变量或 .env 文件读取
+FEISHU_APP_ID=${FEISHU_APP_ID:-""}
+FEISHU_APP_SECRET=${FEISHU_APP_SECRET:-""}
+TESTER_ID=${TESTER_ID:-""}
+
+# 如果环境变量为空，尝试从 .env 文件读取
+if [ -z "$FEISHU_APP_ID" ] && [ -f ".env" ]; then
+    source .env
+fi
+
+if [ -z "$FEISHU_APP_ID" ] || [ -z "$FEISHU_APP_SECRET" ] || [ -z "$TESTER_ID" ]; then
+    echo "❌ 请设置环境变量: FEISHU_APP_ID, FEISHU_APP_SECRET, TESTER_ID"
+    exit 1
+fi
 REPORT_FILE="test-report-quick.md"
 
 # 检查 Gateway 是否运行
