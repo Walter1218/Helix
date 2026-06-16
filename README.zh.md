@@ -117,6 +117,21 @@ const boost = 双路同时命中 ? 1.3 : 1.0
 
 ## 快速开始
 
+### 环境准备（首次使用）
+
+```bash
+# 1. 安装 Bun 运行时
+curl -fsSL https://bun.sh/install | bash
+
+# 2. 安装依赖
+bun install
+
+# 3. 编译核心引擎（首次必须）
+bun run packages/opencode/script/build.ts
+# 或仅编译当前平台（更快）
+bun run packages/opencode/script/build.ts --single
+```
+
 ### 方式一：飞书 IM（推荐，完全自主模式）
 
 ```bash

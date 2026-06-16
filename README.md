@@ -102,6 +102,21 @@ Unlike chatbots that ask for confirmation every step, Helix's Feishu Gateway sup
 
 ## 🚀 Quick Start
 
+### Environment Setup (First Time)
+
+```bash
+# 1. Install Bun runtime
+curl -fsSL https://bun.sh/install | bash
+
+# 2. Install dependencies
+bun install
+
+# 3. Compile the core engine (required first time)
+bun run packages/opencode/script/build.ts
+# Or single-platform build (faster)
+bun run packages/opencode/script/build.ts --single
+```
+
 ### Feishu IM (Recommended)
 
 ```bash
