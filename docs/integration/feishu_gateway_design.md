@@ -369,9 +369,10 @@ HELIX_URL=http://localhost:3095 bun run src/index.ts
 | 传输 | 飞书 WebSocket 自带 TLS 加密 |
 | 认证 | SDK 自动处理 token 刷新 |
 | 用户白名单 | `FEISHU_ALLOWED_USERS` 限制可用的飞书用户 |
-| 群聊控制 | 默认仅响应用户 @消息；可配置 `groupRespondMode: "mention" \| "always" \| "off"` |
+| 群聊控制 | 默认仅响应用户 @消息；可配置 `groupRespondMode: "mention" | "always" | "off"` |
 | 操作确认 | 高危操作（如取消任务）使用飞书交互式卡片二次确认 |
 | 限流 | 每用户 5 分钟内最多下发 10 个任务 |
+| 自适应超时 | 基础 3 分钟，裁判智能体根据偏离状态延长，最多 3 次，上限 15 分钟 |
 
 ---
 
