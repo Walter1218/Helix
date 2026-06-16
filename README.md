@@ -116,6 +116,10 @@ mimo server --port 3000              # HTTP API 守护进程
 ### 4. 可选：飞书 IM Gateway
 
 ```bash
+# 一键启动（推荐）
+./start-feishu.sh
+
+# 或手动启动
 cd packages/feishu-gateway && cp .env.example .env && bun run src/index.ts
 ```
 详见 [飞书 Gateway 设计文档](docs/integration/feishu_gateway_design.md)。
@@ -133,6 +137,10 @@ mimo server --port 3000  # HTTP API 守护进程
 ### 飞书 Gateway
 
 ```bash
+# 一键启动（推荐）
+./start-feishu.sh
+
+# 或手动启动
 cd packages/feishu-gateway && cp .env.example .env && bun run src/index.ts
 ```
 

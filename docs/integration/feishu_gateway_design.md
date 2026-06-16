@@ -335,12 +335,16 @@ FEISHU_ALLOWED_USERS=ou_xxx,ou_yyy   # 用户白名单
 ### 启动
 
 ```bash
+# 一键启动（推荐）
+./start-feishu.sh
+
+# 或手动启动
 # 1. 先启动 Helix
-mimo server --port 3000
+MIMOCODE_SERVER_PASSWORD=test123 mimo serve --port 3095
 
 # 2. 再启动飞书 Gateway
 cd packages/feishu-gateway
-bun run src/index.ts
+HELIX_URL=http://localhost:3095 bun run src/index.ts
 ```
 
 ---
