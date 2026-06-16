@@ -160,6 +160,43 @@ export class SessionManager {
     return { shouldExtend: true, reason: `正常推进 (步骤 ${stepCount}, 有新输出)` }
   }
 
+  /** 打印智能体当前进度 */
+  private printProgress(messages: any[]) {
+    const lastAssistant = [...messages].reverse().find((m: any) => m.info?.role === "assistant")
+    if (!lastAssistant) return
+
+    const parts = lastAssistant.parts ?? []
+    const elapsed = Math.round((Date.now() - Date.now()) / 1000)
+
+    // 打印推理过程
+    const reasoning = parts.find((p: any) => p.type === "reasoning")
+    if (reasoning?.text) {
+      console.log(`\n🤔 智能体思考: ${reasoning.text.slice(0, 150)}...`)
+    }
+
+    // 打印工具调用
+    const toolCalls = parts.filter((p: any) => p.type === "tool")
+    for (const tool of toolCalls) {
+      const toolName = tool.tool || "?"
+      const status = tool.state?.status || "?"
+      const input = tool.state?.input
+      const statusIcon = status === "completed" ? "✅" : status === "running" ? "🔄" : "❌"
+
+      let detail = ""
+      if (toolName === "bash" && input?.command) {
+        detail = `命令: ${input.command.slice(0, 60)}`
+      } else if (toolName === "read" && input?.filePath) {
+        detail = `文件: ${input.filePath}`
+      } else if (toolName === "write" && input?.filePath) {
+        detail = `写入: ${input.filePath}`
+      } else if (input) {
+        detail = JSON.stringify(input).slice(0, 60)
+      }
+
+      console.log(`${statusIcon} [${toolName}] ${detail}`)
+    }
+  }
+
   /** 等待 session 完成回复（自适应超时） */
   private async waitForCompletion(sessionID: string, signal: AbortSignal): Promise<string> {
     const { baseTimeout, extensionTime, maxExtensions, maxTotalTime, pollInterval } = SessionManager.TIMEOUT_CONFIG
@@ -188,6 +225,9 @@ export class SessionManager {
 
         log.info("轮询消息", { sessionID, messageCount: messages.length })
 
+        // 打印智能体当前进度
+        this.printProgress(messages)
+
         // 找到最后一个 assistant 消息
         const assistantMessages = messages.filter((m: any) => m.info?.role === "assistant")
 
@@ -195,15 +235,35 @@ export class SessionManager {
         if (assistantMessages.length > 0) {
           const lastAssistant = assistantMessages[assistantMessages.length - 1]
           const completed = lastAssistant.info?.time?.completed
+          const parts = lastAssistant.parts ?? []
 
-          if (completed) {
+          // 检查是否有文本输出
+          const textParts = parts
+            .filter((p: any) => p.type === "text")
+            .map((p: any) => p.text)
+            .join("\n")
+
+          // 检查是否有工具调用
+          const toolCalls = parts.filter((p: any) => p.type === "tool")
+          const hasRunningTool = toolCalls.some((p: any) => p.state?.status === "running")
+
+          // 只有当消息完成且有文本输出时，才认为任务真正完成
+          if (completed && textParts && !hasRunningTool) {
             log.info("任务完成", { completed, elapsed: Date.now() - startTime })
-            const textParts = (lastAssistant.parts ?? [])
-              .filter((p: any) => p.type === "text")
-              .map((p: any) => p.text)
-              .join("\n")
+            return textParts
+          }
 
-            return textParts || "✅ 任务已完成（无文本输出）"
+          // 如果消息完成但没有文本输出，且没有正在运行的工具，可能是纯工具调用步骤
+          if (completed && !textParts && !hasRunningTool) {
+            log.info("步骤完成，继续等待", { messageCount: messages.length })
+            // 继续等待，不要返回
+          }
+
+          // 检测 AskUserQuestion 并自动回答（完全自主模式）
+          const questionTool = toolCalls.find((p: any) => p.tool === "question" && p.state?.status === "running")
+          if (questionTool) {
+            log.info("检测到 AskUserQuestion，自动回答")
+            await this.autoAnswerQuestion(sessionID, questionTool)
           }
         }
 
@@ -235,6 +295,39 @@ export class SessionManager {
     }
 
     throw new Error(`任务执行超时（已延长 ${extensionCount} 次，总耗时 ${Math.round((Date.now() - startTime) / 1000)}s）`)
+  }
+
+  /** 自动回答 AskUserQuestion（完全自主模式） */
+  private async autoAnswerQuestion(sessionID: string, questionTool: any) {
+    const callID = questionTool.callID
+    if (!callID) return
+
+    // 构建认证头
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    if (config.helix.password) {
+      const auth = Buffer.from(`mimocode:${config.helix.password}`).toString("base64")
+      headers["Authorization"] = `Basic ${auth}`
+    }
+
+    // 自动回答
+    const answer = "继续执行，不需要用户确认。请使用本地可用的资源自主完成任务。"
+    
+    try {
+      const url = `${config.helix.url}/session/${sessionID}/tool/${callID}`
+      const resp = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ output: answer }),
+      })
+      
+      if (resp.ok) {
+        log.info("自动回答成功", { callID, answer })
+      } else {
+        log.warn("自动回答失败", { status: resp.status, statusText: resp.statusText })
+      }
+    } catch (err: any) {
+      log.warn("自动回答异常", { error: err.message })
+    }
   }
 
   /** 取消正在执行的任务 */
