@@ -1,147 +1,223 @@
-<h1 align="center">MiMoCode</h1>
+<h1 align="center">🧬 Helix — 自主代码智能体</h1>
 
 <p align="center">
-  <img src="assets/readme/mimocode-banner.png" alt="MiMoCode" width="700">
-</p>
-
-<p align="center"><strong>开源 AI 编程智能体，拥有跨会话记忆。</strong></p>
-
-<p align="center">
-  中文 | <a href="README.md">English</a>
+  <strong>基于 MiMo-Code 引擎，面向生产环境的自主代码任务执行与自我进化系统</strong>
 </p>
 
 <p align="center">
-  <a href="https://mimo.xiaomi.com/zh/mimocode">官网</a> | <a href="https://mimo.xiaomi.com/zh/blog/mimo-code-long-horizon">博客</a>
+  <a href="README.md">English</a> | 中文
 </p>
 
 ---
 
-MiMoCode 是一个终端原生的 AI 编程助手。它能读写代码、执行命令、管理 Git，通过持久化记忆系统，在多次会话间保持对你项目的深度理解，并自我进化。
+## 一句话介绍
 
-内置 MiMo Auto 限时免费通道——零配置即可开始使用。也支持接入各家主流 LLM 厂商 API。
+Helix 是一个**能自主执行复杂代码任务并自我进化**的 AI 智能体。你只需描述目标，它会自动规划、执行、验证，从执行轨迹中学习并持续改进——无需人工干预。
+
+---
+
+## 为什么做 Helix？
+
+今天的 AI 编程助手大多是**交互式伴侣**——它们帮你写代码，但方向盘仍在你手里。Helix 要解决的是 **"Agent 从 Demo 到生产可用"之间的工程鸿沟**：
+
+| 问题 | Helix 的解法 |
+|------|-------------|
+| **长任务中途失败** | Hybrid FSM + Workflow Journal 持久化 + 自适应超时（含空闲/死循环检测） |
+| **脏数据污染模型** | `HeuristicFilter` 网关——OOM、超时、基础设施失败等物理隔离，不进入进化循环 |
+| **自主执行不安全** | Shadow Worktree（Git 级隔离）+ AST 级命令过滤 + VFS 沙箱 |
+| **记忆膨胀与污染** | BM25 + Vector 混合 RAG，基于代码变更自动代谢过时记忆 |
+| **过拟合测试用例** | 回归测试集（20+ 通用任务）+ DPO 微调 + 规则生命周期管理 |
+| **Agent 推理不可观测** | `TraceReporter` + `AlignmentGuard`——完整执行树追踪 + 实时偏离告警 |
+
+---
+
+## 我们的路径：与 MiMo-Code 的关系
+
+Helix **不是从零 fork**。它完整继承了 MiMo-Code 引擎（Bun 运行时、Effect 框架、工具注册表、Actor 系统、多 Provider 支持），并**在其上工程化了一层面向自主生产的增强**。
+
+### 保留了什么（MiMo-Code 引擎）
+- 多智能体模式（`build` / `plan` / `compose`）
+- TUI / CLI / HTTP API / MCP Server 多入口架构
+- 基于 Effect 的函数式服务层
+- SQLite FTS5 + Drizzle ORM 持久层
+- 子智能体并行与生命周期管理
+
+### 新增了什么（Helix 层）
+
+| 能力层 | MiMo-Code（原始） | Helix（本仓库） |
+|--------|------------------|----------------|
+| **可观测性** | ❌ 无 | ✅ `TraceReporter` + `HeuristicFilter` + `AlignmentGuard` |
+| **记忆检索** | 仅 SQLite FTS5 | ✅ BM25 + Vector 混合 RAG（`sqlite-vec` + Embedder）双路加权排序 |
+| **进化飞轮** | ❌ 无 | ✅ `script/dogfooding/` 14 个工具：自动用例生成、DPO 导出、定时进化循环 |
+| **安全沙箱** | 基础 Shadow Worktree | ✅ + VFS 沙箱 + AST 级 `ToolInterceptor` + `AlignmentGuard` 收件箱纠偏 |
+| **IM 集成** | ❌ 无 | ✅ 原生飞书 Gateway，完全自主模式、自适应超时、实时进度推送 |
+| **工作流引擎** | 脚本化运行时 | ✅ + `vfs-sandbox.ts`、全局信号量并发控制、断点续跑 |
+| **文档体系** | 功能特性说明 | ✅ 架构白皮书、能力路线图、进化闭环设计文档 |
+
+---
+
+## 核心创新点
+
+### 1. 进化飞轮（Self-Improving Agent）—— 逃离 Prompt 调优跑步机
+
+唯一让 Agent 持续变强的方式，是让它从自己的执行轨迹中学习。
+
+```
+执行 → 轨迹记录 → 启发式过滤 → DPO 数据集导出 →
+夜间离线 Prompt 优化 → 回归测试验证 → 规则注入 → 下一轮执行
+```
+
+- **`generate_cases.ts --daily-expand`**：每天自动生成 50+ 对抗性用例，按近期失败率动态倾斜采样权重（自适应采样），防止"偏科"
+- **`export_dpo.ts`**：导出 Chosen/Rejected JSONL，内置 **Judge 验证门**——防止"删断言骗通过"、代码量缩水至 30%、差异过小的作弊轨迹进入数据集
+- **`beta_evolution_loop.ts`**：智能进程守护者，按任务复杂度分级观测（`COMP` 30分钟 / `AST` 15分钟 / `PLAN` 5分钟），只在真正卡死时才杀进程
+- **`setup_local_cron.sh`**：macOS `launchd` 每天 11:50 自动运转飞轮
+
+### 2. 可观测性层（Agent 的神经系统）
+
+```ts
+// TraceReporter：类型安全的执行树追踪
+TraceNodeEvent = { id, type: "node_start|action|decision|error", status, timestamp }
+
+// HeuristicFilter：脏数据网关
+DIRTY_PATTERNS = [/timeout/i, /out of memory/i, /toolinterceptor blocked/i]
+
+// AlignmentGuard：实时偏离纠偏，可直接投递到 Actor 收件箱
+inbox.send({ senderActorID: "alignment-guard", content: "<alignment-guard>..." })
+```
+
+这是**生产级 Agent 的必备基础设施**——没有观测，就没有进化。
+
+### 3. 混合记忆系统（FTS5 + Vector RAG）
+
+```ts
+// 双路检索加权融合
+const combined = bm25Score * 0.6 + vectorScore * 0.4
+const boost = 双路同时命中 ? 1.3 : 1.0
+```
+
+- **FTS5 BM25**：精确匹配关键词、文件路径、工具名
+- **Vector RAG**：语义理解用户意图，召回相关但字面不匹配的记忆
+- **Memory Decay**：基于代码变更自动老化记忆，防止记忆污染
+
+### 4. 安全优先的自主执行
+
+- **Shadow Worktree**：每次危险操作都在 `git worktree` 隔离目录执行，分支 `mimocode/{name}`；成功自动提交，失败自动清理
+- **AST 级命令过滤**：`shell-tokenize.ts` 执行前解析命令结构，拦截 `rm -rf /`、`> /etc/passwd` 等高危操作
+- **VFS 沙箱**：Copy-on-Write 文件覆盖层，工作流内文件操作不污染主工作区
+
+### 5. 飞书 IM —— 真正无人值守的模式
+
+与每步都要确认的"聊天机器人"不同，Helix 的飞书 Gateway 支持**完全自主执行**：
+
+- **自适应超时**：基础 3 分钟 → 每次延长 3 分钟 → 最多 15 分钟，每次延长前评估任务偏离状态
+- **自动回答追问**：检测到 `AskUserQuestion` 时自动回答"继续执行，使用本地资源自主完成任务"
+- **实时进度可视化**：流式输出智能体推理过程和工具调用状态到终端
 
 ---
 
 ## 快速开始
 
-```bash
-# 一键安装
-curl -fsSL https://mimo.xiaomi.com/install | bash
+### 方式一：飞书 IM（推荐，完全自主模式）
 
-# 或通过 npm 安装
-npm install -g @mimo-ai/cli
+```bash
+# 1. 配置飞书凭证
+cd packages/feishu-gateway
+cp .env.example .env
+# 编辑 .env 填入 FEISHU_APP_ID 和 FEISHU_APP_SECRET
+
+# 2. 一键启动
+./start-feishu.sh
 ```
 
-首次启动自动引导配置。支持：
-- **MiMo Auto（限时免费）** — 匿名通道，零配置
-- **小米 MiMo 平台** — OAuth 登录
-- **从 Claude Code 导入** — 一键迁移已有认证
-- **自定义 Provider** — TUI 内添加任意 OpenAI 兼容 API
+然后在飞书中给机器人发消息即可。机器人会自主规划、执行、验证，直到完成。
 
----
-
-## 核心特性
-
-### 多智能体
-
-| 智能体 | 说明 |
-|--------|------|
-| **build** | 默认。完整工具权限，用于开发 |
-| **plan** | 只读分析模式，适合代码探索和方案设计 |
-| **compose** | 编排模式，适合 specs-driven 开发和 Skill 驱动流程 |
-
-按 `Tab` 在主智能体间切换。子智能体由系统按需生成。
-
-### 持久化记忆
-
-基于 SQLite FTS5 全文搜索的跨会话记忆：
-
-- **项目记忆** (`MEMORY.md`) — 跨会话持久的项目知识、规则、架构决策
-- **会话检查点** (`checkpoint.md`) — 结构化状态快照，由 checkpoint-writer 子智能体自动维护
-- **笔记暂存** (`notes.md`) — Agent 临时记录区
-- **任务进展** (`tasks/<id>/progress.md`) — 逐任务日志
-
-记忆自动在会话恢复时注入上下文，agent 无需重新理解项目背景。
-
-### 智能上下文管理
-
-- **自动检查点** — 根据模型上下文窗口自动决定什么时候保存会话状态
-- **上下文重建** — 当上下文接近上限时，从最新 checkpoint、项目记忆、任务进展和保留的近期消息重建上下文，让 agent 继续当前任务
-- **预算化注入** — 用 token budget 控制 checkpoint / memory / notes 注入上下文的大小，按重要性排序
-
-### 任务追踪
-
-树状任务系统（T1, T1.1, T1.2…），自动与检查点系统联动，恢复会话时任务进度不丢失。
-
-### 子智能体系统
-
-主智能体可按需生成子智能体，共享当前会话上下文并行工作，支持生命周期追踪、取消机制和后台执行。
-
-### Goal / 停止条件
-
-`/goal` 命令为会话设置停止条件。当 agent 想停下来时，由独立裁判模型评估对话内容，判断条件是否真正满足——防止自主工作中的"乐观停止"。
-
-### Compose 编排模式
-
-Compose 模式提供结构化的 specs-driven 开发流程，内置规划、执行、代码审查、TDD、调试、验证、合并等技能——编排从 spec 到交付的完整开发生命周期。
-
-### 语音输入
-
-基于 TenVAD 和 MiMo ASR 的实时流式语音输入。通过 `/voice` 激活，按停顿分片转写，文本逐段追加到输入框。仅对 MiMo 登录用户可用。
-
-### Dream & Distill
-
-- **`/dream`** — 扫描近期会话轨迹，提取持久知识到项目记忆，清理过时条目
-- **`/distill`** — 发现近期工作中重复的手动工作流，将高置信度候选打包成可复用的 skill、subagent 或 command
-
----
-
-## 配置
-
-通过项目目录下的 `.mimocode/mimocode.json`（或全局 `~/.config/mimocode/mimocode.json`）配置。主要选项包括：
-
-- Provider 和模型选择
-- Agent 权限和自定义 Agent
-- 检查点和记忆行为
-- MCP 服务器连接
-- 快捷键和主题
-
-Max Mode（并行 best-of-N 推理 + 裁判选优）可通过配置中的 `experimental.maxMode` 开启。
-
----
-
-## 开发
+### 方式二：命令行
 
 ```bash
-bun install              # 安装依赖
-bun run dev              # 开发模式运行
-bun turbo typecheck      # 类型检查
+# 交互式 TUI
+mimo
+
+# 单次任务执行
+mimo run "重构 src/types.ts，提取公共类型到独立模块"
+
+# HTTP API 服务
+mimo serve --port 3095
+```
+
+### 方式三：启动进化飞轮（开发者）
+
+```bash
+# 生成测试用例
+bun run script/dogfooding/generate_cases.ts
+
+# 导出 DPO 数据集
+bun run script/dogfooding/export_dpo.ts
+
+# 启动定时进化任务
+bash script/dogfooding/setup_local_cron.sh
 ```
 
 ---
 
-## 与 OpenCode 的关系
+## 架构概览
 
-MiMoCode 基于 [OpenCode](https://github.com/anomalyco/opencode) fork 构建，保留其全部核心能力（多 Provider、TUI、LSP、MCP、插件），并在此基础上构建了持久化记忆、智能上下文管理、子智能体编排、目标驱动的自主循环、Compose 工作流，以及通过 dream/distill 实现的自我进化。
+```
+┌──────────────────────────────────────────────────────────────┐
+│  用户入口层                                                   │
+│  飞书 IM │ CLI │ HTTP API │ MCP Server                        │
+└──────────────────────────┬───────────────────────────────────┘
+                           │
+┌──────────────────────────▼─────────────────────────────────┐
+│  Helix 引擎（MiMo-Code 核心 + Helix 增强层）              │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐       │
+│  │ 任务规划器    │ │ 工具执行器    │ │ 记忆系统      │       │
+│  │ (Hybrid FSM) │ │ (20+ 工具)   │ │ (FTS5+Vector)│       │
+│  └──────────────┘ └──────────────┘ └──────────────┘       │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐       │
+│  │ 安全隔离层    │ │ 可观测性层    │ │ 进化飞轮      │       │
+│  │ (Shadow Tree)│ │ (Trace+Guard)│ │ (Dogfooding) │       │
+│  └──────────────┘ └──────────────┘ └──────────────┘       │
+└────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## 社区
+## 项目结构
 
-扫描二维码加入社区群聊：
+```
+Helix/
+├── packages/
+│   ├── opencode/          # 核心引擎（MiMo-Code 基础 + Helix 增强）
+│   ├── feishu-gateway/    # 飞书 IM 网关（WebSocket、完全自主模式）
+│   ├── app/               # Web UI（SolidJS + Tailwind）
+│   └── sdk/               # JavaScript SDK
+├── script/dogfooding/     # 进化飞轮工具链（14 个文件）
+├── docs/                  # 架构文档与测试套件
+│   ├── architecture/      # 核心架构白皮书、能力路线图
+│   ├── testing/           # Dogfooding 测试套件（50+ 用例）
+│   └── integration/       # 集成方案设计
+├── AGENTS.md              # 智能体规则与进化指南
+└── start-feishu.sh        # 飞书一键启动脚本
+```
 
-<p align="center">
-  <img src="assets/readme/community-qrcode-1.jpg" alt="社区群聊二维码 1" width="240">
-  &nbsp;&nbsp;
-  <img src="assets/readme/community-qrcode-2.jpg" alt="社区群聊二维码 2" width="240">
-</p>
+---
+
+## 文档
+
+- [核心架构设计](docs/architecture/helix_core_architecture.md)
+- [进化飞轮架构](docs/testing/dogfooding_suite/beta_evolution_loop.md)
+- [飞书 Gateway 设计](docs/integration/feishu_gateway_design.md)
+- [能力补全路线图](docs/architecture/helix_capability_roadmap.md)
+- [使用与集成指南](docs/USAGE.md)
+
+---
+
+## 贡献
+
+欢迎提交 Issue 和 Pull Request！
 
 ---
 
 ## 许可证
 
-源代码基于 [MIT 许可证](./LICENSE) 开源。
-
-使用 MiMoCode 还需遵守[使用限制](./USE_RESTRICTIONS.md)。
-使用小米 MiMo 托管服务须遵守 [MiMo 服务条款](https://platform.xiaomimimo.com/docs/terms/user-agreement)。
-使用 MiMo 名称、标志和商标须遵守 MiMo 商标政策。
+详见 [LICENSE](LICENSE)
