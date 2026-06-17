@@ -42,6 +42,7 @@ export class FeishuWSClient {
       appId: this.appId,
       appSecret: this.appSecret,
       loggerLevel: lark.LoggerLevel.warn,
+      autoReconnect: true,
     })
   }
 

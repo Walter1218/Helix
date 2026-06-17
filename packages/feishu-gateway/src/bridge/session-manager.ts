@@ -84,14 +84,17 @@ export class SessionManager {
 
       log.info("发送消息到 Helix", { chatId, sessionID, text: text.slice(0, 80) })
 
+      // 先记录当前消息数量，用于区分新旧消息
+      const baselineCount = await this.getMessageCount(sessionID)
+
       // 使用 promptAsync 发送消息（非阻塞）
       await this.sdk.session.promptAsync({
         sessionID,
         parts: [{ type: "text", text }],
       })
 
-      // 等待 AI 完成回复
-      const response = await this.waitForCompletion(sessionID, controller.signal)
+      // 等待 AI 完成回复（只关注新消息）
+      const response = await this.waitForCompletion(sessionID, controller.signal, baselineCount)
 
       return response
     } catch (err: any) {
@@ -197,8 +200,20 @@ export class SessionManager {
     }
   }
 
+  /** 获取 session 当前消息数量 */
+  private async getMessageCount(sessionID: string): Promise<number> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    if (config.helix.password) {
+      const auth = Buffer.from(`mimocode:${config.helix.password}`).toString("base64")
+      headers["Authorization"] = `Basic ${auth}`
+    }
+    const resp = await fetch(`${config.helix.url}/session/${sessionID}/message`, { headers })
+    const messages: any[] = await resp.json()
+    return messages.length
+  }
+
   /** 等待 session 完成回复（自适应超时） */
-  private async waitForCompletion(sessionID: string, signal: AbortSignal): Promise<string> {
+  private async waitForCompletion(sessionID: string, signal: AbortSignal, baselineCount = 0): Promise<string> {
     const { baseTimeout, extensionTime, maxExtensions, maxTotalTime, pollInterval } = SessionManager.TIMEOUT_CONFIG
     const startTime = Date.now()
     let currentDeadline = startTime + baseTimeout
@@ -223,13 +238,14 @@ export class SessionManager {
         const resp = await fetch(url, { headers })
         const messages: any[] = await resp.json()
 
-        log.info("轮询消息", { sessionID, messageCount: messages.length })
+        log.info("轮询消息", { sessionID, messageCount: messages.length, baselineCount })
 
         // 打印智能体当前进度
         this.printProgress(messages)
 
-        // 找到最后一个 assistant 消息
-        const assistantMessages = messages.filter((m: any) => m.info?.role === "assistant")
+        // 只关注新消息（baseline 之后出现的）
+        const newMessages = messages.slice(baselineCount)
+        const assistantMessages = newMessages.filter((m: any) => m.info?.role === "assistant")
 
         // 检查最后一个 assistant 消息是否完成
         if (assistantMessages.length > 0) {
@@ -271,7 +287,7 @@ export class SessionManager {
         const timeToDeadline = currentDeadline - Date.now()
         if (timeToDeadline < 30000 && Date.now() - lastDeviationCheck > 60000) {
           lastDeviationCheck = Date.now()
-          const { shouldExtend, reason } = this.evaluateDeviation(messages)
+          const { shouldExtend, reason } = this.evaluateDeviation(newMessages)
           const totalElapsed = Date.now() - startTime
 
           log.info("偏离状态评估", { shouldExtend, reason, extensionCount, totalElapsed })
