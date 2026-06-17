@@ -264,14 +264,35 @@ ModeRegistry.register({
 - 用户自定义模式通过 `mimocode.json` 的 `agents` 配置 + 可选的 `modeHandlers` 配置声明
 - 第三方插件通过 `Plugin` 系统注册自定义 Handler
 
-### 3.2 Loop 工程的优先级排序
+### 3.2 Loop 工程的优先级排序（按"用户可见性"拆分）
 
-**P0（当前迭代必做）**：
-1. 可插拔模式注册表（解决扩展性问题）
-2. 同步屏障 + 编排钩子（解决子智能体结果丢失）
-3. Pre-flight + Cardinal + 三层成功定义（解决信息不足和卡点问题）
-4. 后台 Actor 统一调度器（解决资源竞争）
-5. 动态智能体分解 + 动态 Persona + AgentStats（解决决策摩擦和人设僵化）
+**P0a（Phase 2a, Week 3）**：Pre-flight MVP — 用户可见性高
+- 仅 Build 模式，硬编码问题模板（轻量模型降级为规则匹配）
+- 触发决策树（auto-learn + cooldown）
+- 仅 external_dep Cardinal（Pause 等级，30s 降级）
+- 不支持的：Plan/Compose/Max 模式、动态问题生成、test_failure Cardinal
+
+**P0b（Phase 2b, Week 4）**：Cardinal MVP — 用户可见性高
+- test_failure Cardinal（Block 等级，永不降级）
+- 状态栏 HUD（Warn/Pause/Block 指示器）
+- 无 Deliverable Gate（Phase 4 加入）
+- 不支持的：ambiguity、token_budget、heal_exhausted
+
+**P0c（Phase 3a, Week 5）**：同步屏障 + 编排钩子 — 用户可见性低
+- 子智能体结果不丢失（ACK 机制）
+- 编排钩子基础框架（decompositionGate）
+- 不自动分解、不动态 Persona
+
+**P0d（Phase 3b, Week 6）**：Mode Registry — 用户可见性中
+- 内置模式注册（Build/Plan/Compose/Max）
+- UI 配置外化（从 ModeUIConfig 动态读取）
+- 不支持用户自定义 Handler、不支持第三方插件
+
+**P0e（Phase 4, Week 7-8）**：动态分解 + 动态 Persona — 用户可见性中
+- 显式触发分解（用户手动，不自动评估）
+- AgentStats 记录完整行为轨迹
+- Judge 智能体（后验评估，非实时）
+- 不支持的：自动评估是否分解、自动 Persona 生成
 
 **P1（下个迭代）**：
 1. 动态上下文组装 + 项目探针
