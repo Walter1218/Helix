@@ -1,5 +1,23 @@
 # Helix: Loop 工程与自主智能体基建规范 (Development Specification)
 
+## 0. 实现状态 (Implementation Status)
+
+| 组件 | 状态 | 文件 |
+|------|------|------|
+| **Auto-Loop Workflow** | ✅ 已实现 | `packages/opencode/src/workflow/builtin/auto-loop.js` |
+| **Workflow Runtime** | ✅ 已实现 | `packages/opencode/src/workflow/runtime.ts` |
+| **Workflow Sandbox** | ✅ 已实现 | `packages/opencode/src/workflow/sandbox.ts` |
+| **HybridFSM** | ⏳ 设计完成，待实现 | 设计文档第 4 节 |
+| **JudgeAgent** | ⏳ 设计完成，待实现 | 设计文档第 5.2 节 |
+
+**Auto-Loop 工作流已可用：**
+```bash
+export MIMOCODE_EXPERIMENTAL_WORKFLOW_TOOL=1
+mimo run "Use the workflow tool to run auto-loop with args: '任务描述'"
+```
+
+---
+
 ## 1. 愿景与定位 (Vision & Positioning)
 
 Helix (前身代号 FirstOrder，基于 MiMo Code 架构) 旨在成为一个**全自动化的 Loop 工程智能体**。

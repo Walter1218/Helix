@@ -98,6 +98,30 @@ Unlike chatbots that ask for confirmation every step, Helix's Feishu Gateway sup
 - **Auto-Answer AskUserQuestion**: "Continue executing; use local resources to complete the task autonomously."
 - **Real-Time Progress**: Streaming agent reasoning and tool calls to the terminal
 
+### 6. Auto-Loop Workflow (Plan → Execute → Test → Heal → Distill)
+
+Helix implements a fully autonomous engineering loop that iterates until the goal is achieved:
+
+```bash
+# Enable experimental workflow tool
+export MIMOCODE_EXPERIMENTAL_WORKFLOW_TOOL=1
+
+# Run auto-loop workflow
+mimo run "Use the workflow tool to run auto-loop with args: 'Your task description'"
+```
+
+**Loop Phases:**
+1. **Plan**: Analyze goal, explore codebase, create execution plan
+2. **Execute**: Implement code changes using available tools
+3. **Test**: Run tests and verify changes work correctly
+4. **Heal**: If tests fail, diagnose root cause and fix (up to 3 attempts)
+5. **Distill**: Evaluate completion, extract learnings, decide next action
+
+**Key Features:**
+- Self-healing: Automatically diagnoses and fixes test failures
+- Iterative: Up to 5 plan-execute-test cycles
+- Persistent: Workflow journal survives interruptions
+
 ---
 
 ## 🚀 Quick Start

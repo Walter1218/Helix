@@ -113,6 +113,30 @@ const boost = 双路同时命中 ? 1.3 : 1.0
 - **自动回答追问**：检测到 `AskUserQuestion` 时自动回答"继续执行，使用本地资源自主完成任务"
 - **实时进度可视化**：流式输出智能体推理过程和工具调用状态到终端
 
+### 6. Auto-Loop 工作流（Plan → Execute → Test → Heal → Distill）
+
+Helix 实现了完整的自主工程循环，自动迭代直到目标达成：
+
+```bash
+# 启用实验性 workflow 工具
+export MIMOCODE_EXPERIMENTAL_WORKFLOW_TOOL=1
+
+# 运行 auto-loop 工作流
+mimo run "Use the workflow tool to run auto-loop with args: '你的任务描述'"
+```
+
+**循环阶段：**
+1. **Plan（规划）**：分析目标，探索代码库，制定执行计划
+2. **Execute（执行）**：使用可用工具实施代码修改
+3. **Test（测试）**：运行测试验证修改是否正确
+4. **Heal（自愈）**：如果测试失败，诊断根因并修复（最多 3 次尝试）
+5. **Distill（蒸馏）**：评估完成度，提取经验，决定下一步
+
+**核心特性：**
+- 自愈能力：自动诊断并修复测试失败
+- 迭代执行：最多 5 个规划-执行-测试循环
+- 持久化：工作流日志支持断点续跑
+
 ---
 
 ## 快速开始
