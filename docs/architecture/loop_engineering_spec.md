@@ -7,8 +7,8 @@
 | **Auto-Loop Workflow** | ✅ 已实现 | `packages/opencode/src/workflow/builtin/auto-loop.js` |
 | **Workflow Runtime** | ✅ 已实现 | `packages/opencode/src/workflow/runtime.ts` |
 | **Workflow Sandbox** | ✅ 已实现 | `packages/opencode/src/workflow/sandbox.ts` |
-| **HybridFSM** | ⏳ 设计完成，待实现 | 设计文档第 4 节 |
-| **JudgeAgent** | ⏳ 设计完成，待实现 | 设计文档第 5.2 节 |
+| **HybridFSM** | ✅ 已实现 | `packages/opencode/src/session/fsm/hybrid-fsm.ts` |
+| **JudgeAgent** | ✅ 已实现 | `packages/opencode/src/agent/judge-agent.ts` |
 
 **Auto-Loop 工作流已可用：**
 ```bash
