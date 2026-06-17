@@ -103,8 +103,10 @@ export interface ModeHandler {
 }
 
 // 注册新模式（在插件或内置代码中）
+// 仅限 Config Handler（配置式，不执行代码）
 ModeRegistry.register({
   id: "audit",
+  type: "config",              // config / plugin / builtin
   injectSystemPrompt: (input) => Effect.sync(() => [
     "You are a security auditor. Focus on: ...",
     ...input.additions
@@ -122,6 +124,52 @@ ModeRegistry.register({
     statusMessage: "🔒 Audit 模式 · 只读审查"
   }
 })
+```
+
+**Handler 安全规则（双轨注册表）**:
+
+```
+┌────────────────────────────────────────┐
+│  Mode Registry                          │
+│  ├─ Built-in Handlers (系统内置)        │
+│  │   Build, Plan, Compose, Max         │
+│  │   运行在主线程，有完整权限            │
+│  ├─ Config Handlers (用户配置)         │
+│  │   仅允许 prompt + toolAllowlist     │
+│  │   + cardinalRules + uiConfig        │
+│  │   不执行代码，仅配置覆盖              │
+│  └─ Plugin Handlers (第三方插件)       │
+│      必须运行在 QuickJS Sandbox        │
+│      声明权限清单，超范围调用拦截         │
+└────────────────────────────────────────┘
+```
+
+| Handler 类型 | 权限 | 代码执行 | 隔离 | 注册方式 |
+|-------------|------|---------|------|---------|
+| **Built-in** | 全部 | 是（原生代码） | 无 | 系统初始化 |
+| **Config** | 仅声明的 toolAllowlist | 否（仅 JSON 配置） | 无需 | `mimocode.json` |
+| **Plugin** | 声明的 `permissions` 清单 | 是（QuickJS 沙箱） | QuickJS Sandbox | Plugin 系统 |
+
+**Plugin Handler 安全限制**:
+- 必须声明 `permissions: ["read", "grep", ...]`，超范围调用自动拦截
+- 运行在 `workflow/sandbox.ts`（QuickJS）中，无文件系统直接访问
+- 只能调用注册表提供的 API，不能直接操作 `handle.process`
+- 插件签名验证，防止篡改
+
+**新增配置（`mimocode.json`）**:
+```json
+{
+  "modeHandlers": {
+    "audit": {
+      "type": "config",
+      "prompt": "You are a security auditor...",
+      "toolAllowlist": ["read", "grep"],
+      "permissions": ["read", "grep"],
+      "sandbox": true
+    }
+  }
+}
+```
 ```
 
 ### 1.3 与现有架构的兼容
