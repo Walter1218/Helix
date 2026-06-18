@@ -45,3 +45,16 @@ experiment/*.log
 experiment/last-outcome.json
 /experiment
 sdks/vscode/bin/
+
+# VS Code extension build artifacts
+sdks/vscode/media/assets/
+sdks/vscode/*.vsix
+sdks/vscode/mass-test-*.js
+sdks/vscode/mass-test-*.json
+sdks/vscode/quick-test-*.js
+sdks/vscode/test-*.js
+sdks/vscode/test-*.md
+sdks/vscode/test-*.json
+sdks/vscode/test-*.html
+sdks/vscode/run-tests.sh
+sdks/vscode/test-server.js

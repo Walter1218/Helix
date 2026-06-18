@@ -113,7 +113,19 @@ const boost = 双路同时命中 ? 1.3 : 1.0
 - **自动回答追问**：检测到 `AskUserQuestion` 时自动回答"继续执行，使用本地资源自主完成任务"
 - **实时进度可视化**：流式输出智能体推理过程和工具调用状态到终端
 
-### 6. Auto-Loop 工作流（Plan → Execute → Test → Heal → Distill）
+### 6. VS Code 扩展 —— 事件驱动 GUI
+
+VS Code 扩展（`sdks/vscode`）提供完整的智能体集成 GUI 面板：
+
+- **SSE 流式渲染**：通过 `/event` SSE 流实时渲染智能体的思考 → 工具调用 → 文本结论（非一次性返回）
+- **6 模式切换**：Ask / Build / Plan / Compose / Loop / Max
+- **事件驱动**：监听 `session.status`、`permission.asked`、`question.asked`、`session.error`、`session.retry.attempt`、`session.diff`、`task.updated` —— 无轮询
+- **两级工具展示**：InlineTool（pending/running 单行）→ BlockTool（completed 带输出面板），超 10 行自动折叠
+- **思考卡片**：可折叠的"Thought"卡片，展示标题 + 耗时，点击展开正文
+- **真实数据**：在线模式从 API 拉取 task/todo，不使用 mock 数据
+- **SSE 容错**：20s 心跳 + 自动重连
+
+### 7. Auto-Loop 工作流（Plan → Execute → Test → Heal → Distill）
 
 Helix 实现了完整的自主工程循环，自动迭代直到目标达成：
 
