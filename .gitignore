@@ -46,6 +46,9 @@ experiment/last-outcome.json
 /experiment
 sdks/vscode/bin/
 
+# CodeBuddy working memory and session data
+.codebuddy/
+
 # VS Code extension build artifacts
 sdks/vscode/media/assets/
 sdks/vscode/*.vsix

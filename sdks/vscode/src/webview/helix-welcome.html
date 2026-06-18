@@ -2954,119 +2954,91 @@
       let expandedJudge = true;
       let expandedAlignment = true;
 
-      // Mock Task Data
-      const mockTasks = [
-        {
-          id: 'group-1',
-          title: 'Task 1: Optimize DB queries',
-          mode: 'loop',
-          expanded: true,
-          tasks: [
-            { id: 't1-1', title: 'Analyze existing query patterns', status: 'completed' },
-            { id: 't1-2', title: 'Add indexes', status: 'completed' },
-            { id: 't1-3', title: 'Rewrite ORM queries', status: 'in_progress', progress: 65, currentAction: 'Modify src/db.ts', children: [
-              { id: 't1-3-1', title: 'Analyze ORM call chain', status: 'completed' },
-              { id: 't1-3-2', title: 'Refactor batch queries', status: 'in_progress', progress: 80, currentAction: 'Add join optimization' },
-              { id: 't1-3-3', title: 'Update unit tests', status: 'pending' },
-            ]},
-            { id: 't1-4', title: 'Regression tests', status: 'pending' },
-          ]
-        },
-        {
-          id: 'group-2',
-          title: 'Task 2: Add unit tests',
-          mode: 'plan',
-          expanded: true,
-          tasks: [
-            { id: 't2-1', title: 'Design test cases', status: 'completed' },
-            { id: 't2-2', title: 'Write test code', status: 'in_progress', progress: 45 },
-            { id: 't2-3', title: 'Coverage check', status: 'pending' },
-          ]
-        }
-      ];
-
-      // Mock Changes Data
-      const mockChanges = [
-        { id: 'c1', path: 'src/calc.ts', type: 'modified', additions: 12, deletions: 5, checked: true, diff: `@@ -1,5 +1,12 @@
--export function sum(a: number, b: number) {
--return a + b
-+export function add(a: number, b: number) {
-+return a + b
- }
-+
-+export function subtract(a: number, b: number) {
-+return a - b
-+}
-+
-+export function multiply(a: number, b: number) {
-+return a * b
-+}` },
-        { id: 'c2', path: 'tests/calc.test.ts', type: 'added', additions: 8, deletions: 0, checked: true, diff: `@@ -0,0 +1,8 @@
-+import { add, subtract, multiply } from "../src/calc"
-+
-+test("add", () => {
-+expect(add(1, 2)).toBe(3)
-+})
-+
-+test("subtract", () => {
-+expect(subtract(5, 3)).toBe(2)
-+})` },
-        { id: 'c3', path: 'package.json', type: 'modified', additions: 3, deletions: 1, checked: false, diff: `@@ -10,5 +10,7 @@
-  "dependencies": {
--  "lodash": "^4.17.21"
-+  "lodash": "^4.17.21",
-+  "jest": "^29.0.0",
-+  "@types/jest": "^29.0.0"
-  }` },
-      ];
-
+      // Data arrays — empty by default; populated by initOfflineMockData() only when offline
+      let mockTasks = [];
+      let mockChanges = [];
       let mockStaged = [];
-      const mockCheckpoints = [
-        { id: 'cp-1', number: 1, timestamp: '2026-06-17 10:00', fileCount: 2, operator: 'agent', description: 'Initial architecture adjustment', files: [mockChanges[0]] },
-        { id: 'cp-2', number: 2, timestamp: '2026-06-17 10:30', fileCount: 3, operator: 'agent', description: 'Add test framework', files: [mockChanges[0], mockChanges[1]] },
-        { id: 'cp-3', number: 3, timestamp: '2026-06-17 11:00', fileCount: 3, operator: 'user', description: 'Manual save', files: [...mockChanges] },
-      ];
+      let mockCheckpoints = [];
+      let mockPreflight = {};
+      let mockCardinals = [];
+      let mockJudge = {};
+      let mockAlignment = {};
+      let mockDriftAlerts = [];
 
-      // Mock Pre-flight Data
-      const mockPreflight = {
-        trustLevel: 'medium',
-        autoLearnEnabled: true,
-        cooldownRemaining: 0,
-        decision: 'proceed',
-        items: [
-          { id: 'pf-1', label: 'Environment check', status: 'completed', subItems: [
-            { id: 'pf-1-1', label: 'Node.js version', status: 'completed' },
-            { id: 'pf-1-2', label: 'Git repository', status: 'completed' },
-          ]},
-          { id: 'pf-2', label: 'Permission check', status: 'warning', details: 'Screen recording permission missing' },
-          { id: 'pf-3', label: 'Context collection', status: 'completed' },
-          { id: 'pf-4', label: 'Trust assessment', status: 'running', details: 'Analyzing task complexity...' },
-        ]
-      };
+      // Populate mock data ONLY for offline demo mode
+      function initOfflineMockData() {
+        mockTasks = [
+          {
+            id: 'group-1', title: 'Task 1: Optimize DB queries', mode: 'loop', expanded: true,
+            tasks: [
+              { id: 't1-1', title: 'Analyze existing query patterns', status: 'completed' },
+              { id: 't1-2', title: 'Add indexes', status: 'completed' },
+              { id: 't1-3', title: 'Rewrite ORM queries', status: 'in_progress', progress: 65, currentAction: 'Modify src/db.ts', children: [
+                { id: 't1-3-1', title: 'Analyze ORM call chain', status: 'completed' },
+                { id: 't1-3-2', title: 'Refactor batch queries', status: 'in_progress', progress: 80, currentAction: 'Add join optimization' },
+                { id: 't1-3-3', title: 'Update unit tests', status: 'pending' },
+              ]},
+              { id: 't1-4', title: 'Regression tests', status: 'pending' },
+            ]
+          },
+          {
+            id: 'group-2', title: 'Task 2: Add unit tests', mode: 'plan', expanded: true,
+            tasks: [
+              { id: 't2-1', title: 'Design test cases', status: 'completed' },
+              { id: 't2-2', title: 'Write test code', status: 'in_progress', progress: 45 },
+              { id: 't2-3', title: 'Coverage check', status: 'pending' },
+            ]
+          }
+        ];
 
-      // Mock Cardinal Data
-      const mockCardinals = [
-        { id: 'cd-1', level: 'warn', trigger: 'External dependency changed', reason: 'package.json modified by agent', recommendation: 'Review dependency changes before proceeding', canDegrade: true, degraded: false },
-      ];
+        mockChanges = [
+          { id: 'c1', path: 'src/calc.ts', type: 'modified', additions: 12, deletions: 5, checked: true, diff: '@@ -1,5 +1,12 @@\n-old\n+new' },
+          { id: 'c2', path: 'tests/calc.test.ts', type: 'added', additions: 8, deletions: 0, checked: true, diff: '+new test' },
+          { id: 'c3', path: 'package.json', type: 'modified', additions: 3, deletions: 1, checked: false, diff: '+dep' },
+        ];
 
-      // Mock Judge Data
-      const mockJudge = {
-        id: 'j1',
-        decompositionQuality: 'pass',
-        resultQuality: 'pass',
-        valueSuccess: 'questionable',
-        timestamp: '2026-06-17 10:45',
-        message: 'Task decomposition is reasonable, but consider adding rollback strategy for database changes.'
-      };
+        mockCheckpoints = [
+          { id: 'cp-1', number: 1, timestamp: '2026-06-17 10:00', fileCount: 2, operator: 'agent', description: 'Initial architecture adjustment', files: [mockChanges[0]] },
+          { id: 'cp-2', number: 2, timestamp: '2026-06-17 10:30', fileCount: 3, operator: 'agent', description: 'Add test framework', files: [mockChanges[0], mockChanges[1]] },
+          { id: 'cp-3', number: 3, timestamp: '2026-06-17 11:00', fileCount: 3, operator: 'user', description: 'Manual save', files: [...mockChanges] },
+        ];
 
-      // Mock Alignment Data
-      const mockAlignment = {
-        metrics: [
-          { type: 'file_drift', severity: 'medium', description: 'src/calc.ts moved 3 directory levels deep', value: '3 levels' },
-          { type: 'rabbit_hole', severity: 'low', description: '12 consecutive edits without user confirmation', value: '12 edits' },
-          { type: 'distraction', severity: 'low', description: 'Switched to unrelated file package.json', value: 'package.json' },
-        ]
-      };
+        mockPreflight = {
+          trustLevel: 'medium', autoLearnEnabled: true, cooldownRemaining: 0, decision: 'proceed',
+          items: [
+            { id: 'pf-1', label: 'Environment check', status: 'completed', subItems: [
+              { id: 'pf-1-1', label: 'Node.js version', status: 'completed' },
+              { id: 'pf-1-2', label: 'Git repository', status: 'completed' },
+            ]},
+            { id: 'pf-2', label: 'Permission check', status: 'warning', details: 'Screen recording permission missing' },
+            { id: 'pf-3', label: 'Context collection', status: 'completed' },
+            { id: 'pf-4', label: 'Trust assessment', status: 'running', details: 'Analyzing task complexity...' },
+          ]
+        };
+
+        mockCardinals = [
+          { id: 'cd-1', level: 'warn', trigger: 'External dependency changed', reason: 'package.json modified by agent', recommendation: 'Review dependency changes before proceeding', canDegrade: true, degraded: false },
+        ];
+
+        mockJudge = {
+          id: 'j1', decompositionQuality: 'pass', resultQuality: 'pass', valueSuccess: 'questionable',
+          timestamp: '2026-06-17 10:45', message: 'Task decomposition is reasonable, but consider adding rollback strategy for database changes.'
+        };
+
+        mockAlignment = {
+          metrics: [
+            { type: 'file_drift', severity: 'medium', description: 'src/calc.ts moved 3 directory levels deep', value: '3 levels' },
+            { type: 'rabbit_hole', severity: 'low', description: '12 consecutive edits without user confirmation', value: '12 edits' },
+            { type: 'distraction', severity: 'low', description: 'Switched to unrelated file package.json', value: 'package.json' },
+          ]
+        };
+
+        mockDriftAlerts = [
+          { id: 'drift-1', type: 'Rabbit Hole', title: 'Potential rabbit hole detected', description: 'Agent is spending significant time on tangential refactoring.', icon: '🐇' },
+          { id: 'drift-2', type: 'File Drift', title: 'Scope drift detected', description: 'Agent modified 3 files outside the planned scope.', icon: '📁' },
+          { id: 'drift-3', type: 'Distraction', title: 'Task distraction detected', description: 'Agent switched from optimizing database queries to adding new UI components.', icon: '🔄' }
+        ];
+      }
 
       // ============================================================
       // Phase 1: Mode Switching
@@ -3203,8 +3175,13 @@
       
       // Initialize session
       async function initSession() {
-        if (!checkOnlineMode()) return;
+        if (!checkOnlineMode()) {
+          // Offline mode: populate mock data for demo
+          initOfflineMockData();
+          return;
+        }
 
+        // Online mode: mock arrays stay empty, real data loads below
         try {
           // Try to get existing sessions
           const response = await fetchApi('/session?limit=1');
@@ -3793,32 +3770,8 @@
       });
 
       // ============================================================
-      // AlignmentGuard: Drift Alerts
+      // AlignmentGuard: Drift Alerts (mockDriftAlerts now defined in initOfflineMockData)
       // ============================================================
-
-      const mockDriftAlerts = [
-        {
-          id: 'drift-1',
-          type: 'Rabbit Hole',
-          title: 'Potential rabbit hole detected',
-          description: 'Agent is spending significant time on tangential refactoring in src/utils/format.ts. This may not be related to the original task.',
-          icon: '🐇'
-        },
-        {
-          id: 'drift-2',
-          type: 'File Drift',
-          title: 'Scope drift detected',
-          description: 'Agent modified 3 files outside the planned scope: package.json, .eslintrc.js, tsconfig.json. These changes were not in the original plan.',
-          icon: '📁'
-        },
-        {
-          id: 'drift-3',
-          type: 'Distraction',
-          title: 'Task distraction detected',
-          description: 'Agent switched from optimizing database queries to adding new UI components. Consider recalibrating to stay on track.',
-          icon: '🔄'
-        }
-      ];
 
       function renderDriftAlerts() {
         const container = document.getElementById('drift-alerts-container');
