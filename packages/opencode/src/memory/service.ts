@@ -8,6 +8,9 @@ import { reconcileMemory } from "./reconcile"
 import { buildFtsQuery } from "./fts-query"
 import { Embedder } from "./embedder"
 import { VecStore } from "./vec-store"
+import { Log } from "@/util"
+
+const log = Log.create({ service: "memory" })
 
 type SearchRow = {
   path: string
@@ -60,6 +63,7 @@ export const layer: Layer.Layer<Service, never, Config.Service> = Layer.effect(
     })
 
     const reconcile = Effect.fn("Memory.reconcile")(function* () {
+      log.info("memory.reconcile.start")
       const cfg = yield* config.get()
       const cc = cfg.memory?.cc_index ? ccBase : undefined
       const v = getVec(cfg)
@@ -79,9 +83,15 @@ export const layer: Layer.Layer<Service, never, Config.Service> = Layer.effect(
 
       // Batch embed newly indexed files
       if (newBodies.length > 0) {
+        log.info("memory.reconcile.embedding", { count: newBodies.length })
         yield* Effect.promise(() => v.indexMany(newBodies))
       }
 
+      log.info("memory.reconcile.completed", {
+        indexed: result.indexed,
+        pruned: result.pruned,
+        embedded: newBodies.length,
+      })
       return { ...result, embedded: newBodies.length }
     })
 
@@ -92,6 +102,14 @@ export const layer: Layer.Layer<Service, never, Config.Service> = Layer.effect(
       type?: string
       limit?: number
     }) {
+      const startTime = Date.now()
+      log.info("memory.search.start", {
+        query: input.query.substring(0, 100),
+        scope: input.scope,
+        scope_id: input.scope_id,
+        type: input.type,
+        limit: input.limit,
+      })
       const cfg = yield* config.get()
       if (cfg.checkpoint?.memory_reconcile_on_search ?? true) {
         const cc = cfg.memory?.cc_index ? ccBase : undefined
@@ -107,13 +125,18 @@ export const layer: Layer.Layer<Service, never, Config.Service> = Layer.effect(
           }),
         )
         if (newBodies.length > 0) {
+          log.info("memory.search.reconcile", { newIndexed: newBodies.length })
           yield* Effect.promise(() => v.indexMany(newBodies))
         }
       }
 
       const limit = input.limit ?? 10
       const ftsQuery = buildFtsQuery(input.query)
-      if (!ftsQuery) return []
+      if (!ftsQuery) {
+        const duration = Date.now() - startTime
+        log.info("memory.search.empty_query", { duration, status: "skipped" })
+        return []
+      }
 
       const floorRatio = cfg.checkpoint?.memory_search_score_floor ?? 0.15
 
@@ -156,7 +179,11 @@ export const layer: Layer.Layer<Service, never, Config.Service> = Layer.effect(
         scope_id: r.scope_id,
         type: r.type,
       }))
-      if (mapped.length === 0) return []
+      if (mapped.length === 0) {
+        const duration = Date.now() - startTime
+        log.info("memory.search.no_results", { query: input.query.substring(0, 50), duration, status: "empty" })
+        return []
+      }
 
       const topScore = mapped[0].score
       const cutoff = floorRatio > 0 ? topScore * floorRatio : -Infinity
@@ -183,10 +210,29 @@ export const layer: Layer.Layer<Service, never, Config.Service> = Layer.effect(
           return b.score * bBoost - a.score * aBoost
         })
 
-        return scored.slice(0, limit)
+        const result = scored.slice(0, limit)
+        const duration = Date.now() - startTime
+        log.info("memory.search.completed", {
+          query: input.query.substring(0, 50),
+          bm25Count: bm25Results.length,
+          vecCount: vecResults.length,
+          resultCount: result.length,
+          duration,
+          status: "success",
+        })
+        return result
       }
 
-      return bm25Results.slice(0, limit)
+      const result = bm25Results.slice(0, limit)
+      const duration = Date.now() - startTime
+      log.info("memory.search.completed", {
+        query: input.query.substring(0, 50),
+        bm25Count: bm25Results.length,
+        resultCount: result.length,
+        duration,
+        status: "success",
+      })
+      return result
     })
 
     return Service.of({

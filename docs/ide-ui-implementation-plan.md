@@ -1,9 +1,9 @@
 # Helix IDE UI 实现规划
 
-> 版本：v2（2026-06-18）
+> 版本：v3（2026-06-18）
 > 基于：`docs/ide-ui-design.md` v3 + `docs/loop-engineering-extension-roadmap.md` P0a-P0e
-> 范围：前端 UI 层（Phase 0 → Phase 5），Mock 驱动，不依赖后端 API
-> 更新：v2 新增第 10 章「交互设计审查与修复」，记录离线原型的 18 项问题修复
+> 范围：前端 UI 层（Phase 0 → Phase 6）
+> 更新：v2 新增第 10 章「交互设计审查与修复」；v3 更新 Phase 6 后端接入完成状态（SSE 流式、事件驱动、权限/提问交互、真实数据加载均已在离线原型完成）
 
 ---
 
@@ -375,19 +375,28 @@ mock-message-service.ts    // 消息流 mock
 - [x] ~~所有 UI 功能（模式切换、任务流转、文件变更、干预触发）纯前端可演示~~（离线原型 `helix-welcome.html` 已实现完整 demo）
 - [x] ~~可以录制一个完整的 demo 视频~~（离线原型支持完整交互流程：发送消息 → 任务流转 → 文件变更 → 检查点操作）
 
-> **注**：离线原型 (`sdks/vscode/src/webview/helix-welcome.html`) 已覆盖 Phase 0/2/3/5 的核心功能，可作为交互验证和 demo 演示使用。正式实现需迁移至 SolidJS 组件。
+> **注**：离线原型 (`sdks/vscode/src/webview/helix-welcome.html`) 已覆盖 Phase 0/2/3/5 的核心功能，并已完成 Phase 6 的核心后端接入（SSE 流式渲染、6 类事件监听、权限/提问交互、真实 task/todo 加载）。可作为完整功能验证使用。正式 SolidJS 迁移可参考其事件处理和 part 渲染逻辑。
 
 ---
 
-## 8. Phase 6：接入 Agent 后端（后续迭代）
+## 8. Phase 6：接入 Agent 后端
 
-| 步骤 | 后端能力 | 前端对应 |
-|------|---------|---------|
-| 1 | P0a Pre-flight API | Pre-flight Panel 接真实数据 |
-| 2 | P0b Cardinal + Judge + AlignmentGuard | 干预面板接真实事件 |
-| 3 | P0c 同步屏障 + 编排钩子 | 任务列表接真实分解数据 |
-| 4 | P0d Mode Registry 后端 | 前端 Registry 接后端配置 |
-| 5 | P0e 动态分解 + 动态 Persona | 任务列表接动态任务树 |
+> **更新（2026-06-18）**：Phase 6 的核心后端接入已在 `helix-welcome.html` 离线原型中完成，无需等待 SolidJS 迁移。以下为完成状态。
+
+| 步骤 | 后端能力 | 前端对应 | 状态 |
+|------|---------|---------|------|
+| 1 | SSE 流式渲染 | reasoning/tool/text part 按 SSE 事件顺序流式渲染 | ✅ 已完成 |
+| 2 | session.status 事件 | 事件驱动 finishGeneration（删除轮询） | ✅ 已完成 |
+| 3 | permission.asked 事件 | 权限对话框自动弹出，调 /permission/:id/reply | ✅ 已完成 |
+| 4 | question.asked 事件 | 提问对话框，调 /question/:id/reply + reject | ✅ 已完成 |
+| 5 | session.error / retry 事件 | 错误和重试实时展示 | ✅ 已完成 |
+| 6 | session.diff 事件 | Changes 面板实时更新 | ✅ 已完成 |
+| 7 | task.updated / todo.updated | 真实 task/todo 从 API 拉取 | ✅ 已完成 |
+| 8 | P0a Pre-flight API | Pre-flight Panel 接真实数据 | ⏳ 待实现 |
+| 9 | P0b Cardinal + Judge + AlignmentGuard | 干预面板接真实事件 | ⏳ 待实现（UI 已有 mock） |
+| 10 | P0c 同步屏障 + 编排钩子 | 任务列表接真实分解数据 | ⏳ 待实现 |
+| 11 | P0d Mode Registry 后端 | 前端 Registry 接后端配置 | ⏳ 待实现 |
+| 12 | P0e 动态分解 + 动态 Persona | 任务列表接动态任务树 | ⏳ 待实现 |
 
 ---
 

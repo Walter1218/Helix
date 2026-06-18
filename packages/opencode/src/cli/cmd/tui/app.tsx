@@ -330,24 +330,24 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     if (!terminalTitleEnabled() || Flag.MIMOCODE_DISABLE_TERMINAL_TITLE) return
 
     if (route.data.type === "home") {
-      renderer.setTerminalTitle("MiMoCode")
+      renderer.setTerminalTitle("Helix")
       return
     }
 
     if (route.data.type === "session") {
       const session = sync.session.get(route.data.sessionID)
       if (!session || SessionApi.isDefaultTitle(session.title)) {
-        renderer.setTerminalTitle("MiMoCode")
+        renderer.setTerminalTitle("Helix")
         return
       }
 
       const title = session.title.length > 40 ? session.title.slice(0, 37) + "..." : session.title
-      renderer.setTerminalTitle(`MC | ${title}`)
+      renderer.setTerminalTitle(`HX | ${title}`)
       return
     }
 
     if (route.data.type === "plugin") {
-      renderer.setTerminalTitle(`OC | ${route.data.id}`)
+      renderer.setTerminalTitle(`HX | ${route.data.id}`)
     }
   })
 
@@ -998,7 +998,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     await DialogAlert.show(
       dialog,
       "Update Complete",
-      `Successfully updated to MiMoCode v${result.data.version}. Please restart the application.`,
+      `Successfully updated to Helix v${result.data.version}. Please restart the application.`,
     )
 
     void exit()

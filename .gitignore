@@ -44,3 +44,4 @@ tsconfig.tsbuildinfo
 experiment/*.log
 experiment/last-outcome.json
 /experiment
+sdks/vscode/bin/

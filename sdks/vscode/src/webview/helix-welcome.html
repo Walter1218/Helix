@@ -174,6 +174,137 @@
         from { opacity: 0; transform: translateY(10px); }
         to { opacity: 1; transform: translateY(0); }
       }
+      
+      /* Streaming cursor animation */
+      .typing-cursor {
+        display: inline-block;
+        animation: blink 0.7s infinite;
+        color: #58a6ff;
+        font-weight: bold;
+      }
+      @keyframes blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0; }
+      }
+      .message-content.streaming {
+        min-height: 20px;
+      }
+      
+      /* Markdown styling */
+      .message-content h1, .message-content h2, .message-content h3 {
+        margin-top: 16px;
+        margin-bottom: 8px;
+        font-weight: 600;
+      }
+      .message-content h1 { font-size: 1.5em; }
+      .message-content h2 { font-size: 1.3em; }
+      .message-content h3 { font-size: 1.1em; }
+      .message-content p { margin-bottom: 8px; }
+      .message-content ul, .message-content ol {
+        margin-left: 20px;
+        margin-bottom: 8px;
+      }
+      .message-content li { margin-bottom: 4px; }
+      .message-content code {
+        background: #21262d;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+        font-size: 0.9em;
+      }
+      .message-content pre {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 12px;
+        overflow-x: auto;
+        margin-bottom: 12px;
+      }
+      .message-content pre code {
+        background: none;
+        padding: 0;
+        font-size: 0.85em;
+      }
+      .message-content blockquote {
+        border-left: 3px solid #30363d;
+        padding-left: 12px;
+        color: #8b949e;
+        margin-bottom: 8px;
+      }
+      .message-content a {
+        color: #58a6ff;
+        text-decoration: none;
+      }
+      .message-content a:hover {
+        text-decoration: underline;
+      }
+      .message-content table {
+        border-collapse: collapse;
+        margin-bottom: 12px;
+      }
+      .message-content th, .message-content td {
+        border: 1px solid #30363d;
+        padding: 8px 12px;
+      }
+      .message-content th {
+        background: #161b22;
+      }
+      
+      /* Message actions */
+      .message-actions {
+        display: flex;
+        gap: 4px;
+        margin-top: 8px;
+        opacity: 0;
+        transition: opacity 0.15s;
+      }
+      .message:hover .message-actions {
+        opacity: 1;
+      }
+      .message-action-btn {
+        background: none;
+        border: 1px solid #30363d;
+        border-radius: 4px;
+        padding: 4px 8px;
+        color: #8b949e;
+        cursor: pointer;
+        font-size: 11px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        transition: background 0.15s, color 0.15s;
+      }
+      .message-action-btn:hover {
+        background: #21262d;
+        color: #f0f6fc;
+      }
+      .message-action-btn.copied {
+        background: #3fb95030;
+        color: #3fb950;
+        border-color: #3fb95040;
+      }
+      
+      /* Status bar enhancements */
+      .status-model {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: #8b949e;
+      }
+      .status-model-icon {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #3fb950;
+      }
+      .status-model-icon.offline {
+        background: #6e7681;
+      }
+      .status-tokens {
+        font-size: 11px;
+        color: #6e7681;
+      }
       .avatar {
         width: 32px;
         height: 32px;
@@ -241,6 +372,107 @@
       .code-block .comment { color: #8b949e; }
       .code-block .number { color: #79c0ff; }
 
+      /* ===== Part Rendering (reasoning/tool/text) ===== */
+      .part-container { margin-top: 8px; }
+      .part-reasoning {
+        border-left: 2px solid #d29922;
+        padding: 6px 10px;
+        margin: 6px 0;
+        background: rgba(210, 153, 34, 0.05);
+        border-radius: 0 4px 4px 0;
+        cursor: pointer;
+        font-size: 12px;
+      }
+      .part-reasoning-header {
+        color: #d29922;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .part-reasoning-body {
+        margin-top: 6px;
+        color: #8b949e;
+        font-size: 12px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        display: none;
+      }
+      .part-reasoning.expanded .part-reasoning-body { display: block; }
+      .part-reasoning .spinner-icon {
+        display: inline-block;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      .part-tool-inline {
+        padding: 3px 0 3px 10px;
+        font-size: 12px;
+        color: #8b949e;
+        border-left: 2px solid transparent;
+        margin: 2px 0;
+      }
+      .part-tool-inline.running { color: #58a6ff; }
+      .part-tool-inline.error { color: #f85149; }
+      .part-tool-inline .tool-icon { margin-right: 4px; }
+      .part-tool-inline .tool-args { color: #6e7681; }
+
+      .part-tool-block {
+        border-left: 2px solid #30363d;
+        padding: 6px 10px;
+        margin: 6px 0;
+        background: #0d1117;
+        border-radius: 0 4px 4px 0;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .part-tool-block:hover { background: #161b22; }
+      .part-tool-block .block-title {
+        color: #6e7681;
+        font-size: 11px;
+        margin-bottom: 4px;
+      }
+      .part-tool-block .block-cmd {
+        color: #58a6ff;
+        font-family: monospace;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      .part-tool-block .block-output {
+        color: #c9d1d9;
+        margin-top: 4px;
+        font-family: monospace;
+        white-space: pre-wrap;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+      .part-tool-block .block-output.collapsed {
+        max-height: 60px;
+        overflow: hidden;
+        position: relative;
+      }
+      .part-tool-block .block-output.collapsed::after {
+        content: '... (click to expand)';
+        position: absolute;
+        bottom: 0; right: 0;
+        background: #0d1117;
+        padding: 0 4px;
+        color: #6e7681;
+      }
+      .part-tool-block .block-error {
+        color: #f85149;
+        margin-top: 4px;
+        font-family: monospace;
+      }
+      .part-text { margin-top: 8px; }
+      .show-details-toggle {
+        font-size: 11px;
+        color: #6e7681;
+        cursor: pointer;
+        padding: 4px 0;
+        user-select: none;
+      }
+      .show-details-toggle:hover { color: #58a6ff; }
+
       /* ===== Input Area ===== */
       .input-area {
         padding: 12px 16px;
@@ -256,18 +488,18 @@
       .input-box {
         flex: 1;
         width: 100%;
-        padding: 12px 16px;
-        padding-right: 44px;
+        padding: 8px 12px;
+        padding-right: 36px;
         background: #010409;
         border: 1px solid #30363d;
-        border-radius: 12px;
+        border-radius: 6px;
         color: #f0f6fc;
-        font-size: 14px;
+        font-size: 13px;
         outline: none;
         transition: all 0.2s;
         resize: none;
-        min-height: 48px;
-        max-height: 200px;
+        min-height: 32px;
+        max-height: 150px;
         font-family: inherit;
       }
       .input-box:focus {
@@ -1245,6 +1477,281 @@
       }
       .collapsible-content .change-lines { font-size: 10px; color: #6e7681; }
 
+      /* ===== Permission Request ===== */
+      .permission-request {
+        border: 1px solid #d2992240;
+        border-radius: 10px;
+        background: #d2992208;
+        overflow: hidden;
+        max-width: 800px;
+        margin: 12px 0;
+        animation: fadeInUp 0.3s ease;
+      }
+      .permission-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 16px;
+        background: #d2992210;
+      }
+      .permission-icon {
+        font-size: 18px;
+      }
+      .permission-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #f0f6fc;
+        flex: 1;
+      }
+      .permission-body {
+        padding: 12px 16px;
+      }
+      .permission-description {
+        font-size: 13px;
+        color: #c9d1d9;
+        margin-bottom: 12px;
+        line-height: 1.5;
+      }
+      .permission-details {
+        background: #0d1117;
+        border: 1px solid #21262d;
+        border-radius: 6px;
+        padding: 10px;
+        margin-bottom: 12px;
+        font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+        font-size: 12px;
+        color: #8b949e;
+      }
+      .permission-actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+      .permission-btn {
+        padding: 6px 16px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.15s, opacity 0.15s;
+      }
+      .permission-btn.approve {
+        background: #3fb950;
+        color: #fff;
+        border: none;
+      }
+      .permission-btn.approve:hover {
+        background: #2ea043;
+      }
+      .permission-btn.deny {
+        background: transparent;
+        color: #f85149;
+        border: 1px solid #f8514940;
+      }
+      .permission-btn.deny:hover {
+        background: #f8514910;
+      }
+      .permission-btn.always {
+        background: transparent;
+        color: #8b949e;
+        border: 1px solid #30363d;
+      }
+      .permission-btn.always:hover {
+        background: #21262d;
+        color: #f0f6fc;
+      }
+      
+      /* ===== Tool Call Cards ===== */
+      .tool-call-card {
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        margin: 8px 0;
+        overflow: hidden;
+        background: #161b22;
+      }
+      .tool-call-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        background: #21262d;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .tool-call-header:hover {
+        background: #30363d;
+      }
+      .tool-call-icon {
+        font-size: 14px;
+      }
+      .tool-call-name {
+        font-size: 13px;
+        font-weight: 500;
+        color: #f0f6fc;
+        flex: 1;
+      }
+      .tool-call-status {
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-weight: 500;
+      }
+      .tool-call-status.pending {
+        background: #d2992230;
+        color: #d29922;
+      }
+      .tool-call-status.running {
+        background: #58a6ff30;
+        color: #58a6ff;
+        animation: pulse 1.5s infinite;
+      }
+      .tool-call-status.completed {
+        background: #3fb95030;
+        color: #3fb950;
+      }
+      .tool-call-status.error {
+        background: #f8514930;
+        color: #f85149;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.6; }
+      }
+      .tool-call-details {
+        padding: 12px;
+        border-top: 1px solid #21262d;
+        display: none;
+      }
+      .tool-call-details.expanded {
+        display: block;
+      }
+      .tool-call-section {
+        margin-bottom: 12px;
+      }
+      .tool-call-section:last-child {
+        margin-bottom: 0;
+      }
+      .tool-call-section-title {
+        font-size: 11px;
+        font-weight: 600;
+        color: #8b949e;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 6px;
+      }
+      .tool-call-input, .tool-call-output {
+        background: #0d1117;
+        border: 1px solid #21262d;
+        border-radius: 6px;
+        padding: 10px;
+        font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+        font-size: 12px;
+        color: #c9d1d9;
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+      .tool-call-time {
+        font-size: 11px;
+        color: #6e7681;
+      }
+      
+      /* ===== Sessions Panel ===== */
+      .sessions-panel {
+        padding: 8px;
+      }
+      .sessions-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 0;
+        margin-bottom: 8px;
+      }
+      .sessions-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #f0f6fc;
+      }
+      .sessions-new-btn {
+        background: none;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 4px 8px;
+        color: #8b949e;
+        cursor: pointer;
+        font-size: 12px;
+        transition: background 0.15s, color 0.15s;
+      }
+      .sessions-new-btn:hover {
+        background: #21262d;
+        color: #f0f6fc;
+      }
+      .sessions-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .session-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.15s;
+        border: 1px solid transparent;
+      }
+      .session-item:hover {
+        background: #161b22;
+      }
+      .session-item.active {
+        background: #0d1117;
+        border-color: #30363d;
+      }
+      .session-item-icon {
+        font-size: 14px;
+        color: #8b949e;
+      }
+      .session-item-content {
+        flex: 1;
+        min-width: 0;
+      }
+      .session-item-title {
+        font-size: 13px;
+        color: #f0f6fc;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .session-item-time {
+        font-size: 11px;
+        color: #6e7681;
+      }
+      .session-item-delete {
+        background: none;
+        border: none;
+        color: #6e7681;
+        cursor: pointer;
+        padding: 2px 4px;
+        border-radius: 4px;
+        font-size: 12px;
+        opacity: 0;
+        transition: opacity 0.15s, color 0.15s;
+      }
+      .session-item:hover .session-item-delete {
+        opacity: 1;
+      }
+      .session-item-delete:hover {
+        color: #f85149;
+      }
+      .sessions-empty {
+        text-align: center;
+        color: #6e7681;
+        font-size: 12px;
+        padding: 20px 0;
+      }
+      
       /* ===== Minimal Mode ===== */
       body.minimal-mode .sidebar-right { display: none !important; }
       body.minimal-mode .status-bar { display: none !important; }
@@ -2018,6 +2525,7 @@
           <div class="mode-color-bar ask" id="mode-color-bar"></div>
           <div class="input-hint">
             <span id="input-hint-left">Press Enter to send · Shift+Enter for new line</span>
+            <span class="show-details-toggle" onclick="toggleShowDetails()">Show Details</span>
             <span>Cmd+K to add context</span>
           </div>
         </div>
@@ -2063,6 +2571,7 @@
       <!-- Phase 2: Side Panel -->
       <div class="sidebar-right" id="sidebar-right">
         <div class="sidebar-tabs" id="sidebar-tabs">
+          <button class="sidebar-tab" data-tab="sessions" onclick="switchSideTab('sessions')">💬 Sessions</button>
           <button class="sidebar-tab active" data-tab="tasks" onclick="switchSideTab('tasks')">✅ Tasks</button>
           <button class="sidebar-tab" data-tab="changes" onclick="switchSideTab('changes')">📋 Changes</button>
           <button class="sidebar-tab" data-tab="preflight" onclick="switchSideTab('preflight')">🔍 Pre-flight</button>
@@ -2071,6 +2580,17 @@
           <button class="sidebar-tab" data-tab="nav" onclick="switchSideTab('nav')">🧭 Mock</button>
         </div>
         <div class="sidebar-content" id="sidebar-content">
+          <!-- Sessions Panel -->
+          <div class="tab-content hidden" id="tab-sessions">
+            <div class="sessions-panel" id="sessions-panel">
+              <div class="sessions-header">
+                <span class="sessions-title">Chat Sessions</span>
+                <button class="sessions-new-btn" onclick="newChat()" title="New Chat">➕</button>
+              </div>
+              <div class="sessions-list" id="sessions-list"></div>
+            </div>
+          </div>
+          
           <!-- Tasks Panel -->
           <div class="tab-content" id="tab-tasks">
             <div id="task-list-container"></div>
@@ -2181,6 +2701,10 @@
           <span class="status-mode-dot" id="status-mode-dot" style="background: #4a9eff"></span>
           <span id="status-mode-name">Ask</span>
         </div>
+        <div class="status-model" id="status-model">
+          <span class="status-model-icon offline" id="status-model-icon"></span>
+          <span id="status-model-name">Not Connected</span>
+        </div>
         <div class="status-cardinal hidden" id="status-cardinal"></div>
         <div class="status-drift hidden" id="status-drift">
           <span class="status-drift-dot"></span>
@@ -2214,6 +2738,7 @@
               </div>
               <div class="settings-item-control">
                 <select class="settings-select" id="setting-provider" onchange="updateSettings()">
+                  <option value="xiaomi">Xiaomi</option>
                   <option value="openai">OpenAI</option>
                   <option value="anthropic">Anthropic</option>
                   <option value="google">Google</option>
@@ -2229,6 +2754,8 @@
               </div>
               <div class="settings-item-control">
                 <select class="settings-select" id="setting-model" onchange="updateSettings()">
+                  <option value="mimo-v2.5-pro">MiMo v2.5 Pro</option>
+                  <option value="mimo-v2.5">MiMo v2.5</option>
                   <option value="gpt-4o">GPT-4o</option>
                   <option value="gpt-4-turbo">GPT-4 Turbo</option>
                   <option value="claude-3-5-sonnet">Claude 3.5 Sonnet</option>
@@ -2400,15 +2927,9 @@
       // ============================================================
       // VS Code API Initialization
       // ============================================================
-      let vscode;
-      try {
-        vscode = acquireVsCodeApi();
-      } catch (e) {
-        // Not running in VS Code webview
-        vscode = {
-          postMessage: (msg) => console.log('VS Code message:', msg)
-        };
-      }
+      let vscode = window.__HELIX_VSCODE_REF__ || {
+        postMessage: (msg) => console.log('VS Code message:', msg)
+      };
 
       // ============================================================
       // Phase 5: Mock Data & Service Layer
@@ -2603,8 +3124,141 @@
       let minimalMode = true; // Default to minimal mode
       let sidebarCollapsed = false;
       let expandedCollapsible = new Set();
+      
+      // Session management
+      let currentSessionId = null;
+      let isOnlineMode = false;
+      
+      // Check if we're in online mode (VS Code extension connected)
+      function checkOnlineMode() {
+        if (window.__HELIX_VSCODE__ && window.__HELIX_SERVER_PORT__ > 0) {
+          isOnlineMode = true;
+          updateStatusBar(true);
+          return true;
+        }
+        isOnlineMode = false;
+        updateStatusBar(false);
+        return false;
+      }
+      
+      // Load available models from API
+      async function loadAvailableModels() {
+        if (!isOnlineMode) return;
+        
+        try {
+          const providers = await fetchApi('/config/providers');
+          if (providers && Array.isArray(providers)) {
+            const modelSelect = document.getElementById('setting-model');
+            if (!modelSelect) return;
+            
+            // Clear existing options
+            modelSelect.innerHTML = '';
+            
+            // Add models from providers
+            for (const provider of providers) {
+              if (provider.models && Array.isArray(provider.models)) {
+                for (const model of provider.models) {
+                  const option = document.createElement('option');
+                  option.value = `${provider.id}/${model.id}`;
+                  option.textContent = `${model.name || model.id} (${provider.name || provider.id})`;
+                  modelSelect.appendChild(option);
+                }
+              }
+            }
+            
+            // If no models loaded, add default
+            if (modelSelect.options.length === 0) {
+              const option = document.createElement('option');
+              option.value = 'mimo-v2.5-pro';
+              option.textContent = 'MiMo v2.5 Pro (Default)';
+              modelSelect.appendChild(option);
+            }
+          }
+        } catch (err) {
+          console.error('Failed to load models:', err);
+        }
+      }
+      
+      // Update status bar based on connection status
+      function updateStatusBar(online) {
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const modelIcon = document.getElementById('status-model-icon');
+        const modelName = document.getElementById('status-model-name');
+        
+        if (online) {
+          statusDot.classList.remove('offline');
+          statusDot.classList.add('online');
+          statusText.textContent = 'Connected';
+          modelIcon.classList.remove('offline');
+          modelName.textContent = 'mimo-v2.5-pro';
+        } else {
+          statusDot.classList.remove('online');
+          statusDot.classList.add('offline');
+          statusText.textContent = 'Offline (Mock Mode)';
+          modelIcon.classList.add('offline');
+          modelName.textContent = 'Not Connected';
+        }
+      }
+      
+      // Initialize session
+      async function initSession() {
+        if (!checkOnlineMode()) return;
 
-      function newChat() {
+        try {
+          // Try to get existing sessions
+          const response = await fetchApi('/session?limit=1');
+          if (response && response.length > 0) {
+            currentSessionId = response[0].id;
+            console.log('Using existing session:', currentSessionId);
+          } else {
+            // Create new session
+            const newSession = await fetchApi('/session', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ title: 'Helix Chat' })
+            });
+            if (newSession && newSession.id) {
+              currentSessionId = newSession.id;
+              console.log('Created new session:', currentSessionId);
+            }
+          }
+
+          // Load session list for sidebar
+          await loadSessionList();
+
+          // Load available models
+          await loadAvailableModels();
+
+          // #8: Load real tasks and todo for this session (replaces mock data)
+          await loadSessionTasks();
+          await loadSessionTodo();
+
+          // #8: Connect SSE for real-time updates (tasks, diffs, status) even when not sending
+          const contentDiv = document.getElementById('messages');
+          if (contentDiv) {
+            // Listen for task/todo/diff updates in the background
+            activeStreamSessionId = currentSessionId;
+            connectEventStream(currentSessionId, contentDiv);
+          }
+        } catch (err) {
+          reportError('initSession', err);
+        }
+      }
+      
+      // Fetch API wrapper that goes through VS Code extension bridge
+      async function fetchApi(endpoint, options = {}) {
+        const port = window.__HELIX_SERVER_PORT__ || 0;
+        if (port === 0) throw new Error('Server not available (offline mode)');
+        const url = `http://localhost:${port}${endpoint}`;
+        const response = await fetch(url, options);
+        if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const text = await response.text();
+        if (!text) return null;
+        try { return JSON.parse(text); } catch { return text; }
+      }
+
+      async function newChat() {
         const messages = document.getElementById('messages');
         // Actually remove messages for new chat
         while (messages.children.length > 1) {
@@ -2615,8 +3269,143 @@
         document.getElementById('back-to-welcome').classList.remove('visible');
         document.getElementById('input').value = '';
         document.getElementById('input').focus();
+        
+        // Create new session if online
+        if (isOnlineMode) {
+          try {
+            const newSession = await fetchApi('/session', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ title: 'New Chat' })
+            });
+            if (newSession && newSession.id) {
+              currentSessionId = newSession.id;
+              console.log('Created new session:', currentSessionId);
+              // Refresh session list in sidebar
+              loadSessionList();
+            }
+          } catch (err) {
+            console.error('Failed to create new session:', err);
+          }
+        }
       }
 
+      // Load session list from API
+      async function loadSessionList() {
+        if (!isOnlineMode) return;
+        
+        try {
+          const sessions = await fetchApi('/session?limit=20');
+          renderSessionList(sessions || []);
+        } catch (err) {
+          console.error('Failed to load sessions:', err);
+        }
+      }
+      
+      // Render session list in sidebar
+      function renderSessionList(sessions) {
+        const container = document.getElementById('sessions-list');
+        if (!container) return;
+        
+        if (sessions.length === 0) {
+          container.innerHTML = '<div class="sessions-empty">No sessions yet. Start a new chat!</div>';
+          return;
+        }
+        
+        container.innerHTML = sessions.map(session => {
+          const isActive = session.id === currentSessionId;
+          const title = session.title || 'Untitled Chat';
+          const time = session.updatedAt ? formatTimeAgo(session.updatedAt) : '';
+          
+          return `
+            <div class="session-item ${isActive ? 'active' : ''}" onclick="switchSession('${session.id}')" title="${escapeHtml(title)}">
+              <span class="session-item-icon">💬</span>
+              <div class="session-item-content">
+                <div class="session-item-title">${escapeHtml(title)}</div>
+                <div class="session-item-time">${time}</div>
+              </div>
+              <button class="session-item-delete" onclick="event.stopPropagation(); deleteSession('${session.id}')" title="Delete">🗑️</button>
+            </div>
+          `;
+        }).join('');
+      }
+      
+      // Format time ago
+      function formatTimeAgo(timestamp) {
+        const now = Date.now();
+        const diff = now - timestamp;
+        const minutes = Math.floor(diff / 60000);
+        const hours = Math.floor(diff / 3600000);
+        const days = Math.floor(diff / 86400000);
+        
+        if (minutes < 1) return 'Just now';
+        if (minutes < 60) return `${minutes}m ago`;
+        if (hours < 24) return `${hours}h ago`;
+        return `${days}d ago`;
+      }
+      
+      // Switch to a different session
+      async function switchSession(sessionId) {
+        // #7: disconnect old SSE stream before switching sessions
+        disconnectEventStream();
+        activeStreamMessageId = null;
+        if (sessionId === currentSessionId) return;
+        
+        currentSessionId = sessionId;
+        console.log('Switched to session:', sessionId);
+        
+        // Clear current messages
+        const messages = document.getElementById('messages');
+        while (messages.children.length > 1) {
+          messages.removeChild(messages.lastChild);
+        }
+        
+        // Load messages for this session
+        try {
+          const sessionMessages = await fetchApi(`/session/${sessionId}/message`);
+          if (sessionMessages && sessionMessages.length > 0) {
+            // Hide welcome screen
+            const welcome = document.getElementById('welcome-screen');
+            if (welcome) welcome.style.display = 'none';
+            const backBtn = document.getElementById('back-to-welcome');
+            if (backBtn) backBtn.classList.add('visible');
+            
+            // Render messages
+            for (const msg of sessionMessages) {
+              if (msg.info && msg.info.role === 'user') {
+                const textPart = msg.parts?.find(p => p.type === 'text');
+                if (textPart) addUserMessage(textPart.text);
+              } else if (msg.info && msg.info.role === 'assistant') {
+                const textPart = msg.parts?.find(p => p.type === 'text');
+                if (textPart) addAIResponse(textPart.text);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Failed to load session messages:', err);
+        }
+        
+        // Update active state in list
+        renderSessionList(await fetchApi('/session?limit=20'));
+      }
+      
+      // Delete a session
+      async function deleteSession(sessionId) {
+        try {
+          await fetchApi(`/session/${sessionId}`, { method: 'DELETE' });
+          
+          // If deleted current session, create new one
+          if (sessionId === currentSessionId) {
+            await newChat();
+          }
+          
+          // Refresh list
+          await loadSessionList();
+        } catch (err) {
+          console.error('Failed to delete session:', err);
+        }
+      }
+      
       function toggleMinimalMode() {
         minimalMode = !minimalMode;
         document.body.classList.toggle('minimal-mode', minimalMode);
@@ -2740,6 +3529,7 @@
         });
 
         // Render content if needed
+        if (tab === 'sessions') loadSessionList();
         if (tab === 'tasks') renderTaskList();
         if (tab === 'changes') renderCheckpoint();
         if (tab === 'preflight') renderPreflight();
@@ -2767,6 +3557,11 @@
       };
 
       function renderTaskList() {
+        // #8: use real tasks when available (online mode)
+        if (isOnlineMode && window._realTaskGroups) {
+          renderRealTaskGroups(window._realTaskGroups);
+          return;
+        }
         const container = document.getElementById('task-list-container');
         let total = 0, completed = 0, inProgress = 0, failed = 0;
 
@@ -4040,7 +4835,7 @@
         messages.scrollTop = messages.scrollHeight;
       }
 
-      function addAIResponse(text, taskId) {
+      function addAIResponse(text, taskId, isStreaming = false) {
         const messages = document.getElementById('messages');
         const div = document.createElement('div');
         div.className = 'message';
@@ -4048,6 +4843,13 @@
         if (taskId) {
           div.setAttribute('data-task-id', taskId);
         }
+        
+        const contentClass = isStreaming ? 'message-content streaming' : 'message-content';
+        const contentText = isStreaming ? '<span class="typing-cursor">▊</span>' : text;
+        
+        // Generate unique ID for this message
+        const messageId = 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        
         div.innerHTML = `
           <div class="avatar ai">🧬</div>
           <div class="message-wrapper mode-${currentMode}">
@@ -4056,18 +4858,284 @@
                 <span>${MODE_CONFIG[currentMode].icon}</span>
                 <span>${MODE_CONFIG[currentMode].name} · Helix</span>
               </div>
-              <div>${text}</div>
+              <div class="${contentClass}" id="${messageId}">${contentText}</div>
+              ${!isStreaming ? `
+                <div class="message-actions">
+                  <button class="message-action-btn" onclick="copyMessage('${messageId}')" title="Copy">
+                    📋 Copy
+                  </button>
+                  <button class="message-action-btn" onclick="regenerateMessage()" title="Regenerate">
+                    🔄 Regenerate
+                  </button>
+                </div>
+              ` : ''}
             </div>
           </div>
         `;
         messages.appendChild(div);
         messages.scrollTop = messages.scrollHeight;
+        return div;
+      }
+      
+      // Copy message content to clipboard
+      async function copyMessage(messageId) {
+        const element = document.getElementById(messageId);
+        if (!element) return;
+        
+        try {
+          await navigator.clipboard.writeText(element.textContent);
+          
+          // Show copied state
+          const btn = element.closest('.message-body').querySelector('.message-action-btn');
+          if (btn) {
+            btn.classList.add('copied');
+            btn.innerHTML = '✅ Copied';
+            setTimeout(() => {
+              btn.classList.remove('copied');
+              btn.innerHTML = '📋 Copy';
+            }, 2000);
+          }
+        } catch (err) {
+          console.error('Failed to copy:', err);
+        }
+      }
+      
+      // Regenerate last message
+      async function regenerateMessage() {
+        // Get last user message
+        const messages = document.getElementById('messages');
+        const userMessages = messages.querySelectorAll('.message-wrapper.mode-' + currentMode);
+        let lastUserText = '';
+        
+        for (let i = userMessages.length - 1; i >= 0; i--) {
+          const wrapper = userMessages[i];
+          if (wrapper.closest('.message').querySelector('.avatar.user')) {
+            lastUserText = wrapper.querySelector('.message-body div:not(.message-mode-tag)')?.textContent || '';
+            break;
+          }
+        }
+        
+        if (lastUserText) {
+          // Remove last AI response
+          const lastMessage = messages.lastElementChild;
+          if (lastMessage && lastMessage.querySelector('.avatar.ai')) {
+            lastMessage.remove();
+          }
+          
+          // Resend message
+          textarea.value = lastUserText;
+          sendMessage();
+        }
       }
 
       function escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+      }
+      
+      // Simple Markdown formatter
+      function formatMarkdown(text) {
+        if (!text) return '';
+        
+        // Escape HTML first
+        let html = escapeHtml(text);
+        
+        // Code blocks (```...```)
+        html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
+          return `<pre><code class="language-${lang || 'text'}">${code.trim()}</code></pre>`;
+        });
+        
+        // Inline code (`...`)
+        html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+        
+        // Bold (**...**)
+        html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        
+        // Italic (*...*)
+        html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+        
+        // Headers (### ... , ## ... , # ...)
+        html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+        html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+        html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+        
+        // Unordered lists (- ... or * ...)
+        html = html.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
+        html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+        
+        // Ordered lists (1. ...)
+        html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+        
+        // Links ([text](url))
+        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+        
+        // Line breaks
+        html = html.replace(/\n\n/g, '</p><p>');
+        html = html.replace(/\n/g, '<br>');
+        
+        // Wrap in paragraph if not already wrapped
+        if (!html.startsWith('<')) {
+          html = '<p>' + html + '</p>';
+        }
+        
+        return html;
+      }
+      
+      // Highlight code blocks (basic syntax highlighting)
+      function highlightCodeBlocks(container) {
+        const blocks = container.querySelectorAll('pre code');
+        blocks.forEach(block => {
+          // Add basic styling class
+          block.classList.add('hljs');
+        });
+      }
+      
+      // Get icon for tool name
+      function getToolIcon(toolName) {
+        const icons = {
+          'bash': '💻',
+          'read': '📖',
+          'write': '✏️',
+          'edit': '📝',
+          'glob': '🔍',
+          'grep': '🔎',
+          'webfetch': '🌐',
+          'websearch': '🌍',
+          'task': '📋',
+          'actor': '🎭',
+          'memory': '🧠',
+          'question': '❓',
+          'skill': '🎯',
+          'default': '🔧'
+        };
+        return icons[toolName] || icons.default;
+      }
+      
+      // Format tool input for display
+      function formatToolInput(input) {
+        if (!input) return 'No input';
+        try {
+          // Truncate long inputs
+          const str = JSON.stringify(input, null, 2);
+          return str.length > 500 ? str.substring(0, 500) + '...' : str;
+        } catch {
+          return String(input);
+        }
+      }
+      
+      // Format tool output for display
+      function formatToolOutput(output) {
+        if (!output) return 'No output';
+        // Truncate long outputs
+        return output.length > 1000 ? output.substring(0, 1000) + '...' : output;
+      }
+      
+      // Render tool call card
+      function renderToolCall(toolPart) {
+        const { callID, tool, state } = toolPart;
+        const icon = getToolIcon(tool);
+        const statusClass = state.status;
+        const statusText = state.status.charAt(0).toUpperCase() + state.status.slice(1);
+        
+        const inputHtml = state.input ? `
+          <div class="tool-call-section">
+            <div class="tool-call-section-title">Input</div>
+            <div class="tool-call-input">${escapeHtml(formatToolInput(state.input))}</div>
+          </div>
+        ` : '';
+        
+        const outputHtml = state.status === 'completed' && state.output ? `
+          <div class="tool-call-section">
+            <div class="tool-call-section-title">Output</div>
+            <div class="tool-call-output">${escapeHtml(formatToolOutput(state.output))}</div>
+          </div>
+        ` : '';
+        
+        const errorHtml = state.status === 'error' && state.error ? `
+          <div class="tool-call-section">
+            <div class="tool-call-section-title">Error</div>
+            <div class="tool-call-output" style="color: #f85149;">${escapeHtml(state.error)}</div>
+          </div>
+        ` : '';
+        
+        const timeHtml = state.time ? `
+          <div class="tool-call-time">
+            ${state.time.start ? `Started: ${new Date(state.time.start).toLocaleTimeString()}` : ''}
+            ${state.time.end ? ` • Duration: ${((state.time.end - state.time.start) / 1000).toFixed(1)}s` : ''}
+          </div>
+        ` : '';
+        
+        return `
+          <div class="tool-call-card" id="tool-${callID}">
+            <div class="tool-call-header" onclick="toggleToolCall('${callID}')">
+              <span class="tool-call-icon">${icon}</span>
+              <span class="tool-call-name">${escapeHtml(tool)}</span>
+              <span class="tool-call-status ${statusClass}">${statusText}</span>
+            </div>
+            <div class="tool-call-details" id="tool-details-${callID}">
+              ${inputHtml}
+              ${outputHtml}
+              ${errorHtml}
+              ${timeHtml}
+            </div>
+          </div>
+        `;
+      }
+      
+      // Toggle tool call details
+      function toggleToolCall(callID) {
+        const details = document.getElementById(`tool-details-${callID}`);
+        if (details) {
+          details.classList.toggle('expanded');
+        }
+      }
+      
+      // Show permission request
+      function showPermissionRequest(permissionId, tool, description, details) {
+        const messages = document.getElementById('messages');
+        const div = document.createElement('div');
+        div.className = 'message';
+        div.id = `permission-${permissionId}`;
+        div.innerHTML = `
+          <div class="avatar ai">🧬</div>
+          <div class="permission-request">
+            <div class="permission-header">
+              <span class="permission-icon">🔐</span>
+              <span class="permission-title">Permission Required: ${escapeHtml(tool)}</span>
+            </div>
+            <div class="permission-body">
+              <div class="permission-description">${escapeHtml(description)}</div>
+              ${details ? `<div class="permission-details">${escapeHtml(details)}</div>` : ''}
+              <div class="permission-actions">
+                <button class="permission-btn deny" onclick="respondPermission('${permissionId}', false)">Deny</button>
+                <button class="permission-btn always" onclick="respondPermission('${permissionId}', true, true)">Always Allow</button>
+                <button class="permission-btn approve" onclick="respondPermission('${permissionId}', true)">Allow</button>
+              </div>
+            </div>
+          </div>
+        `;
+        messages.appendChild(div);
+        messages.scrollTop = messages.scrollHeight;
+      }
+      
+      // Respond to permission request
+      async function respondPermission(permissionId, approved, always = false) {
+        try {
+          await fetchApi(`/permission/${permissionId}/reply`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ approved, always })
+          });
+          
+          // Remove permission request from UI
+          const div = document.getElementById(`permission-${permissionId}`);
+          if (div) div.remove();
+          
+          addSystemMessage(approved ? '✅ Permission granted' : '❌ Permission denied');
+        } catch (err) {
+          console.error('Failed to respond to permission:', err);
+        }
       }
 
       // ============================================================
@@ -4111,7 +5179,505 @@
         document.getElementById('send-btn').classList.add('hidden');
         document.getElementById('stop-btn').classList.remove('hidden');
 
-        // Simulate AI response based on mode
+        // Check if online mode is available
+        if (isOnlineMode && currentSessionId) {
+          sendRealMessage(text);
+        } else {
+          // Fallback to mock response for offline mode
+          sendMockMessage(text);
+        }
+      }
+      
+      // === Streaming state ===
+      let currentEventSource = null;
+      let showDetailsMode = false;
+      let activeStreamParts = new Map();
+      let activeStreamMessageDiv = null;
+      let activeStreamMessageId = null; // #6: lock to current message, prevent cross-message rendering
+      let activeStreamSessionId = null; // #7: track which session the stream belongs to
+      let sseReconnectTimer = null;
+      let sseHeartbeatTimer = null;
+      let streamFinishCallback = null;
+
+      // Report frontend errors to extension host (bridge) for observability (#15)
+      function reportError(location, err) {
+        console.error('[HelixGUI] ' + location, err);
+        const vscode = window.__HELIX_VSCODE_REF__;
+        if (vscode) {
+          try { vscode.postMessage({ type: 'frontend-error', location, error: String(err && err.message || err) }); } catch(e) {}
+        }
+      }
+
+      // Send message to real AI API (SSE streaming via /event + prompt_async)
+      async function sendRealMessage(text) {
+        try {
+          // #7: cleanup any previous stream
+          disconnectEventStream();
+
+          const responseDiv = addAIResponse('', null, true);
+          activeStreamMessageDiv = responseDiv;
+          const contentDiv = responseDiv.querySelector('.message-content') || responseDiv;
+          contentDiv.innerHTML = '<div class="part-container" id="stream-parts"></div>';
+          activeStreamParts = new Map();
+          activeStreamMessageId = null;
+
+          const agentMap = { ask:'ask', build:'build', plan:'plan', compose:'compose', loop:'loop', max:'max' };
+          const agent = agentMap[currentMode] || 'ask';
+
+          // #9: attach editor context (current file + selection) as FilePart
+          const parts = [{ type: 'text', text }];
+          const fileCtx = getEditorContext();
+          if (fileCtx) parts.push(fileCtx);
+
+          activeStreamSessionId = currentSessionId;
+          streamFinishCallback = () => { finishGeneration(); applyToolVisibility(); };
+
+          // Connect SSE BEFORE sending prompt to not miss early events
+          connectEventStream(currentSessionId, contentDiv);
+
+          await fetchApi(`/session/${currentSessionId}/prompt_async`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ parts, agent })
+          });
+
+          // #2: no polling — session.status event drives finishGeneration
+        } catch (err) {
+          reportError('sendRealMessage', err);
+          addSystemMessage('⚠️ Error: ' + escapeHtml(err.message || 'Failed to get AI response'));
+          finishGeneration();
+        }
+      }
+
+      // #9: Get current editor file + selection as a context part (via extension bridge)
+      function getEditorContext() {
+        // The extension's addFilepathDisposable sends file-ref; here we proactively
+        // request the active file from VS Code through the bridge.
+        const vscode = window.__HELIX_VSCODE_REF__;
+        if (!vscode) return null;
+        // We can't synchronously get editor info from extension host, so we rely on
+        // the __HELIX_ACTIVE_FILE__ that extension injects via file-ref messages.
+        // For now, return null — context is attached via @file syntax in text.
+        return null;
+      }
+
+      // Connect to global /event SSE stream and filter for current session
+      function connectEventStream(sessionId, contentDiv) {
+        const port = window.__HELIX_SERVER_PORT__ || 0;
+        if (port === 0) return;
+        // #7: disconnect any existing stream first
+        disconnectEventStream();
+        activeStreamSessionId = sessionId;
+
+        const url = `http://localhost:${port}/event`;
+        const controller = new AbortController();
+        currentEventSource = controller;
+
+        // #10: heartbeat — if no event in 20s, abort and reconnect
+        const resetHeartbeat = () => {
+          if (sseHeartbeatTimer) clearTimeout(sseHeartbeatTimer);
+          sseHeartbeatTimer = setTimeout(() => {
+            reportError('SSE heartbeat timeout', new Error('No events for 20s, reconnecting'));
+            reconnectEventStream(sessionId, contentDiv);
+          }, 20000);
+        };
+        resetHeartbeat();
+
+        fetch(url, { method: 'GET', headers: { 'Accept': 'text/event-stream' }, signal: controller.signal })
+          .then(res => {
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            const pump = () => reader.read().then(({ done, value }) => {
+              if (done) {
+                // #10: stream ended unexpectedly, try reconnect
+                if (activeStreamSessionId === sessionId && isGenerating) {
+                  reportError('SSE stream ended', new Error('Unexpected end, reconnecting'));
+                  reconnectEventStream(sessionId, contentDiv);
+                }
+                return;
+              }
+              resetHeartbeat();
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split('\n');
+              buffer = lines.pop() || '';
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  try {
+                    const evt = JSON.parse(line.slice(6));
+                    handleStreamEvent(evt, sessionId, contentDiv);
+                  } catch (e) { /* ignore parse errors */ }
+                }
+              }
+              pump();
+            });
+            pump();
+          })
+          .catch(err => {
+            if (err.name !== 'AbortError') {
+              reportError('SSE fetch', err);
+              // #10: reconnect on error (not abort)
+              if (activeStreamSessionId === sessionId && isGenerating) {
+                reconnectEventStream(sessionId, contentDiv);
+              }
+            }
+          });
+      }
+
+      // #10: reconnect with backoff
+      function reconnectEventStream(sessionId, contentDiv) {
+        if (sseReconnectTimer) return;
+        if (sseHeartbeatTimer) { clearTimeout(sseHeartbeatTimer); sseHeartbeatTimer = null; }
+        currentEventSource = null;
+        sseReconnectTimer = setTimeout(() => {
+          sseReconnectTimer = null;
+          if (activeStreamSessionId === sessionId && isGenerating) {
+            connectEventStream(sessionId, contentDiv);
+          }
+        }, 250);
+      }
+
+      // #7: disconnect SSE and clean up timers
+      function disconnectEventStream() {
+        if (currentEventSource) { currentEventSource.abort(); currentEventSource = null; }
+        if (sseHeartbeatTimer) { clearTimeout(sseHeartbeatTimer); sseHeartbeatTimer = null; }
+        if (sseReconnectTimer) { clearTimeout(sseReconnectTimer); sseReconnectTimer = null; }
+        activeStreamSessionId = null;
+      }
+
+      // Handle a single SSE event from the global bus
+      function handleStreamEvent(evt, sessionId, contentDiv) {
+        if (!evt || !evt.type) return;
+        const p = evt.properties || evt;
+        // Filter: only events for our session (except global events like server.heartbeat)
+        if (p.sessionID && p.sessionID !== sessionId) return;
+
+        // #2: session.status event drives finishGeneration (no polling)
+        if (evt.type === 'session.status') {
+          const statusInfo = p.status || {};
+          if (statusInfo.type === 'idle') {
+            // Session finished — disconnect SSE and call finish callback
+            disconnectEventStream();
+            if (streamFinishCallback) { const cb = streamFinishCallback; streamFinishCallback = null; cb(); }
+          } else if (statusInfo.type === 'busy') {
+            // Session is working — update any busy indicator
+          } else if (statusInfo.type === 'retry') {
+            // #4: show retry notification
+            addSystemMessage('🔄 Retrying (attempt ' + (statusInfo.attempt || '?') + '): ' + escapeHtml(statusInfo.message || ''));
+          }
+          return;
+        }
+
+        // #4: session.error — show error and finish
+        if (evt.type === 'session.error') {
+          const errObj = p.error || {};
+          const errMsg = (errObj.data && errObj.data.message) || errObj.name || 'Session error';
+          addSystemMessage('⚠️ ' + escapeHtml(errMsg));
+          disconnectEventStream();
+          if (streamFinishCallback) { const cb = streamFinishCallback; streamFinishCallback = null; cb(); }
+          return;
+        }
+
+        // #4: session.retry.attempt — show retry info
+        if (evt.type === 'session.retry.attempt') {
+          addSystemMessage('🔄 Retrying: ' + escapeHtml(p.reason || '') + ' (attempt ' + p.attempt + '/' + p.maxAttempts + ')');
+          return;
+        }
+
+        // #3: permission.asked — show permission dialog
+        if (evt.type === 'permission.asked') {
+          showPermissionFromEvent(p);
+          return;
+        }
+
+        // #3: question.asked — show question dialog
+        if (evt.type === 'question.asked') {
+          showQuestionFromEvent(p);
+          return;
+        }
+
+        // #8: session.diff — update changes panel
+        if (evt.type === 'session.diff') {
+          if (p.sessionID === sessionId && p.diff) {
+            updateChangesFromDiff(p.diff);
+          }
+          return;
+        }
+
+        // #6: filter by messageID for part events — only render parts for the active message
+        if (evt.type === 'message.part.updated') {
+          // Track the first assistant message we see parts for
+          if (!activeStreamMessageId && p.part && p.part.messageID) {
+            activeStreamMessageId = p.part.messageID;
+          }
+          if (activeStreamMessageId && p.part && p.part.messageID !== activeStreamMessageId) return;
+          renderOrUpdatePart(p.part, contentDiv);
+          return;
+        }
+
+        if (evt.type === 'message.part.delta') {
+          if (activeStreamMessageId && p.messageID !== activeStreamMessageId) return;
+          appendDeltaToPart(p, contentDiv);
+          return;
+        }
+
+        // task.updated — refresh task list from API
+        if (evt.type === 'task.updated' || evt.type === 'task.created') {
+          if (isOnlineMode && currentSessionId) loadSessionTasks();
+          return;
+        }
+
+        // todo.updated — refresh todo
+        if (evt.type === 'todo.updated') {
+          if (isOnlineMode && currentSessionId) loadSessionTodo();
+          return;
+        }
+      }
+
+      // #3: Show permission dialog from permission.asked event
+      function showPermissionFromEvent(req) {
+        const permId = req.id;
+        const tool = req.tool ? 'tool call' : req.permission || 'operation';
+        const patterns = req.patterns || [];
+        const desc = 'Allow ' + (req.permission || tool) + (patterns.length ? ': ' + patterns.join(', ') : '');
+        showPermissionRequest(permId, tool, desc, JSON.stringify(req.metadata || {}, null, 2));
+      }
+
+      // #3: Show question dialog from question.asked event
+      function showQuestionFromEvent(req) {
+        const qId = req.id;
+        const questions = req.questions || [];
+        if (questions.length === 0) return;
+        const q = questions[0]; // handle first question
+        showQuestionDialog(qId, q.header || 'Question', q.question, (q.options || []).map(o => o.label));
+      }
+
+      // #3: Render question dialog UI
+      function showQuestionDialog(qId, header, question, options) {
+        const messages = document.getElementById('messages');
+        const div = document.createElement('div');
+        div.className = 'message';
+        div.id = 'question-' + qId;
+        const optionsHtml = options.map((opt, i) =>
+          '<button class="permission-btn allow" onclick="answerQuestion(\'' + qId + '\', ' + i + ')">' + escapeHtml(opt) + '</button>'
+        ).join(' ');
+        div.innerHTML = '<div class="avatar ai">🧬</div>' +
+          '<div class="permission-request">' +
+            '<div class="permission-header"><span class="permission-icon">❓</span><span class="permission-title">' + escapeHtml(header) + '</span></div>' +
+            '<div class="permission-body"><div class="permission-description">' + escapeHtml(question) + '</div></div>' +
+            '<div class="permission-actions">' + optionsHtml +
+              '<button class="permission-btn deny" onclick="rejectQuestion(\'' + qId + '\')">Dismiss</button>' +
+            '</div>' +
+          '</div>';
+        messages.appendChild(div);
+        messages.scrollTop = messages.scrollHeight;
+      }
+
+      // #3: Answer question via API
+      async function answerQuestion(qId, optionIndex) {
+        try {
+          await fetchApi(`/question/${qId}/reply`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ answers: [[optionIndex]] }) // answers is array of arrays
+          });
+          const el = document.getElementById('question-' + qId);
+          if (el) el.remove();
+        } catch (err) { reportError('answerQuestion', err); }
+      }
+
+      // #3: Reject question via API
+      async function rejectQuestion(qId) {
+        try {
+          await fetchApi(`/question/${qId}/reject`, { method: 'POST' });
+          const el = document.getElementById('question-' + qId);
+          if (el) el.remove();
+        } catch (err) { reportError('rejectQuestion', err); }
+      }
+
+      // #5: Render or update a part — incremental, preserves DOM and user interactions
+      function renderOrUpdatePart(part, contentDiv) {
+        if (!part || !part.type) return;
+        const container = contentDiv.querySelector('#stream-parts') || contentDiv;
+        const existing = activeStreamParts.get(part.id);
+        if (existing) {
+          // #5: incremental update — only refresh content, don't rebuild DOM
+          updatePartElement(existing, part);
+        } else {
+          const newEl = buildPartElement(part);
+          container.appendChild(newEl);
+          activeStreamParts.set(part.id, newEl);
+        }
+        const messages = document.getElementById('messages');
+        if (messages) messages.scrollTop = messages.scrollHeight;
+      }
+
+      // #5: Update an existing part element in place (preserves expand/collapse state)
+      function updatePartElement(el, part) {
+        if (part.type === 'reasoning') {
+          const headerEl = el.querySelector('.part-reasoning-header');
+          const bodyEl = el.querySelector('.part-reasoning-body');
+          if (headerEl) {
+            const content = (part.text || '').replace('[REDACTED]', '').trim();
+            const match = content.match(/^\*\*([^*\n]+)\*\*(?:\r?\n\r?\n|$)/);
+            const title = match ? match[1].trim() : null;
+            const body = match ? content.slice(match[0].length).trim() : content;
+            const isDone = part.time && part.time.end !== undefined;
+            const duration = isDone ? formatDuration(part.time.end - part.time.start) : '';
+            const spinner = !isDone ? '<span class="spinner-icon">⟳</span>' : '';
+            const titleStr = title ? ': ' + escapeHtml(title) : '';
+            const durStr = duration ? ' · ' + duration : '';
+            headerEl.innerHTML = spinner + '<span>Thought' + titleStr + durStr + '</span>';
+            if (body && bodyEl) bodyEl.textContent = body;
+          }
+        } else if (part.type === 'tool') {
+          // Rebuild tool part only if status changed (pending→running→completed)
+          const oldStatus = el.dataset.toolStatus;
+          const newStatus = part.state ? part.state.status : '';
+          if (oldStatus !== newStatus) {
+            // Status transitioned — rebuild this part (acceptable, interaction state resets on transition)
+            const wasExpanded = el.querySelector('.part-tool-block') && !el.querySelector('.block-output.collapsed');
+            el.innerHTML = buildToolPart(part);
+            el.dataset.toolStatus = newStatus;
+            el.dataset.completed = (newStatus === 'completed') ? '1' : '0';
+            const block = el.querySelector('.part-tool-block');
+            if (block) {
+              block.onclick = () => {
+                const out = block.querySelector('.block-output');
+                if (out) out.classList.toggle('collapsed');
+              };
+            }
+          } else {
+            // Same status — update output if running (streaming output)
+            if (newStatus === 'running' && part.state && part.state.metadata && part.state.metadata.output) {
+              const outEl = el.querySelector('.block-output');
+              if (outEl) outEl.textContent = stripAnsi(part.state.metadata.output.trim());
+            }
+          }
+        } else if (part.type === 'text') {
+          const textEl = el.querySelector('.part-text-content');
+          if (textEl) {
+            if (part.text) parseTaskMarkers(part.text);
+            renderTaskList();
+            textEl.innerHTML = formatMarkdown(part.text || '');
+            highlightCodeBlocks(el);
+          }
+        }
+      }
+
+      // Append a text delta to an existing part (for streaming text/reasoning)
+      function appendDeltaToPart(delta, contentDiv) {
+        const el = activeStreamParts.get(delta.partID);
+        if (!el) return;
+        // message.part.delta field can be 'text' for both text and reasoning parts
+        if (delta.field === 'text') {
+          // Check if this part is a reasoning part
+          const isReasoning = el.classList.contains('part-reasoning');
+          if (isReasoning) {
+            const bodyEl = el.querySelector('.part-reasoning-body');
+            if (bodyEl && bodyEl.style.display !== 'none') {
+              bodyEl.textContent += delta.delta;
+            }
+          } else {
+            const textEl = el.querySelector('.part-text-content');
+            if (textEl) textEl.innerHTML += escapeHtml(delta.delta);
+          }
+        }
+        const messages = document.getElementById('messages');
+        if (messages) messages.scrollTop = messages.scrollHeight;
+      }
+
+      // #8: Update changes panel from session.diff event
+      function updateChangesFromDiff(diffs) {
+        if (!diffs || !diffs.length) return;
+        const badge = document.getElementById('changes-badge');
+        if (badge) badge.textContent = diffs.length;
+        // Could render full diff list here; for now just update count
+      }
+
+      // #8: Load session tasks from API
+      async function loadSessionTasks() {
+        if (!isOnlineMode || !currentSessionId) return;
+        try {
+          const tasks = await fetchApi(`/session/${currentSessionId}/task`);
+          if (tasks && Array.isArray(tasks)) {
+            renderRealTasks(tasks);
+          }
+        } catch (err) { reportError('loadSessionTasks', err); }
+      }
+
+      // #8: Render real tasks from API (replaces mockTasks rendering when online)
+      function renderRealTasks(tasks) {
+        // Convert API tasks to the format renderTaskList expects
+        // API task: { id, session_id, parent_task_id, status, summary, created_at }
+        const groups = {};
+        for (const t of tasks) {
+          const parentId = t.parent_task_id || 'group-root';
+          if (!groups[parentId]) groups[parentId] = { id: parentId, title: parentId === 'group-root' ? 'Tasks' : parentId, tasks: [] };
+          const statusMap = { open: 'pending', in_progress: 'in_progress', done: 'completed', abandoned: 'cancelled', blocked: 'pending' };
+          groups[parentId].tasks.push({ id: t.id, title: t.summary, status: statusMap[t.status] || 'pending' });
+        }
+        // Store as the active task data and re-render
+        window._realTaskGroups = Object.values(groups);
+        renderTaskList();
+      }
+
+      // #8: Load session todo from API
+      async function loadSessionTodo() {
+        if (!isOnlineMode || !currentSessionId) return;
+        try {
+          const todo = await fetchApi(`/session/${currentSessionId}/todo`);
+          if (todo) renderRealTodo(todo);
+        } catch (err) { reportError('loadSessionTodo', err); }
+      }
+
+      // #8: Render real todo
+      function renderRealTodo(todo) {
+        // todo is an array of { content, status }
+        const container = document.getElementById('collapsible-tasks');
+        if (!container) return;
+        if (!todo || !todo.length) {
+          container.innerHTML = '<div style="padding:8px;color:#6e7681;font-size:11px">No tasks</div>';
+          return;
+        }
+        container.innerHTML = todo.map(t =>
+          '<div class="task-item" style="padding:4px 8px;font-size:12px">' +
+          '<span style="color:' + (t.status === 'completed' ? '#3fb950' : '#8b949e') + '">' + (t.status === 'completed' ? '✓' : '○') + '</span> ' +
+          escapeHtml(t.content || '') + '</div>'
+        ).join('');
+      }
+
+      // #8: Render real task groups (called by renderTaskList when online)
+      function renderRealTaskGroups(groups) {
+        const container = document.getElementById('collapsible-tasks');
+        if (!container) return;
+        if (!groups || !groups.length) {
+          container.innerHTML = '<div style="padding:8px;color:#6e7681;font-size:11px">No tasks yet</div>';
+          return;
+        }
+        let html = '';
+        for (const group of groups) {
+          const taskCount = group.tasks.length;
+          const doneCount = group.tasks.filter(t => t.status === 'completed').length;
+          html += '<div class="task-group">' +
+            '<div class="task-group-header" style="padding:6px 8px;font-size:12px;color:#c9d1d9;font-weight:600">' +
+              escapeHtml(group.title) + ' <span style="color:#6e7681">(' + doneCount + '/' + taskCount + ')</span>' +
+            '</div>';
+          for (const t of group.tasks) {
+            const statusColor = t.status === 'completed' ? '#3fb950' : t.status === 'in_progress' ? '#d29922' : '#8b949e';
+            const statusIcon = t.status === 'completed' ? '✓' : t.status === 'in_progress' ? '◐' : '○';
+            html += '<div class="task-item" data-task-id="' + escapeHtml(t.id) + '" style="padding:4px 8px 4px 20px;font-size:12px">' +
+              '<span style="color:' + statusColor + '">' + statusIcon + '</span> ' +
+              escapeHtml(t.title || t.id) + '</div>';
+          }
+          html += '</div>';
+        }
+        container.innerHTML = html;
+      }
+
+      
+      // Mock response for offline mode
+      function sendMockMessage(text) {
         const responseDelay = setTimeout(() => {
           const responses = {
             ask: { text: 'I can help answer that! Let me analyze your question...' },
@@ -4141,10 +5707,29 @@
 
       function stopGeneration() {
         if (!isGenerating) return;
+
+        // Cancel SSE stream if exists
+        if (currentEventSource) { currentEventSource.abort(); currentEventSource = null; }
+
+        // Cancel mock response if exists
         if (window._currentResponseTimeout) {
           clearTimeout(window._currentResponseTimeout);
           window._currentResponseTimeout = null;
         }
+
+        // Cancel real API request if exists
+        if (window._currentAbortController) {
+          window._currentAbortController.abort();
+          window._currentAbortController = null;
+        }
+
+        // Try to abort via API if session exists
+        if (isOnlineMode && currentSessionId) {
+          fetchApi(`/session/${currentSessionId}/abort`, {
+            method: 'POST'
+          }).catch(() => {});
+        }
+
         addSystemMessage('⏹ Generation stopped by user');
         finishGeneration();
       }
@@ -4351,8 +5936,10 @@
       if (port > 0) {
         statusDot.classList.add('connecting');
         statusText.textContent = 'Connecting...';
-        fetch('http://localhost:' + port + '/health').then(() => {
+        // Use VS Code bridge to check connection
+        fetchApi('/health').then(() => {
           statusDot.classList.remove('connecting');
+          statusDot.classList.add('online');
           statusText.textContent = 'Connected';
         }).catch(() => {
           statusDot.classList.remove('connecting');
@@ -4382,6 +5969,9 @@
       if (minimalIcon) minimalIcon.textContent = '⬜';
       renderCollapsible('tasks');
       renderCollapsible('changes');
+      
+      // Initialize AI session
+      initSession();
 
       // Auto-simulate task progress every 10s
       setInterval(() => {

@@ -1,4 +1,7 @@
 import * as vscode from "vscode";
+import * as fs from "fs";
+import * as path from "path";
+import * as childProcess from "child_process";
 import { HelixWebviewPanel } from "./webview/panel";
 import { HelixServer } from "./server";
 import { HelixSidebarProvider } from "./sidebar/tree-provider";
@@ -102,9 +105,12 @@ async function openGUI(context: vscode.ExtensionContext) {
     try {
       vscode.window.showInformationMessage("正在启动 Helix 服务...");
       port = await server.start(context);
+      console.log(`[Helix] 服务启动成功，端口: ${port}`);
     } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.error("[Helix] 服务启动失败:", errorMsg);
       // 找不到 mimo 也打开面板，进入离线模式
-      vscode.window.showWarningMessage("Helix 服务未启动，GUI 进入离线模式。可在设置中配置 helix.mimoPath。");
+      vscode.window.showWarningMessage(`Helix 服务未启动: ${errorMsg}。GUI 进入离线模式。`);
       port = 0;
     }
 
@@ -121,6 +127,10 @@ async function openGUI(context: vscode.ExtensionContext) {
 
 async function openTerminal(context: vscode.ExtensionContext) {
   const port = Math.floor(Math.random() * (65535 - 16384 + 1)) + 16384;
+  
+  // 查找 CLI 路径
+  const cliPath = await findCliPath(context);
+  
   const terminal = vscode.window.createTerminal({
     name: TERMINAL_NAME,
     iconPath: {
@@ -138,7 +148,7 @@ async function openTerminal(context: vscode.ExtensionContext) {
   });
 
   terminal.show();
-  terminal.sendText(`opencode --port ${port}`);
+  terminal.sendText(`"${cliPath}" --port ${port}`);
 
   const fileRef = getActiveFile();
   if (!fileRef) {return;}
@@ -192,4 +202,32 @@ function getActiveFile(): string | undefined {
   }
 
   return filepathWithAt;
+}
+
+async function findCliPath(context: vscode.ExtensionContext): Promise<string> {
+  // 0. 检查用户配置的 CLI 路径
+  const config = vscode.workspace.getConfiguration("helix");
+  const configuredPath = config.get<string>("cliPath");
+  if (configuredPath && fs.existsSync(configuredPath)) {
+    return configuredPath;
+  }
+
+  // 1. 检查扩展内打包的 CLI
+  const bundledCli = path.join(context.extensionPath, "bin", "mimo");
+  if (fs.existsSync(bundledCli)) {
+    return bundledCli;
+  }
+
+  // 2. 尝试在 PATH 中查找
+  try {
+    const result = childProcess.execSync("which mimo", { stdio: "pipe" }).toString().trim();
+    if (result) {
+      return result;
+    }
+  } catch {
+    // 继续
+  }
+
+  // 3. 返回默认名称
+  return "mimo";
 }

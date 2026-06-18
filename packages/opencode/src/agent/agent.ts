@@ -7,8 +7,11 @@ import { Instance } from "../project/instance"
 import { Truncate } from "../tool"
 import { Auth } from "../auth"
 import { ProviderTransform } from "../provider"
+import { Log } from "@/util"
 
 import PROMPT_GENERATE from "./generate.txt"
+
+const log = Log.create({ service: "agent" })
 import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_DREAM from "./prompt/dream.txt"
 import PROMPT_DISTILL from "./prompt/distill.txt"
@@ -84,6 +87,7 @@ export const layer = Layer.effect(
 
     const state = yield* InstanceState.make<State>(
       Effect.fn("Agent.state")(function* (_ctx) {
+        log.info("agent.state.init")
         const cfg = yield* config.get()
         const skillDirs = yield* skill.dirs()
         const whitelistedDirs = [Truncate.GLOB, ...skillDirs.map((dir) => path.join(dir, "*"))]
@@ -110,6 +114,31 @@ export const layer = Layer.effect(
         const user = Permission.fromConfig(cfg.permission ?? {})
 
         const agents: Record<string, Info> = {
+          ask: {
+            name: "ask",
+            color: "#4a9eff",
+            description: "Ask questions, get explanations without code changes.",
+            options: {},
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                "*": "deny",
+                question: "allow",
+                read: "allow",
+                grep: "allow",
+                glob: "allow",
+                list: "allow",
+                bash: "allow",
+                webfetch: "allow",
+                websearch: "allow",
+                codesearch: "allow",
+                memory: "allow",
+              }),
+              user,
+            ),
+            mode: "primary",
+            native: true,
+          },
           build: {
             name: "build",
             color: "#fb8147",
@@ -184,6 +213,22 @@ export const layer = Layer.effect(
               Permission.fromConfig({
                 question: "allow",
                 skill: "allow",
+              }),
+              user,
+            ),
+            mode: "primary",
+            native: true,
+          },
+          loop: {
+            name: "loop",
+            color: "#007acc",
+            description: "Iterative execution with automatic feedback.",
+            options: {},
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                question: "allow",
+                plan_enter: "allow",
               }),
               user,
             ),
@@ -438,37 +483,66 @@ export const layer = Layer.effect(
           )
         }
 
+        const agentNames = Object.keys(agents)
+        const primaryAgents = agentNames.filter(n => agents[n].mode === "primary")
+        const subAgents = agentNames.filter(n => agents[n].mode === "subagent")
+        log.info("agent.state.ready", { total: agentNames.length, primary: primaryAgents.join(","), subagent: subAgents.join(",") })
+
         const get = Effect.fnUntraced(function* (agent: string) {
-          return agents[agent]
+          const info = agents[agent]
+          if (!info) {
+            log.warn("agent.get.not_found", { agent, available: agentNames.join(",") })
+            return info
+          }
+          log.info("agent.get.success", { agent, mode: info.mode, native: info.native })
+          return info
         })
 
         const list = Effect.fnUntraced(function* () {
           const cfg = yield* config.get()
-          return pipe(
+          const sorted = pipe(
             agents,
             values(),
             sortBy(
               [(x) => cfg.default_agent !== undefined && x.name === cfg.default_agent, "desc"],
+              [(x) => x.name === "ask", "desc"],
               [(x) => x.name === "build", "desc"],
               [(x) => x.name === "plan", "desc"],
               [(x) => x.name === "compose", "desc"],
+              [(x) => x.name === "loop", "desc"],
               [(x) => x.name === "max", "desc"],
               [(x) => x.name, "asc"],
             ),
           )
+          log.info("agent.list.success", { count: sorted.length, default_agent: cfg.default_agent, agents: sorted.map(a => a.name).join(",") })
+          return sorted
         })
 
         const defaultAgent = Effect.fnUntraced(function* () {
           const c = yield* config.get()
           if (c.default_agent) {
             const agent = agents[c.default_agent]
-            if (!agent) throw new Error(`default agent "${c.default_agent}" not found`)
-            if (agent.mode === "subagent") throw new Error(`default agent "${c.default_agent}" is a subagent`)
-            if (agent.hidden === true) throw new Error(`default agent "${c.default_agent}" is hidden`)
+            if (!agent) {
+              log.error("agent.default.not_found", { default_agent: c.default_agent })
+              throw new Error(`default agent "${c.default_agent}" not found`)
+            }
+            if (agent.mode === "subagent") {
+              log.error("agent.default.is_subagent", { default_agent: c.default_agent })
+              throw new Error(`default agent "${c.default_agent}" is a subagent`)
+            }
+            if (agent.hidden === true) {
+              log.error("agent.default.is_hidden", { default_agent: c.default_agent })
+              throw new Error(`default agent "${c.default_agent}" is hidden`)
+            }
+            log.info("agent.default.resolved", { agent: agent.name, source: "config" })
             return agent.name
           }
           const visible = Object.values(agents).find((a) => a.mode !== "subagent" && a.hidden !== true)
-          if (!visible) throw new Error("no primary visible agent found")
+          if (!visible) {
+            log.error("agent.default.no_visible_primary")
+            throw new Error("no primary visible agent found")
+          }
+          log.info("agent.default.resolved", { agent: visible.name, source: "auto" })
           return visible.name
         })
 
@@ -494,10 +568,12 @@ export const layer = Layer.effect(
         description: string
         model?: { providerID: ProviderID; modelID: ModelID }
       }) {
+        log.info("agent.generate.start", { description: input.description.substring(0, 100) })
         const cfg = yield* config.get()
         const model = input.model ?? (yield* provider.defaultModel())
         const resolved = yield* provider.getModel(model.providerID, model.modelID)
         const language = yield* provider.getLanguage(resolved)
+        log.info("agent.generate.model", { providerID: model.providerID, modelID: model.modelID })
         const tracer = cfg.experimental?.openTelemetry
           ? Option.getOrUndefined(yield* Effect.serviceOption(OtelTracer.OtelTracer))
           : undefined
@@ -542,6 +618,7 @@ export const layer = Layer.effect(
         } satisfies Parameters<typeof generateObject>[0]
 
         if (isOpenaiOauth) {
+          log.info("agent.generate.using_stream", { providerID: model.providerID })
           return yield* Effect.promise(async () => {
             const result = streamObject({
               ...params,
@@ -549,16 +626,31 @@ export const layer = Layer.effect(
                 instructions: system.join("\n"),
                 store: false,
               }),
-              onError: () => {},
+              onError: (error) => {
+                log.error("agent.generate.stream_error", { error: error.error })
+              },
             })
             for await (const part of result.fullStream) {
-              if (part.type === "error") throw part.error
+              if (part.type === "error") {
+                log.error("agent.generate.stream_part_error", { error: part.error })
+                throw part.error
+              }
             }
+            log.info("agent.generate.completed", { identifier: result.object.identifier })
             return result.object
           })
         }
 
-        return yield* Effect.promise(() => generateObject(params).then((r) => r.object))
+        log.info("agent.generate.using_sync", { providerID: model.providerID })
+        return yield* Effect.promise(() =>
+          generateObject(params).then((r) => {
+            log.info("agent.generate.completed", { identifier: r.object.identifier })
+            return r.object
+          }).catch((e) => {
+            log.error("agent.generate.failed", { error: e })
+            throw e
+          })
+        )
       }),
     })
   }),

@@ -5,6 +5,9 @@ import type { Permission } from "../permission"
 import type { SessionID, MessageID } from "../session/schema"
 import * as Truncate from "./truncate"
 import { Agent } from "@/agent/agent"
+import { Log } from "@/util"
+
+const log = Log.create({ service: "tool" })
 
 export interface Metadata {
   [key: string]: any
@@ -94,9 +97,23 @@ function wrap<Parameters extends z.ZodType, Result extends Metadata>(
           ...(ctx.callID ? { "tool.call_id": ctx.callID } : {}),
         }
         return Effect.gen(function* () {
+          log.info("tool.execute.start", {
+            tool: id,
+            sessionID: ctx.sessionID,
+            messageID: ctx.messageID,
+            callID: ctx.callID,
+            agent: ctx.agent,
+            argsKeys: Object.keys(args || {}),
+          })
+          const t0 = Date.now()
           yield* Effect.try({
             try: () => toolInfo.parameters.parse(args),
             catch: (error) => {
+              log.error("tool.execute.validation_failed", {
+                tool: id,
+                sessionID: ctx.sessionID,
+                error: error instanceof Error ? error.message : String(error),
+              })
               if (error instanceof z.ZodError && toolInfo.formatValidationError) {
                 return new Error(toolInfo.formatValidationError(error), { cause: error })
               }
@@ -106,7 +123,24 @@ function wrap<Parameters extends z.ZodType, Result extends Metadata>(
               )
             },
           })
-          const result = yield* execute(args, ctx)
+          const result = yield* execute(args, ctx).pipe(
+            Effect.tapError((error) => {
+              log.error("tool.execute.failed", {
+                tool: id,
+                sessionID: ctx.sessionID,
+                duration: Date.now() - t0,
+                error: error instanceof Error ? error.message : String(error),
+              })
+              return Effect.void
+            })
+          )
+          log.info("tool.execute.completed", {
+            tool: id,
+            sessionID: ctx.sessionID,
+            duration: Date.now() - t0,
+            outputLen: result.output?.length ?? 0,
+            truncated: result.metadata.truncated,
+          })
           if (result.metadata.truncated !== undefined) {
             return result
           }
@@ -144,7 +178,9 @@ export function define<Parameters extends z.ZodType, Result extends Metadata, R,
 
 export function init<P extends z.ZodType, M extends Metadata>(info: Info<P, M>): Effect.Effect<Def<P, M>> {
   return Effect.gen(function* () {
+    log.debug("tool.init", { tool: info.id })
     const init = yield* info.init()
+    log.info("tool.init.done", { tool: info.id })
     return {
       ...init,
       id: info.id,

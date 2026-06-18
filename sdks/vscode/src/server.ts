@@ -7,9 +7,24 @@ export class HelixServer {
   private process: childProcess.ChildProcess | null = null;
   private port: number = 0;
   private ready: boolean = false;
+  private context: vscode.ExtensionContext | null = null;
 
   async start(context: vscode.ExtensionContext): Promise<number> {
     if (this.ready && this.port) {return this.port;}
+
+    this.context = context;
+
+    // 先检查是否有已运行的服务器（端口 3095）
+    try {
+      const response = await fetch("http://localhost:3095/health");
+      if (response.ok) {
+        this.port = 3095;
+        this.ready = true;
+        return this.port;
+      }
+    } catch {
+      // 没有已运行的服务器，继续启动新的
+    }
 
     this.port = Math.floor(Math.random() * (65535 - 16384 + 1)) + 16384;
 
@@ -41,28 +56,49 @@ export class HelixServer {
   }
 
   private async findOpencodeCli(): Promise<string | null> {
-    // 1. 尝试在 PATH 中查找
+    // 0. 检查用户配置的 CLI 路径
+    const config = vscode.workspace.getConfiguration("helix");
+    const configuredPath = config.get<string>("cliPath");
+    console.log("[Helix] 配置的 CLI 路径:", configuredPath);
+    if (configuredPath && fs.existsSync(configuredPath)) {
+      console.log("[Helix] 使用配置的 CLI 路径:", configuredPath);
+      return configuredPath;
+    }
+
+    // 1. 检查扩展内打包的 CLI
+    if (this.context) {
+      const bundledCli = path.join(this.context.extensionPath, "bin", "mimo");
+      console.log("[Helix] 检查打包的 CLI:", bundledCli);
+      if (fs.existsSync(bundledCli)) {
+        console.log("[Helix] 使用打包的 CLI:", bundledCli);
+        return bundledCli;
+      }
+    }
+
+    // 2. 尝试在 PATH 中查找
     const candidates = [
       "opencode",
       "mimo",
-      path.join(process.cwd(), "packages", "opencode", "script", "build.ts"),
     ];
 
     for (const cmd of candidates) {
       try {
         childProcess.execSync(`which ${cmd}`, { stdio: "pipe" });
+        console.log("[Helix] 使用 PATH 中的 CLI:", cmd);
         return cmd;
       } catch {
         // 继续尝试下一个
       }
     }
 
-    // 2. 检查本地开发的 opencode
+    // 3. 检查本地开发的 opencode
     const localOpencode = path.join(process.cwd(), "packages", "opencode", "dist", "mimo");
     if (fs.existsSync(localOpencode)) {
+      console.log("[Helix] 使用本地开发的 CLI:", localOpencode);
       return localOpencode;
     }
 
+    console.log("[Helix] 未找到 CLI");
     return null;
   }
 

@@ -100,7 +100,7 @@ export const dict = {
     "{highlight}tui.json{/highlight} の {highlight}keybinds{/highlight} セクションで任意のキーバインドを上書きできます",
   "tui.tips.disable_keybind": "任意のキーバインドを {highlight}none{/highlight} にすると完全に無効化できます",
   "tui.tips.mcp_config": "{highlight}mcp{/highlight} 設定セクションでローカル/リモート MCP サーバを設定します",
-  "tui.tips.mcp_oauth": "MiMoCode は認証が必要なリモート MCP サーバの OAuth を自動処理します",
+  "tui.tips.mcp_oauth": "Helix は認証が必要なリモート MCP サーバの OAuth を自動処理します",
   "tui.tips.custom_command":
     "{highlight}.mimocode/command/{/highlight} に {highlight}.md{/highlight} ファイルを追加すると再利用可能なカスタムプロンプトを定義できます",
   "tui.tips.command_args":
@@ -115,23 +115,23 @@ export const dict = {
     '{highlight}"git *": "allow"{/highlight} のようなパターンで bash 権限を細かく制御できます',
   "tui.tips.bash_deny": '{highlight}"rm -rf *": "deny"{/highlight} を設定して破壊的なコマンドをブロックします',
   "tui.tips.bash_ask": '{highlight}"git push": "ask"{/highlight} を設定すると push 前に承認を求めます',
-  "tui.tips.formatter": "MiMoCode は prettier、gofmt、ruff などでファイルを自動整形します",
+  "tui.tips.formatter": "Helix は prettier、gofmt、ruff などでファイルを自動整形します",
   "tui.tips.disable_formatter":
     '設定で {highlight}"formatter": false{/highlight} にするとすべての自動整形を無効化できます',
   "tui.tips.custom_formatter": "拡張子ごとのカスタム整形コマンドを設定で定義できます",
-  "tui.tips.lsp": "MiMoCode はインテリジェントなコード解析に LSP サーバを使います",
+  "tui.tips.lsp": "Helix はインテリジェントなコード解析に LSP サーバを使います",
   "tui.tips.custom_tool":
     "{highlight}.mimocode/tools/{/highlight} に {highlight}.ts{/highlight} ファイルを作って新しい LLM ツールを定義します",
   "tui.tips.tool_scripts": "ツール定義から Python、Go などのスクリプトを呼び出せます",
   "tui.tips.plugins":
     "{highlight}.mimocode/plugin/{/highlight} に {highlight}.ts{/highlight} ファイルを追加してイベントフックを実装できます",
   "tui.tips.plugin_notify": "プラグインでセッション完了時に OS 通知を送れます",
-  "tui.tips.plugin_protect": "プラグインを書いて MiMoCode が機密ファイルを読まないようにできます",
+  "tui.tips.plugin_protect": "プラグインを書いて Helix が機密ファイルを読まないようにできます",
   "tui.tips.run": "{highlight}mimo run{/highlight} で非対話的なスクリプト実行ができます",
   "tui.tips.continue": "{highlight}mimo --continue{/highlight} で前回のセッションを再開します",
   "tui.tips.attach_cli": "{highlight}mimo run -f file.ts{/highlight} で CLI からファイルを添付できます",
   "tui.tips.format_json": "{highlight}--format json{/highlight} を使うとスクリプトで機械可読な出力を得られます",
-  "tui.tips.serve": "{highlight}mimo serve{/highlight} を実行するとヘッドレスで MiMoCode API にアクセスできます",
+  "tui.tips.serve": "{highlight}mimo serve{/highlight} を実行するとヘッドレスで Helix API にアクセスできます",
   "tui.tips.attach_server": "{highlight}mimo run --attach{/highlight} で起動中のサーバに接続します",
   "tui.tips.upgrade": "{highlight}mimo upgrade{/highlight} で最新バージョンに更新します",
   "tui.tips.auth_list": "{highlight}mimo auth list{/highlight} で設定済みプロバイダを確認します",
@@ -174,7 +174,7 @@ export const dict = {
     "コマンドパレット（{highlight}Ctrl+P{/highlight}）でチャット内のユーザー名表示を切り替えます",
   "tui.tips.docker":
     "{highlight}docker run -it --rm ghcr.io/anomalyco/opencode{/highlight} でコンテナ版を実行できます",
-  "tui.tips.zen": "MiMo Code と組み合わせて {highlight}/connect{/highlight} で厳選されたモデルを使えます",
+  "tui.tips.zen": "Helix と組み合わせて {highlight}/connect{/highlight} で厳選されたモデルを使えます",
   "tui.tips.agents_md": "プロジェクトの {highlight}AGENTS.md{/highlight} を Git にコミットしてチームで共有します",
   "tui.tips.review": "{highlight}/review{/highlight} で未コミット変更、ブランチ、PR をレビューします",
   "tui.tips.help": "{highlight}/help{/highlight} または {highlight}Ctrl+X H{/highlight} でヘルプを表示します",

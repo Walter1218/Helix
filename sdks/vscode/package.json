@@ -137,7 +137,17 @@
         "win": "ctrl+alt+K",
         "linux": "ctrl+alt+K"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Helix",
+      "properties": {
+        "helix.cliPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to Helix CLI executable (mimo or opencode). Leave empty to auto-detect."
+        }
+      }
+    }
   },
   "scripts": {
     "build:media": "rm -rf media && cp -r ../../packages/app/dist media && cp src/webview/helix-welcome.html media/",

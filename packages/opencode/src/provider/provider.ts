@@ -1529,7 +1529,7 @@ const layer: Layer.Layer<
 
         const bundledLoader = BUNDLED_PROVIDERS[model.api.npm]
         if (bundledLoader) {
-          log.info("using bundled provider", {
+          log.info("provider.resolveSDK.bundled", {
             providerID: model.providerID,
             pkg: model.api.npm,
           })
@@ -1539,32 +1539,60 @@ const layer: Layer.Layer<
             ...options,
           })
           s.sdk.set(key, loaded)
+          log.info("provider.resolveSDK.success", {
+            providerID: model.providerID,
+            modelID: model.id,
+            type: "bundled",
+          })
           return loaded as SDK
         }
 
         let installedPath: string
         if (!model.api.npm.startsWith("file://")) {
+          log.info("provider.resolveSDK.installing", { providerID: model.providerID, npm: model.api.npm })
           const item = await Npm.add(model.api.npm)
-          if (!item.entrypoint) throw new Error(`Package ${model.api.npm} has no import entrypoint`)
+          if (!item.entrypoint) {
+            log.error("provider.resolveSDK.no_entrypoint", { providerID: model.providerID, npm: model.api.npm })
+            throw new Error(`Package ${model.api.npm} has no import entrypoint`)
+          }
           installedPath = item.entrypoint
         } else {
-          log.info("loading local provider", { pkg: model.api.npm })
+          log.info("provider.resolveSDK.local", { providerID: model.providerID, pkg: model.api.npm })
           installedPath = model.api.npm
         }
 
         // `installedPath` is a local entry path or an existing `file://` URL. Normalize
         // only path inputs so Node on Windows accepts the dynamic import.
         const importSpec = installedPath.startsWith("file://") ? installedPath : pathToFileURL(installedPath).href
+        log.info("provider.resolveSDK.importing", { providerID: model.providerID, path: importSpec })
         const mod = await import(importSpec)
 
-        const fn = mod[Object.keys(mod).find((key) => key.startsWith("create"))!]
+        const createKey = Object.keys(mod).find((key) => key.startsWith("create"))
+        if (!createKey) {
+          log.error("provider.resolveSDK.no_create_export", { providerID: model.providerID, npm: model.api.npm, exports: Object.keys(mod) })
+          throw new Error(`Package ${model.api.npm} has no 'create*' export`)
+        }
+        const fn = mod[createKey]
         const loaded = fn({
           name: model.providerID,
           ...options,
         })
         s.sdk.set(key, loaded)
+        log.info("provider.resolveSDK.success", {
+          providerID: model.providerID,
+          modelID: model.id,
+          type: "npm",
+        })
         return loaded as SDK
       } catch (e) {
+        const errorMsg = e instanceof Error ? e.message : String(e)
+        log.error("provider.resolveSDK.failed", {
+          providerID: model.providerID,
+          modelID: model.id,
+          npm: model.api.npm,
+          error: errorMsg,
+          errorType: e instanceof Error ? e.constructor.name : "Unknown",
+        })
         throw new InitError({ providerID: model.providerID }, { cause: e })
       }
     }
@@ -1574,11 +1602,13 @@ const layer: Layer.Layer<
     )
 
     const getModel = Effect.fn("Provider.getModel")(function* (providerID: ProviderID, modelID: ModelID) {
+      log.debug("provider.getModel", { providerID, modelID })
       const s = yield* InstanceState.get(state)
       const provider = s.providers[providerID]
       if (!provider) {
         const available = Object.keys(s.providers)
         const matches = fuzzysort.go(providerID, available, { limit: 3, threshold: -10000 })
+        log.error("provider.getModel.provider_not_found", { providerID, modelID, suggestions: matches.map((m) => m.target) })
         throw new ModelNotFoundError({ providerID, modelID, suggestions: matches.map((m) => m.target) })
       }
 
@@ -1586,8 +1616,10 @@ const layer: Layer.Layer<
       if (!info) {
         const available = Object.keys(provider.models)
         const matches = fuzzysort.go(modelID, available, { limit: 3, threshold: -10000 })
+        log.error("provider.getModel.model_not_found", { providerID, modelID, suggestions: matches.map((m) => m.target) })
         throw new ModelNotFoundError({ providerID, modelID, suggestions: matches.map((m) => m.target) })
       }
+      log.info("provider.getModel.resolved", { providerID, modelID })
       return info
     })
 
@@ -1595,8 +1627,12 @@ const layer: Layer.Layer<
       const s = yield* InstanceState.get(state)
       const envs = yield* env.all()
       const key = `${model.providerID}/${model.id}`
-      if (s.models.has(key)) return s.models.get(key)!
+      if (s.models.has(key)) {
+        log.debug("provider.getLanguage.cache_hit", { key })
+        return s.models.get(key)!
+      }
 
+      log.info("provider.getLanguage.resolving", { providerID: model.providerID, modelID: model.id })
       return yield* Effect.promise(async () => {
         const provider = s.providers[model.providerID]
         const sdk = await resolveSDK(model, s, envs)
@@ -1609,8 +1645,14 @@ const layer: Layer.Layer<
               })
             : sdk.languageModel(model.api.id)
           s.models.set(key, language)
+          log.info("provider.getLanguage.resolved", { providerID: model.providerID, modelID: model.id })
           return language
         } catch (e) {
+          log.error("provider.getLanguage.failed", {
+            providerID: model.providerID,
+            modelID: model.id,
+            error: e instanceof Error ? e.message : String(e),
+          })
           if (e instanceof NoSuchModelError)
             throw new ModelNotFoundError(
               {

@@ -106,10 +106,16 @@ async function cleanup(dir: string) {
 }
 
 function formatError(error: Error, depth = 0): string {
-  const result = error.message
-  return error.cause instanceof Error && depth < 10
-    ? result + " Caused by: " + formatError(error.cause, depth + 1)
-    : result
+  const parts = [error.message]
+  if (error.stack) {
+    // Extract stack trace without the error message line
+    const stackLines = error.stack.split("\n").slice(1, 4).map(l => l.trim()).join(" <- ")
+    if (stackLines) parts.push(`at ${stackLines}`)
+  }
+  if (error.cause instanceof Error && depth < 10) {
+    parts.push(`Caused by: ${formatError(error.cause, depth + 1)}`)
+  }
+  return parts.join(" ")
 }
 
 let last = Date.now()

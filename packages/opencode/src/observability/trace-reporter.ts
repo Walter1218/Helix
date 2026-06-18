@@ -2,6 +2,9 @@ import { Effect, Layer, Context, Ref } from "effect"
 import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import z from "zod"
+import { Log } from "@/util"
+
+const log = Log.create({ service: "trace-reporter" })
 
 export const TraceNodeEvent = BusEvent.define(
   "observability.trace_node",
@@ -33,14 +36,29 @@ export const layer = Layer.effect(
 
     // Subscribe to trace node events to build the memory tree.
     yield* bus.subscribeCallback(TraceNodeEvent, (e) => {
+      log.debug("trace.event.received", {
+        id: e.properties.id,
+        type: e.properties.type,
+        name: e.properties.name,
+        status: e.properties.status,
+      })
       Effect.runSync(Ref.update(traces, (list) => [...list, e.properties]))
     })
 
     const getTraces = Effect.fn("TraceReporter.getTraces")(function* () {
-      return yield* Ref.get(traces)
+      const all = yield* Ref.get(traces)
+      log.debug("trace.getTraces", { count: all.length })
+      return all
     })
 
     const emitTrace = Effect.fn("TraceReporter.emitTrace")(function* (trace: Omit<TraceEvent, "timestamp">) {
+      log.info("trace.emit", {
+        id: trace.id,
+        type: trace.type,
+        name: trace.name,
+        status: trace.status,
+        parentId: trace.parentId,
+      })
       const fullTrace = { ...trace, timestamp: Date.now() }
       yield* bus.publish(TraceNodeEvent, fullTrace).pipe(Effect.catch(() => Effect.void))
     })

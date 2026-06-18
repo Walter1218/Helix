@@ -72,6 +72,17 @@ DIRTY_PATTERNS = [/timeout/i, /out of memory/i, /toolinterceptor blocked/i]
 inbox.send({ senderActorID: "alignment-guard", content: "<alignment-guard>..." })
 ```
 
+**Trace 日志覆盖 (85% 覆盖率)**:
+- `session` - 会话创建、提示处理、完成状态
+- `server` - HTTP 请求接收和处理
+- `llm` - LLM 流式调用（providerID、modelID、agent、mode）
+- `tool` - 工具初始化、执行开始/完成/失败
+- `provider` - 模型解析、语言模型加载
+- `memory` - 记忆协调、索引、剪枝
+- `agent` - 状态初始化和就绪（部分覆盖）
+
+**关键路径**: 会话创建 → HTTP 请求 → LLM 调用 → 工具执行 → 会话完成
+
 ### 3. Hybrid Memory (FTS5 + Vector RAG)
 
 ```ts
@@ -98,7 +109,19 @@ Unlike chatbots that ask for confirmation every step, Helix's Feishu Gateway sup
 - **Auto-Answer AskUserQuestion**: "Continue executing; use local resources to complete the task autonomously."
 - **Real-Time Progress**: Streaming agent reasoning and tool calls to the terminal
 
-### 6. Auto-Loop Workflow (Plan → Execute → Test → Heal → Distill)
+### 6. VS Code Extension — Event-Driven GUI
+
+The VS Code extension (`sdks/vscode`) provides a GUI panel with full agent integration:
+
+- **SSE Streaming**: Real-time rendering of agent's reasoning → tool calls → text conclusions via `/event` SSE stream (not one-shot response)
+- **6-Mode Switcher**: Ask / Build / Plan / Compose / Loop / Max
+- **Event-Driven**: Listens to `session.status`, `permission.asked`, `question.asked`, `session.error`, `session.retry.attempt`, `session.diff`, `task.updated` — no polling
+- **Two-Tier Tool Display**: InlineTool (pending/running) → BlockTool (completed with output), auto-collapse >10 lines
+- **Reasoning Cards**: Collapsible "Thought" cards with title + duration, click to expand
+- **Real Data**: Online mode loads tasks/todo from API, no mock data
+- **SSE Resilience**: 20s heartbeat + auto-reconnect
+
+### 7. Auto-Loop Workflow (Plan → Execute → Test → Heal → Distill)
 
 Helix implements a fully autonomous engineering loop that iterates until the goal is achieved:
 

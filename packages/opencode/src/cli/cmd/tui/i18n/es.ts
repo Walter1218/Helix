@@ -121,7 +121,7 @@ export const dict = {
   "tui.tips.mcp_config":
     "Configura servidores MCP locales o remotos en la sección {highlight}mcp{/highlight}",
   "tui.tips.mcp_oauth":
-    "MiMoCode gestiona automáticamente OAuth para servidores MCP remotos que requieran autenticación",
+    "Helix gestiona automáticamente OAuth para servidores MCP remotos que requieran autenticación",
   "tui.tips.custom_command":
     "Añade archivos {highlight}.md{/highlight} en {highlight}.mimocode/command/{/highlight} para definir indicaciones personalizadas reutilizables",
   "tui.tips.command_args":
@@ -138,12 +138,12 @@ export const dict = {
     'Define {highlight}"rm -rf *": "deny"{/highlight} para bloquear comandos destructivos',
   "tui.tips.bash_ask":
     'Configura {highlight}"git push": "ask"{/highlight} para exigir confirmación antes de hacer push',
-  "tui.tips.formatter": "MiMoCode formatea archivos automáticamente con prettier, gofmt, ruff y más",
+  "tui.tips.formatter": "Helix formatea archivos automáticamente con prettier, gofmt, ruff y más",
   "tui.tips.disable_formatter":
     'Define {highlight}"formatter": false{/highlight} en la config para desactivar el formato automático',
   "tui.tips.custom_formatter":
     "Define comandos de formateo personalizados por extensión de archivo en la configuración",
-  "tui.tips.lsp": "MiMoCode usa servidores LSP para análisis inteligente de código",
+  "tui.tips.lsp": "Helix usa servidores LSP para análisis inteligente de código",
   "tui.tips.custom_tool":
     "Crea archivos {highlight}.ts{/highlight} en {highlight}.mimocode/tools/{/highlight} para definir nuevas herramientas LLM",
   "tui.tips.tool_scripts":
@@ -153,7 +153,7 @@ export const dict = {
   "tui.tips.plugin_notify":
     "Usa plugins para enviar notificaciones del sistema cuando termine una sesión",
   "tui.tips.plugin_protect":
-    "Crea un plugin que impida a MiMoCode leer archivos sensibles",
+    "Crea un plugin que impida a Helix leer archivos sensibles",
   "tui.tips.run":
     "Usa {highlight}mimo run{/highlight} para scripting no interactivo",
   "tui.tips.continue":
@@ -163,7 +163,7 @@ export const dict = {
   "tui.tips.format_json":
     "Usa {highlight}--format json{/highlight} para obtener salida legible por máquina en scripts",
   "tui.tips.serve":
-    "Ejecuta {highlight}mimo serve{/highlight} para acceso headless a la API de MiMoCode",
+    "Ejecuta {highlight}mimo serve{/highlight} para acceso headless a la API de Helix",
   "tui.tips.attach_server":
     "Usa {highlight}mimo run --attach{/highlight} para conectarte a un servidor en ejecución",
   "tui.tips.upgrade":
@@ -227,7 +227,7 @@ export const dict = {
   "tui.tips.docker":
     "Ejecuta {highlight}docker run -it --rm ghcr.io/anomalyco/opencode{/highlight} para uso en contenedor",
   "tui.tips.zen":
-    "Usa {highlight}/connect{/highlight} con MiMo Code para modelos seleccionados y probados",
+    "Usa {highlight}/connect{/highlight} con Helix para modelos seleccionados y probados",
   "tui.tips.agents_md":
     "Sube el {highlight}AGENTS.md{/highlight} de tu proyecto a Git para compartirlo con el equipo",
   "tui.tips.review":

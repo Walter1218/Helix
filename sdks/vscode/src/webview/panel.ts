@@ -63,57 +63,17 @@ export class HelixWebviewPanel {
 
   private getHtml(): string {
     const mediaPath = vscode.Uri.joinPath(this._extensionUri, "media");
-    const indexPath = vscode.Uri.joinPath(mediaPath, "index.html");
     const welcomePath = vscode.Uri.joinPath(mediaPath, "helix-welcome.html");
 
     let html: string;
-    // 离线模式加载自定义 Helix 欢迎页
-    if (this._serverPort === 0) {
-      try {
-        html = fs.readFileSync(welcomePath.fsPath, "utf-8");
-      } catch {
-        return this.getFallbackHtml();
-      }
-      const bridgeScript = this.getBridgeScript();
-      html = html.replace("</head>", `${bridgeScript}</head>`);
-      return html;
-    }
-
+    // 始终使用 Helix 自定义 UI
     try {
-      html = fs.readFileSync(indexPath.fsPath, "utf-8");
+      html = fs.readFileSync(welcomePath.fsPath, "utf-8");
     } catch {
-      // 如果 media 目录不存在，显示一个简单的错误页面
       return this.getFallbackHtml();
     }
-
-    // 替换资源路径：将 /assets/xxx 替换为 vscode-resource 路径
-    const webview = this.panel.webview;
-
-    html = html.replace(
-      /(src|href)=["']\//g,
-      (match, attr) => {
-        const prefix = attr === "src" ? "src=\"" : "href=\"";
-        return prefix;
-      }
-    );
-
-    // 然后替换所有相对路径为 webview URI
-    html = html.replace(
-      /(src|href)=["']([^"']+)["']/g,
-      (match, attr, url) => {
-        if (url.startsWith("http") || url.startsWith("data:")) {
-          return match;
-        }
-        const resourceUri = vscode.Uri.joinPath(mediaPath, url);
-        const webviewUri = webview.asWebviewUri(resourceUri);
-        return `${attr}="${webviewUri}"`;
-      }
-    );
-
-    // 在 </head> 前注入桥接脚本
     const bridgeScript = this.getBridgeScript();
     html = html.replace("</head>", `${bridgeScript}</head>`);
-
     return html;
   }
 
@@ -123,6 +83,7 @@ export class HelixWebviewPanel {
 (function() {
   const vscode = acquireVsCodeApi()
   window.__HELIX_VSCODE__ = true
+  window.__HELIX_VSCODE_REF__ = vscode
   window.__HELIX_SERVER_PORT__ = ${this._serverPort}
 
   // 保存原始 fetch
