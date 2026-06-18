@@ -337,6 +337,34 @@
         flex-direction: column;
         overflow: hidden;
         flex-shrink: 0;
+        transition: width 0.2s ease;
+        position: relative;
+      }
+      .sidebar-right.collapsed {
+        width: 0;
+        border-left: none;
+      }
+      .sidebar-collapse-btn {
+        position: absolute;
+        left: -12px;
+        top: 8px;
+        width: 24px;
+        height: 24px;
+        background: #21262d;
+        border: 1px solid #30363d;
+        border-radius: 4px;
+        color: #8b949e;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        z-index: 10;
+        transition: background 0.15s;
+      }
+      .sidebar-collapse-btn:hover {
+        background: #30363d;
+        color: #f0f6fc;
       }
       .sidebar-tabs {
         display: flex;
@@ -1223,6 +1251,7 @@
 
       /* ===== Minimal Mode ===== */
       body.minimal-mode .sidebar-right { display: none !important; }
+      body.minimal-mode .sidebar-collapse-btn { display: none !important; }
       body.minimal-mode .status-bar { display: none !important; }
       body.minimal-mode .mode-selector { justify-content: flex-start; padding: 6px 12px; }
       body.minimal-mode .mode-btn .mode-label { display: none; }
@@ -2027,6 +2056,9 @@
 
       <!-- Phase 2: Side Panel -->
       <div class="sidebar-right" id="sidebar-right">
+        <button class="sidebar-collapse-btn" id="sidebar-collapse-btn" onclick="toggleSidebar()" title="Toggle Sidebar">
+          ◀
+        </button>
         <div class="sidebar-tabs" id="sidebar-tabs">
           <button class="sidebar-tab active" data-tab="tasks" onclick="switchSideTab('tasks')">✅ Tasks</button>
           <button class="sidebar-tab" data-tab="changes" onclick="switchSideTab('changes')">📋 Changes</button>
@@ -2562,7 +2594,8 @@
         }
       }
 
-      let minimalMode = false;
+      let minimalMode = true; // Default to minimal mode
+      let sidebarCollapsed = false;
       let expandedCollapsible = new Set();
 
       function newChat() {
@@ -2586,6 +2619,19 @@
         if (minimalMode) {
           renderCollapsible('tasks');
           renderCollapsible('changes');
+        }
+      }
+
+      function toggleSidebar() {
+        sidebarCollapsed = !sidebarCollapsed;
+        const sidebar = document.getElementById('sidebar-right');
+        const btn = document.getElementById('sidebar-collapse-btn');
+        if (sidebar) {
+          sidebar.classList.toggle('collapsed', sidebarCollapsed);
+        }
+        if (btn) {
+          btn.textContent = sidebarCollapsed ? '▶' : '◀';
+          btn.title = sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar';
         }
       }
 
@@ -4317,6 +4363,11 @@
       renderZen();
       renderDriftAlerts();
       initSettingsUI();
+
+      // Apply default minimal mode
+      document.body.classList.add('minimal-mode');
+      const minimalIcon = document.getElementById('minimal-icon');
+      if (minimalIcon) minimalIcon.textContent = '⬜';
       renderCollapsible('tasks');
       renderCollapsible('changes');
 

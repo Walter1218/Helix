@@ -17,15 +17,6 @@
       }
 
       /* ===== Phase 1: Mode Registry ===== */
-      .mode-bar {
-        display: flex;
-        gap: 6px;
-        padding: 8px 16px;
-        border-bottom: 1px solid #21262d;
-        justify-content: center;
-        background: #010409;
-        flex-shrink: 0;
-      }
       .mode-btn {
         display: flex;
         align-items: center;
@@ -89,7 +80,30 @@
         min-height: 0;
       }
 
-      /* ===== Welcome Screen ===== */
+      /* ===== Back to Welcome Button ===== */
+      .back-to-welcome {
+        display: none;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        margin: 8px 16px 0;
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        color: #8b949e;
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.2s;
+        align-self: flex-start;
+      }
+      .back-to-welcome:hover {
+        background: #21262d;
+        color: #f0f6fc;
+        border-color: #484f58;
+      }
+      .back-to-welcome.visible {
+        display: flex;
+      }
       .welcome {
         text-align: center;
         padding: 60px 20px 40px;
@@ -233,9 +247,17 @@
         border-top: 1px solid #21262d;
         flex-shrink: 0;
       }
+      .input-wrapper {
+        position: relative;
+        display: flex;
+        align-items: flex-end;
+        gap: 8px;
+      }
       .input-box {
+        flex: 1;
         width: 100%;
         padding: 12px 16px;
+        padding-right: 44px;
         background: #010409;
         border: 1px solid #30363d;
         border-radius: 12px;
@@ -254,6 +276,36 @@
       }
       .input-box::placeholder {
         color: #484f58;
+      }
+      .input-action-btn {
+        position: absolute;
+        right: 8px;
+        bottom: 8px;
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        border: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 14px;
+        background: #238636;
+        color: #fff;
+      }
+      .input-action-btn:hover {
+        background: #2ea043;
+      }
+      .input-action-btn.stop {
+        background: #da3633;
+        color: #fff;
+      }
+      .input-action-btn.stop:hover {
+        background: #f85149;
+      }
+      .input-action-btn.hidden {
+        display: none !important;
       }
       .input-hint {
         display: flex;
@@ -285,6 +337,34 @@
         flex-direction: column;
         overflow: hidden;
         flex-shrink: 0;
+        transition: width 0.2s ease;
+        position: relative;
+      }
+      .sidebar-right.collapsed {
+        width: 0;
+        border-left: none;
+      }
+      .sidebar-collapse-btn {
+        position: absolute;
+        left: -12px;
+        top: 8px;
+        width: 24px;
+        height: 24px;
+        background: #21262d;
+        border: 1px solid #30363d;
+        border-radius: 4px;
+        color: #8b949e;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        z-index: 10;
+        transition: background 0.15s;
+      }
+      .sidebar-collapse-btn:hover {
+        background: #30363d;
+        color: #f0f6fc;
       }
       .sidebar-tabs {
         display: flex;
@@ -390,6 +470,14 @@
       .task-progress-fill.low { background: #f85149; }
       .task-progress-fill.mid { background: #d29922; }
       .task-progress-fill.high { background: #3fb950; }
+      .task-item.completed-animation {
+        animation: taskComplete 0.6s ease;
+      }
+      @keyframes taskComplete {
+        0% { background: #23863600; }
+        30% { background: #23863630; }
+        100% { background: #23863600; }
+      }
       .task-current-action {
         font-size: 10px;
         color: #8b949e;
@@ -516,10 +604,90 @@
         max-height: 200px;
         overflow-y: auto;
       }
-      .diff-line { padding: 1px 4px; }
+      .diff-line { padding: 1px 4px; position: relative; }
       .diff-line.add { background: #23863615; color: #3fb950; }
       .diff-line.del { background: #da363315; color: #f85149; }
       .diff-line.meta { color: #8b949e; }
+      .diff-line:hover { background: #21262d50; }
+      .diff-line .comment-btn {
+        position: absolute;
+        right: 4px;
+        top: 50%;
+        transform: translateY(-50%);
+        opacity: 0;
+        background: #21262d;
+        border: 1px solid #30363d;
+        color: #8b949e;
+        font-size: 10px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: opacity 0.15s;
+      }
+      .diff-line:hover .comment-btn { opacity: 1; }
+      .diff-line .comment-btn:hover {
+        background: #30363d;
+        color: #c9d1d9;
+      }
+      .diff-comment {
+        background: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 8px 10px;
+        margin: 4px 0 4px 20px;
+        font-size: 11px;
+      }
+      .diff-comment-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 6px;
+        color: #8b949e;
+      }
+      .diff-comment-input {
+        width: 100%;
+        background: #010409;
+        border: 1px solid #30363d;
+        border-radius: 4px;
+        color: #c9d1d9;
+        font-size: 12px;
+        padding: 6px 8px;
+        resize: none;
+        outline: none;
+      }
+      .diff-comment-input:focus {
+        border-color: #58a6ff;
+      }
+      .diff-comment-actions {
+        display: flex;
+        gap: 6px;
+        margin-top: 6px;
+      }
+      .diff-comment-actions button {
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-size: 10px;
+        cursor: pointer;
+        border: 1px solid;
+      }
+      .diff-comment-actions .save-btn {
+        background: #23863620;
+        border-color: #23863640;
+        color: #3fb950;
+      }
+      .diff-comment-actions .cancel-btn {
+        background: transparent;
+        border-color: #30363d;
+        color: #8b949e;
+      }
+      .diff-comment-saved {
+        background: #0d1117;
+        border-left: 2px solid #58a6ff;
+        padding: 6px 10px;
+        margin: 4px 0 4px 20px;
+        font-size: 11px;
+        color: #c9d1d9;
+      }
       .checkpoint-actions {
         padding: 8px 12px;
         border-top: 1px solid #21262d;
@@ -1015,7 +1183,110 @@
         color: #8b949e;
       }
 
-      /* ===== Status Bar ===== */
+      /* ===== Collapsible Panels (minimal mode, above input) ===== */
+      .collapsible-panels {
+        display: none;
+        flex-shrink: 0;
+        border-top: 1px solid #21262d;
+        background: #010409;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+      body.minimal-mode .collapsible-panels { display: block; }
+      .collapsible-section { border-bottom: 1px solid #21262d; }
+      .collapsible-section:last-child { border-bottom: none; }
+      .collapsible-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 16px;
+        font-size: 12px;
+        color: #8b949e;
+        cursor: pointer;
+        user-select: none;
+        transition: background 0.15s;
+      }
+      .collapsible-header:hover { background: #21262d; }
+      .collapsible-header .expand-icon { font-size: 10px; width: 12px; }
+      .collapsible-content { display: none; padding: 4px 16px 8px; }
+      .collapsible-content.expanded { display: block; }
+      .collapsible-content .task-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 0 3px 16px;
+      }
+      .collapsible-content .task-item .task-status { font-size: 11px; width: 14px; }
+      .collapsible-content .task-item .task-text {
+        font-size: 11px;
+        color: #c9d1d9;
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .collapsible-content .task-item .task-progress {
+        font-size: 10px;
+        color: #6e7681;
+        min-width: 28px;
+        text-align: right;
+      }
+      .collapsible-content .change-file {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 0;
+      }
+      .collapsible-content .change-type { font-size: 11px; width: 12px; text-align: center; }
+      .collapsible-content .change-path {
+        font-size: 11px;
+        color: #c9d1d9;
+        font-family: 'SF Mono', monospace;
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .collapsible-content .change-lines { font-size: 10px; color: #6e7681; }
+
+      /* ===== Minimal Mode ===== */
+      body.minimal-mode .sidebar-right { display: none !important; }
+      body.minimal-mode .sidebar-collapse-btn { display: none !important; }
+      body.minimal-mode .status-bar { display: none !important; }
+      body.minimal-mode .mode-selector { justify-content: flex-start; padding: 6px 12px; }
+      body.minimal-mode .mode-btn .mode-label { display: none; }
+      body.minimal-mode .mode-btn { padding: 4px 8px; }
+      body.minimal-mode .main { flex: 1; }
+      body.minimal-mode .chat-area { flex: 1; }
+      body.minimal-mode .welcome .mode-cards { display: none !important; }
+
+      /* ===== Mode Selector (below input) ===== */
+      .mode-selector {
+        display: flex;
+        gap: 6px;
+        padding: 8px 16px;
+        border-top: 1px solid #21262d;
+        background: #010409;
+        flex-shrink: 0;
+        justify-content: center;
+        align-items: center;
+      }
+      .mode-selector .mode-btn {
+        padding: 4px 10px;
+        font-size: 11px;
+      }
+      .mode-selector .mode-btn.active {
+        background: #21262d;
+        color: #f0f6fc;
+      }
+      body.minimal-mode .mode-selector {
+        justify-content: flex-start;
+        padding: 6px 12px;
+      }
+      body.minimal-mode .mode-selector .mode-btn .mode-label { display: none; }
+      body.minimal-mode .mode-selector .mode-btn { padding: 4px 8px; }
+      #new-chat-btn { margin-left: 8px; }
+
       .status-bar {
         padding: 6px 16px;
         border-top: 1px solid #21262d;
@@ -1093,6 +1364,416 @@
         color: #6e7681;
       }
 
+      /* ===== AlignmentGuard Drift Alert ===== */
+      .drift-alert {
+        position: relative;
+        border: 1px solid #d9770650;
+        background: #d9770608;
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin: 8px 0;
+        animation: driftPulse 3s ease-in-out infinite;
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+      }
+      @keyframes driftPulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.3); }
+        50% { box-shadow: 0 0 12px 2px rgba(217, 119, 6, 0.15); }
+      }
+      .drift-alert-icon {
+        font-size: 20px;
+        flex-shrink: 0;
+      }
+      .drift-alert-body {
+        flex: 1;
+        min-width: 0;
+      }
+      .drift-alert-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #d97706;
+        margin-bottom: 4px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .drift-alert-title .drift-type {
+        font-size: 10px;
+        font-weight: 500;
+        padding: 1px 6px;
+        border-radius: 3px;
+        background: #d9770620;
+        color: #d97706;
+      }
+      .drift-alert-desc {
+        font-size: 12px;
+        color: #c9d1d9;
+        line-height: 1.5;
+        margin-bottom: 8px;
+      }
+      .drift-alert-actions {
+        display: flex;
+        gap: 8px;
+      }
+      .drift-btn {
+        padding: 4px 10px;
+        font-size: 11px;
+        font-weight: 500;
+        border-radius: 6px;
+        cursor: pointer;
+        border: 1px solid transparent;
+        transition: all 0.2s;
+      }
+      .drift-btn-recalibrate {
+        background: #d97706;
+        color: #fff;
+      }
+      .drift-btn-recalibrate:hover {
+        background: #b45309;
+      }
+      .drift-btn-dismiss {
+        background: transparent;
+        color: #d97706;
+        border-color: #d9770650;
+      }
+      .drift-btn-dismiss:hover {
+        background: #d9770610;
+      }
+      .drift-alert .drift-close {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        background: none;
+        border: none;
+        color: #6e7681;
+        cursor: pointer;
+        font-size: 14px;
+        padding: 2px;
+        border-radius: 4px;
+      }
+      .drift-alert .drift-close:hover {
+        background: #21262d;
+        color: #c9d1d9;
+      }
+
+      /* ===== Task Item Tooltip ===== */
+      .task-tooltip {
+        position: absolute;
+        bottom: calc(100% + 6px);
+        left: 0;
+        background: #21262d;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 11px;
+        color: #c9d1d9;
+        min-width: 180px;
+        z-index: 50;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        pointer-events: none;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.15s, visibility 0.15s;
+      }
+      .task-item:hover .task-tooltip {
+        opacity: 1;
+        visibility: visible;
+      }
+      .task-tooltip-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 2px 0;
+      }
+      .task-tooltip-label {
+        color: #8b949e;
+      }
+
+      /* ===== Task Context Menu ===== */
+      .context-menu {
+        position: fixed;
+        background: #21262d;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 4px;
+        min-width: 160px;
+        z-index: 100;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        display: none;
+      }
+      .context-menu.active {
+        display: block;
+      }
+      .context-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        font-size: 12px;
+        color: #c9d1d9;
+        border-radius: 4px;
+        cursor: pointer;
+        border: none;
+        background: none;
+        width: 100%;
+        text-align: left;
+      }
+      .context-menu-item:hover {
+        background: #30363d;
+      }
+      .context-menu-item .menu-icon {
+        font-size: 12px;
+        width: 16px;
+        text-align: center;
+      }
+      .context-menu-divider {
+        height: 1px;
+        background: #30363d;
+        margin: 4px 0;
+      }
+
+      /* ===== Settings Panel ===== */
+      .settings-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 200;
+        opacity: 0;
+        visibility: hidden;
+        transition: all 0.3s;
+      }
+      .settings-overlay.active {
+        opacity: 1;
+        visibility: visible;
+      }
+      .settings-panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        width: 420px;
+        height: 100vh;
+        background: #0d1117;
+        border-left: 1px solid #21262d;
+        z-index: 201;
+        transform: translateX(100%);
+        transition: transform 0.3s ease;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .settings-overlay.active .settings-panel {
+        transform: translateX(0);
+      }
+      .settings-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid #21262d;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-shrink: 0;
+      }
+      .settings-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #f0f6fc;
+      }
+      .settings-close {
+        background: none;
+        border: none;
+        color: #8b949e;
+        font-size: 18px;
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+      }
+      .settings-close:hover {
+        background: #21262d;
+        color: #f0f6fc;
+      }
+      .settings-search {
+        padding: 12px 20px;
+        border-bottom: 1px solid #21262d;
+        flex-shrink: 0;
+      }
+      .settings-search input {
+        width: 100%;
+        padding: 8px 12px;
+        background: #010409;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        color: #c9d1d9;
+        font-size: 13px;
+        outline: none;
+      }
+      .settings-search input:focus {
+        border-color: #58a6ff;
+      }
+      .settings-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px 20px;
+      }
+      .settings-section {
+        margin-bottom: 24px;
+      }
+      .settings-section-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: #8b949e;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 12px;
+      }
+      .settings-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 0;
+        border-bottom: 1px solid #21262d;
+      }
+      .settings-item:last-child {
+        border-bottom: none;
+      }
+      .settings-item-label {
+        flex: 1;
+      }
+      .settings-item-name {
+        font-size: 13px;
+        color: #c9d1d9;
+        margin-bottom: 2px;
+      }
+      .settings-item-desc {
+        font-size: 11px;
+        color: #6e7681;
+      }
+      .settings-item-control {
+        display: flex;
+        align-items: center;
+      }
+      .settings-select {
+        padding: 5px 10px;
+        background: #010409;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        color: #c9d1d9;
+        font-size: 12px;
+        outline: none;
+        cursor: pointer;
+        min-width: 140px;
+      }
+      .settings-select:focus {
+        border-color: #58a6ff;
+      }
+      .settings-slider {
+        width: 120px;
+        accent-color: #58a6ff;
+      }
+      .settings-slider-value {
+        font-size: 12px;
+        color: #8b949e;
+        min-width: 32px;
+        text-align: right;
+        margin-left: 8px;
+      }
+      .settings-toggle {
+        width: 36px;
+        height: 20px;
+        border-radius: 10px;
+        background: #30363d;
+        border: none;
+        cursor: pointer;
+        position: relative;
+        transition: background 0.2s;
+      }
+      .settings-toggle.active {
+        background: #238636;
+      }
+      .settings-toggle::after {
+        content: '';
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #fff;
+        transition: transform 0.2s;
+      }
+      .settings-toggle.active::after {
+        transform: translateX(16px);
+      }
+      .settings-number {
+        width: 80px;
+        padding: 5px 8px;
+        background: #010409;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        color: #c9d1d9;
+        font-size: 12px;
+        outline: none;
+        text-align: right;
+      }
+      .settings-number:focus {
+        border-color: #58a6ff;
+      }
+      .settings-footer {
+        padding: 12px 20px;
+        border-top: 1px solid #21262d;
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+      .settings-btn {
+        padding: 6px 14px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        border: 1px solid transparent;
+        transition: all 0.2s;
+      }
+      .settings-btn-primary {
+        background: #238636;
+        color: #fff;
+      }
+      .settings-btn-primary:hover {
+        background: #2ea043;
+      }
+      .settings-btn-secondary {
+        background: transparent;
+        color: #8b949e;
+        border-color: #30363d;
+      }
+      .settings-btn-secondary:hover {
+        background: #21262d;
+        color: #c9d1d9;
+      }
+      .settings-shortcut-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 0;
+        font-size: 12px;
+        border-bottom: 1px solid #21262d;
+      }
+      .settings-shortcut-row:last-child {
+        border-bottom: none;
+      }
+      .settings-shortcut-key {
+        font-family: 'SF Mono', monospace;
+        font-size: 11px;
+        background: #21262d;
+        padding: 2px 6px;
+        border-radius: 4px;
+        color: #8b949e;
+      }
+
       /* Tooltip */
       .tooltip-container {
         position: relative;
@@ -1146,43 +1827,97 @@
       ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
       ::-webkit-scrollbar-thumb:hover { background: #484f58; }
 
+      /* Confirm Dialog */
+      .confirm-dialog-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 300;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .confirm-dialog {
+        background: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 12px;
+        padding: 20px;
+        max-width: 400px;
+        width: 100%;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      }
+      .confirm-dialog-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #f0f6fc;
+        margin-bottom: 12px;
+      }
+      .confirm-dialog-message {
+        font-size: 13px;
+        color: #c9d1d9;
+        margin-bottom: 16px;
+        line-height: 1.5;
+      }
+      .confirm-dialog-summary {
+        background: #010409;
+        border: 1px solid #21262d;
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 16px;
+        font-size: 12px;
+      }
+      .confirm-dialog-summary-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 4px 0;
+        color: #8b949e;
+      }
+      .confirm-dialog-summary-value {
+        color: #c9d1d9;
+        font-weight: 500;
+      }
+      .confirm-dialog-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+      .confirm-dialog-actions button {
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        border: 1px solid transparent;
+        transition: all 0.2s;
+      }
+      .confirm-dialog-actions .confirm-btn {
+        background: #238636;
+        color: #fff;
+      }
+      .confirm-dialog-actions .confirm-btn:hover {
+        background: #2ea043;
+      }
+      .confirm-dialog-actions .cancel-btn {
+        background: transparent;
+        color: #8b949e;
+        border-color: #30363d;
+      }
+      .confirm-dialog-actions .cancel-btn:hover {
+        background: #21262d;
+        color: #c9d1d9;
+      }
+
       /* Hidden */
       .hidden { display: none !important; }
     </style>
   </head>
   <body>
-    <!-- Phase 1: Mode Switcher -->
-    <div class="mode-bar" id="mode-bar">
-      <div class="mode-btn active" data-mode="ask" onclick="switchMode('ask')">
-        <span class="mode-icon">💬</span>
-        <span class="mode-label">Ask</span>
-      </div>
-      <div class="mode-btn" data-mode="build" onclick="switchMode('build')">
-        <span class="mode-icon">🛠️</span>
-        <span class="mode-label">Build</span>
-      </div>
-      <div class="mode-btn" data-mode="plan" onclick="switchMode('plan')">
-        <span class="mode-icon">📋</span>
-        <span class="mode-label">Plan</span>
-      </div>
-      <div class="mode-btn" data-mode="compose" onclick="switchMode('compose')">
-        <span class="mode-icon">🎼</span>
-        <span class="mode-label">Compose</span>
-      </div>
-      <div class="mode-btn" data-mode="loop" onclick="switchMode('loop')">
-        <span class="mode-icon">🔄</span>
-        <span class="mode-label">Loop</span>
-      </div>
-      <div class="mode-btn" data-mode="max" onclick="switchMode('max')">
-        <span class="mode-icon">⚡</span>
-        <span class="mode-label">Max</span>
-        <span class="experimental-badge">β</span>
-      </div>
-    </div>
-
     <div class="main">
       <!-- Chat Area -->
       <div class="chat-area">
+        <button class="back-to-welcome" id="back-to-welcome" onclick="showWelcome()">
+          <span>←</span> Back to Welcome
+        </button>
         <div class="messages" id="messages">
           <!-- Welcome Screen -->
           <div class="welcome" id="welcome-screen">
@@ -1221,26 +1956,109 @@
               </div>
             </div>
           </div>
+          <!-- AlignmentGuard Drift Alerts Container -->
+          <div id="drift-alerts-container"></div>
+        </div>
+
+        <!-- Context Menu -->
+        <div class="context-menu" id="context-menu" role="menu" aria-label="Task actions">
+          <button class="context-menu-item" id="ctx-mark-complete" onclick="contextAction('complete')" role="menuitem">
+            <span class="menu-icon">✅</span> Mark as Completed
+          </button>
+          <button class="context-menu-item" id="ctx-mark-failed" onclick="contextAction('fail')" role="menuitem">
+            <span class="menu-icon">❌</span> Mark as Failed
+          </button>
+          <div class="context-menu-divider" role="separator"></div>
+          <button class="context-menu-item" id="ctx-retry" onclick="contextAction('retry')" role="menuitem">
+            <span class="menu-icon">🔄</span> Retry
+          </button>
+          <button class="context-menu-item" id="ctx-skip" onclick="contextAction('skip')" role="menuitem">
+            <span class="menu-icon">⏭️</span> Skip
+          </button>
+        </div>
+
+        <!-- Collapsible Panels (minimal mode, above input) -->
+        <div class="collapsible-panels" id="collapsible-panels">
+          <div class="collapsible-section">
+            <div class="collapsible-header" onclick="toggleCollapsible('tasks')">
+              <span class="expand-icon" id="tasks-expand-icon">▶</span>
+              <span>✅ Tasks</span>
+              <span style="margin-left:auto;font-size:10px;color:#6e7681" id="tasks-badge">0/0</span>
+            </div>
+            <div class="collapsible-content" id="collapsible-tasks"></div>
+          </div>
+          <div class="collapsible-section">
+            <div class="collapsible-header" onclick="toggleCollapsible('changes')">
+              <span class="expand-icon" id="changes-expand-icon">▶</span>
+              <span>📋 Changes</span>
+              <span style="margin-left:auto;font-size:10px;color:#6e7681" id="changes-badge">0</span>
+            </div>
+            <div class="collapsible-content" id="collapsible-changes"></div>
+          </div>
         </div>
 
         <!-- Input Area -->
         <div class="input-area">
-          <textarea
-            class="input-box"
-            id="input"
-            placeholder="💬 Ask: Describe your question..."
-            rows="1"
-          ></textarea>
+          <div class="input-wrapper">
+            <textarea
+              class="input-box"
+              id="input"
+              placeholder="💬 Ask: Describe your question..."
+              rows="1"
+            ></textarea>
+            <button class="input-action-btn" id="send-btn" onclick="sendMessage()" title="Send (Enter)">➤</button>
+            <button class="input-action-btn stop hidden" id="stop-btn" onclick="stopGeneration()" title="Stop">■</button>
+          </div>
           <div class="mode-color-bar ask" id="mode-color-bar"></div>
           <div class="input-hint">
             <span id="input-hint-left">Press Enter to send · Shift+Enter for new line</span>
             <span>Cmd+K to add context</span>
           </div>
         </div>
+
+        <!-- Mode Selector below input -->
+        <div class="mode-selector" id="mode-selector">
+          <button class="mode-btn" id="settings-btn" onclick="openSettings()" title="Settings">⚙️</button>
+          <div class="mode-btn active" data-mode="ask" onclick="switchMode('ask')">
+            <span class="mode-icon">💬</span>
+            <span class="mode-label">Ask</span>
+          </div>
+          <div class="mode-btn" data-mode="build" onclick="switchMode('build')">
+            <span class="mode-icon">🛠️</span>
+            <span class="mode-label">Build</span>
+          </div>
+          <div class="mode-btn" data-mode="plan" onclick="switchMode('plan')">
+            <span class="mode-icon">📋</span>
+            <span class="mode-label">Plan</span>
+          </div>
+          <div class="mode-btn" data-mode="compose" onclick="switchMode('compose')">
+            <span class="mode-icon">🎼</span>
+            <span class="mode-label">Compose</span>
+          </div>
+          <div class="mode-btn" data-mode="loop" onclick="switchMode('loop')">
+            <span class="mode-icon">🔄</span>
+            <span class="mode-label">Loop</span>
+          </div>
+          <div class="mode-btn" data-mode="max" onclick="switchMode('max')">
+            <span class="mode-icon">⚡</span>
+            <span class="mode-label">Max</span>
+            <span class="experimental-badge">β</span>
+          </div>
+          <div style="flex:1"></div>
+          <button class="mode-btn" id="new-chat-btn" onclick="newChat()" title="New Chat">
+            <span>➕</span>
+          </button>
+          <button class="mode-btn" id="minimal-toggle" onclick="toggleMinimalMode()" title="Toggle Minimal Mode">
+            <span id="minimal-icon">⬛</span>
+          </button>
+        </div>
       </div>
 
       <!-- Phase 2: Side Panel -->
       <div class="sidebar-right" id="sidebar-right">
+        <button class="sidebar-collapse-btn" id="sidebar-collapse-btn" onclick="toggleSidebar()" title="Toggle Sidebar">
+          ◀
+        </button>
         <div class="sidebar-tabs" id="sidebar-tabs">
           <button class="sidebar-tab active" data-tab="tasks" onclick="switchSideTab('tasks')">✅ Tasks</button>
           <button class="sidebar-tab" data-tab="changes" onclick="switchSideTab('changes')">📋 Changes</button>
@@ -1369,21 +2187,238 @@
       </div>
     </div>
 
+    <!-- Settings Panel -->
+    <div class="settings-overlay" id="settings-overlay" onclick="closeSettings()">
+      <div class="settings-panel" onclick="event.stopPropagation()">
+        <div class="settings-header">
+          <div class="settings-title">⚙️ Settings</div>
+          <button class="settings-close" onclick="closeSettings()">✕</button>
+        </div>
+        <div class="settings-search">
+          <input type="text" placeholder="Search settings..." id="settings-search" oninput="filterSettings(this.value)">
+        </div>
+        <div class="settings-content" id="settings-content">
+          <!-- Model Section -->
+          <div class="settings-section" data-section="model">
+            <div class="settings-section-title">Model</div>
+            <div class="settings-item">
+              <div class="settings-item-label">
+                <div class="settings-item-name">Provider</div>
+                <div class="settings-item-desc">AI model provider backend</div>
+              </div>
+              <div class="settings-item-control">
+                <select class="settings-select" id="setting-provider" onchange="updateSettings()">
+                  <option value="openai">OpenAI</option>
+                  <option value="anthropic">Anthropic</option>
+                  <option value="google">Google</option>
+                  <option value="azure">Azure</option>
+                  <option value="local">Local / Ollama</option>
+                </select>
+              </div>
+            </div>
+            <div class="settings-item">
+              <div class="settings-item-label">
+                <div class="settings-item-name">Model</div>
+                <div class="settings-item-desc">Specific model to use</div>
+              </div>
+              <div class="settings-item-control">
+                <select class="settings-select" id="setting-model" onchange="updateSettings()">
+                  <option value="gpt-4o">GPT-4o</option>
+                  <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                  <option value="claude-3-5-sonnet">Claude 3.5 Sonnet</option>
+                  <option value="claude-3-opus">Claude 3 Opus</option>
+                  <option value="gemini-pro">Gemini Pro</option>
+                  <option value="local">Local Model</option>
+                </select>
+              </div>
+            </div>
+            <div class="settings-item">
+              <div class="settings-item-label">
+                <div class="settings-item-name">Temperature</div>
+                <div class="settings-item-desc">Creativity vs determinism (0-2)</div>
+              </div>
+              <div class="settings-item-control">
+                <input type="range" class="settings-slider" id="setting-temperature" min="0" max="2" step="0.1" value="0.7" oninput="updateSliderValue(this, 'temp-value')">
+                <span class="settings-slider-value" id="temp-value">0.7</span>
+              </div>
+            </div>
+            <div class="settings-item">
+              <div class="settings-item-label">
+                <div class="settings-item-name">Max Tokens</div>
+                <div class="settings-item-desc">Maximum response length</div>
+              </div>
+              <div class="settings-item-control">
+                <input type="number" class="settings-number" id="setting-max-tokens" value="4096" min="256" max="128000" step="256" onchange="updateSettings()">
+              </div>
+            </div>
+            <div class="settings-item">
+              <div class="settings-item-label">
+                <div class="settings-item-name">Context Window</div>
+                <div class="settings-item-desc">Max context for conversation</div>
+              </div>
+              <div class="settings-item-control">
+                <input type="number" class="settings-number" id="setting-context" value="8192" min="1024" max="200000" step="1024" onchange="updateSettings()">
+              </div>
+            </div>
+          </div>
+
+          <!-- Behavior Section -->
+          <div class="settings-section" data-section="behavior">
+            <div class="settings-section-title">Behavior</div>
+            <div class="settings-item">
+              <div class="settings-item-label">
+                <div class="settings-item-name">Stream Response</div>
+                <div class="settings-item-desc">Show tokens as they arrive</div>
+              </div>
+              <div class="settings-item-control">
+                <button class="settings-toggle active" id="setting-stream" onclick="toggleSetting(this, 'stream')">&nbsp;</button>
+              </div>
+            </div>
+            <div class="settings-item">
+              <div class="settings-item-label">
+                <div class="settings-item-name">Auto-approve Tools</div>
+                <div class="settings-item-desc">Skip confirmation for safe tools</div>
+              </div>
+              <div class="settings-item-control">
+                <button class="settings-toggle" id="setting-auto-approve" onclick="toggleSetting(this, 'autoApprove')">&nbsp;</button>
+              </div>
+            </div>
+            <div class="settings-item">
+              <div class="settings-item-label">
+                <div class="settings-item-name">Auto-save Checkpoints</div>
+                <div class="settings-item-desc">Save before each code change</div>
+              </div>
+              <div class="settings-item-control">
+                <button class="settings-toggle active" id="setting-auto-checkpoint" onclick="toggleSetting(this, 'autoCheckpoint')">&nbsp;</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Appearance Section -->
+          <div class="settings-section" data-section="appearance">
+            <div class="settings-section-title">Appearance</div>
+            <div class="settings-item">
+              <div class="settings-item-label">
+                <div class="settings-item-name">Theme</div>
+                <div class="settings-item-desc">Color scheme preference</div>
+              </div>
+              <div class="settings-item-control">
+                <select class="settings-select" id="setting-theme" onchange="updateSettings()">
+                  <option value="dark">Dark</option>
+                  <option value="light">Light</option>
+                  <option value="system">System</option>
+                </select>
+              </div>
+            </div>
+            <div class="settings-item">
+              <div class="settings-item-label">
+                <div class="settings-item-name">Font Size</div>
+                <div class="settings-item-desc">Chat message font size</div>
+              </div>
+              <div class="settings-item-control">
+                <input type="range" class="settings-slider" id="setting-font-size" min="12" max="20" step="1" value="14" oninput="updateSliderValue(this, 'font-size-value')">
+                <span class="settings-slider-value" id="font-size-value">14px</span>
+              </div>
+            </div>
+            <div class="settings-item">
+              <div class="settings-item-label">
+                <div class="settings-item-name">Show Line Numbers</div>
+                <div class="settings-item-desc">In code blocks</div>
+              </div>
+              <div class="settings-item-control">
+                <button class="settings-toggle active" id="setting-line-numbers" onclick="toggleSetting(this, 'lineNumbers')">&nbsp;</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Shortcuts Section -->
+          <div class="settings-section" data-section="shortcuts">
+            <div class="settings-section-title">Keyboard Shortcuts</div>
+            <div class="settings-shortcut-row">
+              <span>Send Message</span>
+              <span class="settings-shortcut-key">Enter</span>
+            </div>
+            <div class="settings-shortcut-row">
+              <span>New Line</span>
+              <span class="settings-shortcut-key">Shift + Enter</span>
+            </div>
+            <div class="settings-shortcut-row">
+              <span>Add Context</span>
+              <span class="settings-shortcut-key">Cmd + K</span>
+            </div>
+            <div class="settings-shortcut-row">
+              <span>New Chat</span>
+              <span class="settings-shortcut-key">Cmd + Shift + N</span>
+            </div>
+            <div class="settings-shortcut-row">
+              <span>Switch Mode (Ask)</span>
+              <span class="settings-shortcut-key">Cmd + Shift + A</span>
+            </div>
+            <div class="settings-shortcut-row">
+              <span>Switch Mode (Build)</span>
+              <span class="settings-shortcut-key">Cmd + Shift + B</span>
+            </div>
+            <div class="settings-shortcut-row">
+              <span>Open Settings</span>
+              <span class="settings-shortcut-key">Cmd + ,</span>
+            </div>
+            <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #21262d;">
+              <div style="font-size: 11px; color: #6e7681; margin-bottom: 8px;">Changes Panel (when active)</div>
+              <div class="settings-shortcut-row">
+                <span>Select All Changes</span>
+                <span class="settings-shortcut-key">Alt + A</span>
+              </div>
+              <div class="settings-shortcut-row">
+                <span>Keep Selected</span>
+                <span class="settings-shortcut-key">Alt + K</span>
+              </div>
+              <div class="settings-shortcut-row">
+                <span>Revert Selected</span>
+                <span class="settings-shortcut-key">Alt + R</span>
+              </div>
+              <div class="settings-shortcut-row">
+                <span>Stage Selected</span>
+                <span class="settings-shortcut-key">Alt + S</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="settings-footer">
+          <button class="settings-btn settings-btn-secondary" onclick="resetSettings()">Reset to Default</button>
+          <button class="settings-btn settings-btn-primary" onclick="saveSettings()">Save</button>
+        </div>
+      </div>
+    </div>
+
     <script>
+      // ============================================================
+      // VS Code API Initialization
+      // ============================================================
+      let vscode;
+      try {
+        vscode = acquireVsCodeApi();
+      } catch (e) {
+        // Not running in VS Code webview
+        vscode = {
+          postMessage: (msg) => console.log('VS Code message:', msg)
+        };
+      }
+
       // ============================================================
       // Phase 5: Mock Data & Service Layer
       // ============================================================
 
       const MODE_CONFIG = {
-        ask: { color: '#4a9eff', placeholder: '💬 Ask: Describe your question...', name: 'Ask' },
-        build: { color: '#fb8147', placeholder: '🛠️ Build: Describe your needs...', name: 'Build' },
-        plan: { color: '#c7e2a8', placeholder: '📋 Plan: Describe your goal...', name: 'Plan' },
-        compose: { color: '#a7a3d8', placeholder: '🎼 Compose: Describe refactoring...', name: 'Compose' },
-        loop: { color: '#007acc', placeholder: '🔄 Loop: Describe your task...', name: 'Loop' },
-        max: { color: '#e85d75', placeholder: '⚡ Max: Describe for multi-agent...', name: 'Max' },
+        ask: { color: '#4a9eff', placeholder: '💬 Ask: Describe your question...', name: 'Ask', icon: '💬' },
+        build: { color: '#fb8147', placeholder: '🛠️ Build: Describe your needs...', name: 'Build', icon: '🛠️' },
+        plan: { color: '#c7e2a8', placeholder: '📋 Plan: Describe your goal...', name: 'Plan', icon: '📋' },
+        compose: { color: '#a7a3d8', placeholder: '🎼 Compose: Describe refactoring...', name: 'Compose', icon: '🎼' },
+        loop: { color: '#007acc', placeholder: '🔄 Loop: Describe your task...', name: 'Loop', icon: '🔄' },
+        max: { color: '#e85d75', placeholder: '⚡ Max: Describe for multi-agent...', name: 'Max', icon: '⚡' },
       };
 
       let currentMode = 'ask';
+      let isGenerating = false;
       let currentSideTab = 'tasks';
       let currentCheckpointTab = 'changes';
       let zenLevel = 2;
@@ -1511,6 +2546,10 @@
       // ============================================================
 
       function switchMode(mode) {
+        if (isGenerating) {
+          addSystemMessage('⚠️ Cannot switch mode while generating. Stop generation first.');
+          return;
+        }
         currentMode = mode;
         const config = MODE_CONFIG[mode];
 
@@ -1534,11 +2573,145 @@
         if (document.getElementById('welcome-screen')) {
           document.getElementById('welcome-screen').style.display = 'none';
         }
+        const backBtn = document.getElementById('back-to-welcome');
+        if (backBtn) backBtn.classList.add('visible');
 
         // Add system message
         if (document.getElementById('messages').children.length <= 1) {
           addSystemMessage(`Switched to ${config.name} mode. ${config.placeholder.replace('...', '')}`);
         }
+      }
+
+      function showWelcome() {
+        const welcome = document.getElementById('welcome-screen');
+        if (welcome) welcome.style.display = 'block';
+        const backBtn = document.getElementById('back-to-welcome');
+        if (backBtn) backBtn.classList.remove('visible');
+        // Hide existing messages instead of removing them
+        const messages = document.getElementById('messages');
+        for (let i = 1; i < messages.children.length; i++) {
+          messages.children[i].style.display = 'none';
+        }
+      }
+
+      let minimalMode = true; // Default to minimal mode
+      let sidebarCollapsed = false;
+      let expandedCollapsible = new Set();
+
+      function newChat() {
+        const messages = document.getElementById('messages');
+        // Actually remove messages for new chat
+        while (messages.children.length > 1) {
+          messages.removeChild(messages.lastChild);
+        }
+        const welcome = document.getElementById('welcome-screen');
+        if (welcome) welcome.style.display = 'block';
+        document.getElementById('back-to-welcome').classList.remove('visible');
+        document.getElementById('input').value = '';
+        document.getElementById('input').focus();
+      }
+
+      function toggleMinimalMode() {
+        minimalMode = !minimalMode;
+        document.body.classList.toggle('minimal-mode', minimalMode);
+        const icon = document.getElementById('minimal-icon');
+        if (icon) icon.textContent = minimalMode ? '⬜' : '⬛';
+        if (minimalMode) {
+          renderCollapsible('tasks');
+          renderCollapsible('changes');
+        }
+      }
+
+      function toggleSidebar() {
+        sidebarCollapsed = !sidebarCollapsed;
+        const sidebar = document.getElementById('sidebar-right');
+        const btn = document.getElementById('sidebar-collapse-btn');
+        if (sidebar) {
+          sidebar.classList.toggle('collapsed', sidebarCollapsed);
+        }
+        if (btn) {
+          btn.textContent = sidebarCollapsed ? '▶' : '◀';
+          btn.title = sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar';
+        }
+      }
+
+      function toggleCollapsible(section) {
+        const content = document.getElementById('collapsible-' + section);
+        const icon = document.getElementById(section + '-expand-icon');
+        if (!content || !icon) return;
+        if (expandedCollapsible.has(section)) {
+          expandedCollapsible.delete(section);
+          content.classList.remove('expanded');
+          icon.textContent = '▶';
+        } else {
+          expandedCollapsible.add(section);
+          content.classList.add('expanded');
+          icon.textContent = '▼';
+          renderCollapsible(section);
+        }
+      }
+
+      function renderCollapsible(section) {
+        if (section === 'tasks') {
+          const container = document.getElementById('collapsible-tasks');
+          const badge = document.getElementById('tasks-badge');
+          if (!container || !badge) return;
+          let total = 0, completed = 0;
+          function countTasks(tasks) {
+            tasks.forEach(t => {
+              total++;
+              if (t.status === 'completed') completed++;
+              if (t.children) countTasks(t.children);
+            });
+          }
+          mockTasks.forEach(g => countTasks(g.tasks));
+          badge.textContent = `${completed}/${total}`;
+          if (!expandedCollapsible.has('tasks')) return;
+          let html = '';
+          mockTasks.forEach(group => {
+            html += `<div style="font-size:11px;color:#8b949e;padding:4px 0;">${group.title}</div>`;
+            html += renderMiniTaskItems(group.tasks);
+          });
+          container.innerHTML = html;
+        } else if (section === 'changes') {
+          const container = document.getElementById('collapsible-changes');
+          const badge = document.getElementById('changes-badge');
+          if (!container || !badge) return;
+          badge.textContent = mockChanges.length;
+          if (!expandedCollapsible.has('changes')) return;
+          let html = '';
+          mockChanges.forEach(file => {
+            const typeIcon = file.type === 'modified' ? '●' : file.type === 'added' ? '+' : '−';
+            const typeColor = file.type === 'modified' ? '#a371f7' : file.type === 'added' ? '#3fb950' : '#f85149';
+            html += `
+              <div class="change-file">
+                <span class="change-type" style="color:${typeColor};">${typeIcon}</span>
+                <span class="change-path" onclick="openFileInEditor('${file.path}')" style="cursor: pointer; text-decoration: underline; text-decoration-color: transparent; transition: text-decoration-color 0.2s;" onmouseover="this.style.textDecorationColor='#58a6ff'" onmouseout="this.style.textDecorationColor='transparent'">${file.path}</span>
+                <span class="change-lines">${file.additions > 0 ? '+' + file.additions : ''} ${file.deletions > 0 ? '−' + file.deletions : ''}</span>
+              </div>
+            `;
+          });
+          container.innerHTML = html;
+        }
+      }
+
+      function renderMiniTaskItems(tasks) {
+        let html = '';
+        tasks.forEach(task => {
+          const icon = STATUS_ICON[task.status] || '⏳';
+          const color = task.status === 'completed' ? '#3fb950' : task.status === 'in_progress' ? '#d29922' : '#8b949e';
+          html += `
+            <div class="task-item" onclick="jumpToTask('${task.id}')" style="cursor: pointer;">
+              <span class="task-status" style="color:${color};">${icon}</span>
+              <span class="task-text">${task.title}</span>
+              ${task.progress !== undefined ? `<span class="task-progress">${task.progress}%</span>` : ''}
+            </div>
+          `;
+          if (task.children) {
+            html += renderMiniTaskItems(task.children);
+          }
+        });
+        return html;
       }
 
       // ============================================================
@@ -1602,18 +2775,20 @@
           const expanded = expandedTaskGroups.has(group.id);
           const modeColor = MODE_CONFIG[group.mode]?.color || '#666';
           html += `
-            <div class="task-group">
-              <div class="task-group-header" onclick="toggleTaskGroup('${group.id}')">
-                <span class="expand-icon">${expanded ? '▼' : '▶'}</span>
+            <div class="task-group" role="treeitem" aria-expanded="${expanded}" aria-label="${group.title}">
+              <div class="task-group-header" onclick="toggleTaskGroup('${group.id}')" role="button" tabindex="0" aria-label="Toggle ${group.title}">
+                <span class="expand-icon" aria-hidden="true">${expanded ? '▼' : '▶'}</span>
                 <span class="task-group-title">${group.title}</span>
                 <span class="task-group-mode" style="background: ${modeColor}20; color: ${modeColor}">${group.mode}</span>
               </div>
-              ${expanded ? renderTaskItems(group.tasks, 0) : ''}
+              ${expanded ? `<div role="group">${renderTaskItems(group.tasks, 0)}</div>` : ''}
             </div>
           `;
         });
 
         container.innerHTML = html;
+        container.setAttribute('role', 'tree');
+        container.setAttribute('aria-label', 'Task list');
 
         // Update stats
         document.getElementById('overall-progress').style.width = percent + '%';
@@ -1621,15 +2796,24 @@
         document.getElementById('overall-percent').textContent = percent + '%';
         document.getElementById('stats-summary').textContent = `${completed}/${total} completed`;
         document.getElementById('stats-detail').textContent = inProgress > 0 ? `${inProgress} in progress` : (failed > 0 ? `${failed} failed` : '');
+
+        // Sync minimal mode collapsible panel
+        renderCollapsible('tasks');
       }
 
+      let contextMenuTaskId = null;
+
       function renderTaskItems(tasks, depth) {
-        let html = '<div class="task-subitems">';
+        let html = '<div class="task-subitems" role="group">';
         tasks.forEach(task => {
           const hasChildren = task.children && task.children.length > 0;
+          const startTime = task.startTime || '14:30';
+          const duration = task.duration || (task.status === 'completed' ? '2m 15s' : task.status === 'in_progress' ? '1m 30s' : '-');
+          const files = task.files || ['src/index.ts'];
+          const statusLabel = task.status === 'completed' ? 'Completed' : task.status === 'in_progress' ? 'In progress' : task.status === 'failed' ? 'Failed' : task.status === 'paused' ? 'Paused' : 'Pending';
           html += `
-            <div class="task-item" onclick="jumpToTask('${task.id}')">
-              <span class="task-status-icon ${STATUS_COLOR[task.status]}">${STATUS_ICON[task.status]}</span>
+            <div class="task-item" data-task-id="${task.id}" onclick="jumpToTask('${task.id}')" oncontextmenu="showContextMenu(event, '${task.id}')" onkeydown="handleTaskKeydown(event, '${task.id}')" style="position: relative;" role="treeitem" tabindex="0" aria-label="${task.title}: ${statusLabel}${task.progress ? `, ${task.progress}%` : ''}">
+              <span class="task-status-icon ${STATUS_COLOR[task.status]}" aria-hidden="true">${STATUS_ICON[task.status]}</span>
               <span class="task-title">${task.title}</span>
               ${task.progress !== undefined && task.status === 'in_progress' ? `
                 <div class="task-progress-bar">
@@ -1637,6 +2821,12 @@
                 </div>
               ` : ''}
               ${task.currentAction ? `<span class="task-current-action">${task.currentAction}</span>` : ''}
+              <div class="task-tooltip">
+                <div class="task-tooltip-row"><span class="task-tooltip-label">Status:</span><span>${STATUS_ICON[task.status]} ${task.status}</span></div>
+                <div class="task-tooltip-row"><span class="task-tooltip-label">Started:</span><span>${startTime}</span></div>
+                <div class="task-tooltip-row"><span class="task-tooltip-label">Duration:</span><span>${duration}</span></div>
+                <div class="task-tooltip-row"><span class="task-tooltip-label">Files:</span><span>${files.join(', ')}</span></div>
+              </div>
             </div>
           `;
           if (hasChildren) {
@@ -1663,36 +2853,282 @@
         renderTaskList();
       }
 
+      function handleTaskKeydown(e, taskId) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          jumpToTask(taskId);
+        } else if (e.key === 'F10' || (e.shiftKey && e.key === 'F10')) {
+          e.preventDefault();
+          const el = e.currentTarget;
+          const rect = el.getBoundingClientRect();
+          showContextMenu({ preventDefault: () => {}, clientX: rect.left, clientY: rect.bottom }, taskId);
+        }
+      }
+
       function jumpToTask(taskId) {
-        // Mock: scroll to a message and highlight it
-        addSystemMessage(`📌 Jumped to task: ${taskId}`);
+        const task = findTaskById(taskId);
+        const taskTitle = task ? task.title : taskId;
+        const messages = document.getElementById('messages');
+        const taskMsg = messages.querySelector(`[data-task-id="${taskId}"]`);
+        if (taskMsg) {
+          taskMsg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          taskMsg.style.outline = '2px solid #58a6ff';
+          setTimeout(() => taskMsg.style.outline = '', 2000);
+          addSystemMessage(`📌 Jumped to task: "${taskTitle}"`);
+        } else {
+          addSystemMessage(`📌 No message found for task "${taskTitle}". It may not have been discussed yet.`);
+        }
+      }
+
+      function showContextMenu(e, taskId) {
+        e.preventDefault();
+        contextMenuTaskId = taskId;
+        const menu = document.getElementById('context-menu');
+        menu.classList.add('active');
+        // Position with viewport bounds check
+        const menuRect = menu.getBoundingClientRect();
+        let x = e.clientX;
+        let y = e.clientY;
+        if (x + menuRect.width > window.innerWidth) x = window.innerWidth - menuRect.width - 8;
+        if (y + menuRect.height > window.innerHeight) y = window.innerHeight - menuRect.height - 8;
+        menu.style.left = Math.max(0, x) + 'px';
+        menu.style.top = Math.max(0, y) + 'px';
+      }
+
+      function hideContextMenu() {
+        document.getElementById('context-menu').classList.remove('active');
+        contextMenuTaskId = null;
+      }
+
+      function contextAction(action) {
+        if (!contextMenuTaskId) return;
+        const task = findTaskById(contextMenuTaskId);
+        if (!task) { hideContextMenu(); return; }
+
+        const taskElement = document.querySelector(`[data-task-id="${contextMenuTaskId}"]`);
+
+        switch(action) {
+          case 'complete':
+            task.status = 'completed';
+            task.progress = 100;
+            if (taskElement) {
+              taskElement.classList.add('completed-animation');
+              setTimeout(() => taskElement.classList.remove('completed-animation'), 600);
+            }
+            addSystemMessage(`✅ Task "${task.title}" marked as completed`, contextMenuTaskId);
+            break;
+          case 'fail':
+            hideContextMenu();
+            showConfirmDialog(
+              '❌ Mark as Failed',
+              `Are you sure you want to mark "${task.title}" as failed?`,
+              () => {
+                task.status = 'failed';
+                addSystemMessage(`❌ Task "${task.title}" marked as failed`, contextMenuTaskId);
+                renderTaskList();
+                renderCollapsible('tasks');
+              },
+              { confirmStyle: 'background:#da3633' }
+            );
+            return;
+          case 'retry':
+            task.status = 'in_progress';
+            task.progress = 0;
+            addSystemMessage(`🔄 Retrying task "${task.title}"`, contextMenuTaskId);
+            break;
+          case 'skip':
+            hideContextMenu();
+            showConfirmDialog(
+              '⏭️ Skip Task',
+              `Are you sure you want to skip "${task.title}"? It will be marked as completed.`,
+              () => {
+                task.status = 'completed';
+                task.progress = 100;
+                if (taskElement) {
+                  taskElement.classList.add('completed-animation');
+                  setTimeout(() => taskElement.classList.remove('completed-animation'), 600);
+                }
+                addSystemMessage(`⏭️ Skipped task "${task.title}"`, contextMenuTaskId);
+                renderTaskList();
+                renderCollapsible('tasks');
+              }
+            );
+            return;
+        }
+        hideContextMenu();
+        renderTaskList();
+        renderCollapsible('tasks');
+      }
+
+      function findTaskById(id) {
+        for (const group of mockTasks) {
+          if (group.id === id) return group;
+          for (const task of group.tasks) {
+            if (task.id === id) return task;
+            if (task.children) {
+              for (const child of task.children) {
+                if (child.id === id) return child;
+                if (child.children) {
+                  for (const sub of child.children) {
+                    if (sub.id === id) return sub;
+                  }
+                }
+              }
+            }
+          }
+        }
+        return null;
+      }
+
+      // Close context menu on click outside
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.context-menu')) hideContextMenu();
+      });
+
+      // ============================================================
+      // AlignmentGuard: Drift Alerts
+      // ============================================================
+
+      const mockDriftAlerts = [
+        {
+          id: 'drift-1',
+          type: 'Rabbit Hole',
+          title: 'Potential rabbit hole detected',
+          description: 'Agent is spending significant time on tangential refactoring in src/utils/format.ts. This may not be related to the original task.',
+          icon: '🐇'
+        },
+        {
+          id: 'drift-2',
+          type: 'File Drift',
+          title: 'Scope drift detected',
+          description: 'Agent modified 3 files outside the planned scope: package.json, .eslintrc.js, tsconfig.json. These changes were not in the original plan.',
+          icon: '📁'
+        },
+        {
+          id: 'drift-3',
+          type: 'Distraction',
+          title: 'Task distraction detected',
+          description: 'Agent switched from optimizing database queries to adding new UI components. Consider recalibrating to stay on track.',
+          icon: '🔄'
+        }
+      ];
+
+      function renderDriftAlerts() {
+        const container = document.getElementById('drift-alerts-container');
+        if (!container) return;
+        let html = '';
+        mockDriftAlerts.forEach(alert => {
+          html += `
+            <div class="drift-alert" id="${alert.id}">
+              <div class="drift-alert-icon">${alert.icon}</div>
+              <div class="drift-alert-body">
+                <div class="drift-alert-title">
+                  ${alert.title}
+                  <span class="drift-type">${alert.type}</span>
+                </div>
+                <div class="drift-alert-desc">${alert.description}</div>
+                <div class="drift-alert-actions">
+                  <button class="drift-btn drift-btn-recalibrate" onclick="recalibrateDrift('${alert.id}')">🔄 Recalibrate</button>
+                  <button class="drift-btn drift-btn-dismiss" onclick="dismissDrift('${alert.id}')">Dismiss</button>
+                </div>
+              </div>
+              <button class="drift-close" onclick="dismissDrift('${alert.id}')">✕</button>
+            </div>
+          `;
+        });
+        container.innerHTML = html;
+      }
+
+      function recalibrateDrift(id) {
+        const el = document.getElementById(id);
+        if (el) el.remove();
+        addSystemMessage('🔄 Alignment recalibrated. Agent will refocus on original task.');
+      }
+
+      function dismissDrift(id) {
+        const el = document.getElementById(id);
+        if (el) el.remove();
+      }
+
+      // ============================================================
+      // Task Marker Parsing (Phase 3)
+      // ============================================================
+
+      function parseTaskMarkers(text) {
+        const regex = /<!--\s*task:\s*id="([^"]+)"\s*status="([^"]+)"\s*(?:progress="(\d+)")?\s*-->/g;
+        let match;
+        let tasksChanged = false;
+        while ((match = regex.exec(text)) !== null) {
+          const taskId = match[1];
+          const status = match[2];
+          const progress = match[3] ? parseInt(match[3]) : undefined;
+          const task = findTaskById(taskId);
+          if (task) {
+            task.status = status;
+            if (progress !== undefined) task.progress = progress;
+            tasksChanged = true;
+          } else {
+            // Create new task in the first group (or a dynamic group)
+            let targetGroup = mockTasks.find(g => g.id === 'group-1') || mockTasks[0];
+            if (targetGroup) {
+              const newTask = { id: taskId, title: taskId.replace(/-/g, ' ').replace(/^./, c => c.toUpperCase()), status, progress };
+              targetGroup.tasks.push(newTask);
+              tasksChanged = true;
+            }
+          }
+        }
+        return tasksChanged;
       }
 
       // ============================================================
       // Phase 2: Checkpoint / Changes
       // ============================================================
 
+      let lastClickedChangeId = null;
+      let expandedDiffId = null;
+
       function renderCheckpoint() {
         const container = document.getElementById('checkpoint-content');
         if (!container) return;
 
         if (currentCheckpointTab === 'changes') {
-          let html = '<div style="padding: 8px 0;">';
+          let html = '<div style="padding: 8px 0;" role="list" aria-label="Changed files">';
           mockChanges.forEach(file => {
             const typeIcon = file.type === 'modified' ? '●' : file.type === 'added' ? '+' : '−';
             const typeClass = file.type;
+            const isExpanded = expandedDiffId === file.id;
+            const typeLabel = file.type === 'modified' ? 'Modified' : file.type === 'added' ? 'Added' : 'Deleted';
             html += `
-              <div class="change-file" onclick="toggleSelectChange('${file.id}')">
-                <input type="checkbox" class="change-checkbox" ${file.checked ? 'checked' : ''} onclick="event.stopPropagation()">
-                <span class="change-type ${typeClass}">${typeIcon}</span>
-                <span class="change-path">${file.path}</span>
+              <div class="change-file" onclick="toggleSelectChange('${file.id}', event)" style="cursor: pointer;" role="listitem" aria-label="${file.path}: ${typeLabel}, ${file.additions} additions, ${file.deletions} deletions">
+                <input type="checkbox" class="change-checkbox" ${file.checked ? 'checked' : ''} onclick="event.stopPropagation()" aria-label="Select ${file.path}">
+                <span class="change-type ${typeClass}" aria-hidden="true">${typeIcon}</span>
+                <span class="change-path" onclick="event.stopPropagation(); openFileInEditor('${file.path}')" style="cursor: pointer; text-decoration: underline; text-decoration-color: transparent; transition: text-decoration-color 0.2s;" onmouseover="this.style.textDecorationColor='#58a6ff'" onmouseout="this.style.textDecorationColor='transparent'">${file.path}</span>
                 <span class="change-lines">${file.additions > 0 ? '+' + file.additions : ''} ${file.deletions > 0 ? '−' + file.deletions : ''}</span>
+                <button style="font-size: 10px; color: #8b949e; background: none; border: none; cursor: pointer; margin-left: 4px;" onclick="event.stopPropagation(); toggleDiffPreview('${file.id}')" aria-label="${isExpanded ? 'Collapse' : 'Expand'} diff for ${file.path}">${isExpanded ? '▼' : '▶'} diff</button>
+              </div>
+              ${isExpanded ? `
+                <div class="diff-preview" style="background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 8px 12px; margin: 4px 0 8px 20px; font-family: 'SF Mono', monospace; font-size: 11px; line-height: 1.6;">
+                  <div class="diff-line add">+ ${file.path.split('/').pop().replace('.ts', '')} = new implementation()<button class="comment-btn" onclick="event.stopPropagation(); addDiffComment(this, '${file.id}', 1)">💬</button></div>
+                  <div class="diff-line del">- ${file.path.split('/').pop().replace('.ts', '')} = old implementation()<button class="comment-btn" onclick="event.stopPropagation(); addDiffComment(this, '${file.id}', 2)">💬</button></div>
+                  <div class="diff-line meta">  // ... existing code</div>
+                  <div class="diff-line add">+ return optimizedResult;<button class="comment-btn" onclick="event.stopPropagation(); addDiffComment(this, '${file.id}', 3)">💬</button></div>
+                  <div class="diff-line del">- return result;<button class="comment-btn" onclick="event.stopPropagation(); addDiffComment(this, '${file.id}', 4)">💬</button></div>
+                  ${file.comments ? file.comments.map(c => `
+                    <div class="diff-comment-saved">💬 ${c.text}</div>
+                  `).join('') : ''}
+                </div>
+              ` : ''}
+              <div style="display: flex; gap: 4px; margin: 2px 0 6px 20px; opacity: ${file.checked ? '1' : '0'}; transition: opacity 0.15s;" class="change-file-actions" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=${file.checked ? '1' : '0'}">
+                <button style="font-size: 10px; color: #3fb950; background: none; border: 1px solid #3fb95050; border-radius: 4px; padding: 1px 6px; cursor: pointer;" onclick="event.stopPropagation(); keepChange('${file.id}')">Keep</button>
+                <button style="font-size: 10px; color: #f85149; background: none; border: 1px solid #f8514950; border-radius: 4px; padding: 1px 6px; cursor: pointer;" onclick="event.stopPropagation(); revertChange('${file.id}')">Revert</button>
+                <button style="font-size: 10px; color: #58a6ff; background: none; border: 1px solid #58a6ff50; border-radius: 4px; padding: 1px 6px; cursor: pointer;" onclick="event.stopPropagation(); stageChange('${file.id}')">Stage</button>
               </div>
             `;
           });
           html += `
             <div class="checkpoint-actions">
               <button class="danger" onclick="revertAllChanges()">Revert All</button>
+              <button onclick="selectAllChanges()">Select All</button>
               <button class="primary" onclick="stageSelected()">Stage Selected</button>
             </div>
           </div>`;
@@ -1706,7 +3142,7 @@
               html += `
                 <div class="change-file">
                   <span class="change-type ${file.type}">${file.type === 'modified' ? '●' : file.type === 'added' ? '+' : '−'}</span>
-                  <span class="change-path">${file.path}</span>
+                  <span class="change-path" onclick="openFileInEditor('${file.path}')" style="cursor: pointer; text-decoration: underline; text-decoration-color: transparent; transition: text-decoration-color 0.2s;" onmouseover="this.style.textDecorationColor='#58a6ff'" onmouseout="this.style.textDecorationColor='transparent'">${file.path}</span>
                   <button style="font-size: 11px; color: #8b949e; background: none; border: none; cursor: pointer;" onclick="unstage('${file.id}')">Unstage</button>
                 </div>
               `;
@@ -1721,6 +3157,23 @@
           }
         } else if (currentCheckpointTab === 'history') {
           let html = '<div style="padding: 8px 0;">';
+          
+          // Auto-checkpoint info banner
+          html += `
+            <div style="padding: 8px 12px; margin-bottom: 8px; background: #010409; border: 1px solid #21262d; border-radius: 6px; font-size: 11px; color: #8b949e;">
+              <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                <span>💡</span>
+                <span style="color: #c9d1d9; font-weight: 500;">Auto-Checkpoint Enabled</span>
+              </div>
+              <div>Checkpoints are automatically created when:</div>
+              <ul style="margin: 4px 0 0 16px; padding: 0;">
+                <li>Agent completes a Loop iteration</li>
+                <li>Every 5 files are modified</li>
+                <li>User manually triggers via command</li>
+              </ul>
+            </div>
+          `;
+          
           mockCheckpoints.forEach(cp => {
             html += `
               <div class="checkpoint-item">
@@ -1737,6 +3190,14 @@
                   <button onclick="compareCheckpoint('${cp.id}')">Compare</button>
                   <button class="danger" onclick="deleteCheckpoint('${cp.id}')">Delete</button>
                 </div>
+                ${cp.showDiff ? `
+                  <div class="diff-preview" style="background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 8px 12px; margin: 8px 0; font-family: 'SF Mono', monospace; font-size: 11px; line-height: 1.6;">
+                    <div style="color: #8b949e; margin-bottom: 4px;">Checkpoint #${cp.number} vs Current:</div>
+                    <div style="color: #3fb950;">+ // new code added</div>
+                    <div style="color: #f85149;">- // old code removed</div>
+                    <div style="color: #8b949e;">  // unchanged lines</div>
+                  </div>
+                ` : ''}
               </div>
             `;
           });
@@ -1747,15 +3208,186 @@
           </div>`;
           container.innerHTML = html;
         }
+        renderCollapsible('changes');
       }
 
-      function toggleSelectChange(id) {
-        const file = mockChanges.find(c => c.id === id);
-        if (file) file.checked = !file.checked;
+      function toggleSelectChange(id, event) {
+        // Shift+click for range selection
+        if (event.shiftKey && lastClickedChangeId) {
+          const ids = mockChanges.map(c => c.id);
+          const start = ids.indexOf(lastClickedChangeId);
+          const end = ids.indexOf(id);
+          if (start === -1 || end === -1) {
+            // Stale reference — just toggle this one
+            const file = mockChanges.find(c => c.id === id);
+            if (file) file.checked = !file.checked;
+          } else {
+            const [from, to] = start < end ? [start, end] : [end, start];
+            for (let i = from; i <= to; i++) {
+              mockChanges[i].checked = true;
+            }
+          }
+        } else {
+          const file = mockChanges.find(c => c.id === id);
+          if (file) file.checked = !file.checked;
+        }
+        lastClickedChangeId = id;
         renderCheckpoint();
       }
 
+      function selectAllChanges() {
+        mockChanges.forEach(c => c.checked = true);
+        renderCheckpoint();
+      }
+
+      function toggleDiffPreview(id) {
+        expandedDiffId = expandedDiffId === id ? null : id;
+        renderCheckpoint();
+      }
+
+      function addDiffComment(btn, fileId, lineNum) {
+        const diffPreview = btn.closest('.diff-preview');
+        if (!diffPreview) return;
+        
+        // Remove existing comment input if any
+        const existing = diffPreview.querySelector('.diff-comment');
+        if (existing) existing.remove();
+        
+        // Create comment input
+        const commentDiv = document.createElement('div');
+        commentDiv.className = 'diff-comment';
+        commentDiv.innerHTML = `
+          <div class="diff-comment-header">
+            <span>💬</span>
+            <span>Add comment to line ${lineNum}</span>
+          </div>
+          <textarea class="diff-comment-input" rows="2" placeholder="Add your comment for Agent..."></textarea>
+          <div class="diff-comment-actions">
+            <button class="save-btn" onclick="saveDiffComment(this, '${fileId}', ${lineNum})">Save</button>
+            <button class="cancel-btn" onclick="this.closest('.diff-comment').remove()">Cancel</button>
+          </div>
+        `;
+        
+        // Insert after the line
+        const line = btn.closest('.diff-line');
+        line.after(commentDiv);
+        
+        // Focus the textarea
+        commentDiv.querySelector('textarea').focus();
+      }
+
+      function saveDiffComment(btn, fileId, lineNum) {
+        const commentDiv = btn.closest('.diff-comment');
+        const textarea = commentDiv.querySelector('textarea');
+        const text = textarea.value.trim();
+        
+        if (!text) {
+          commentDiv.remove();
+          return;
+        }
+        
+        // Save to mock data
+        const file = mockChanges.find(c => c.id === fileId);
+        if (!file.comments) file.comments = [];
+        file.comments.push({ line: lineNum, text, timestamp: new Date().toLocaleTimeString() });
+        
+        // Replace input with saved comment
+        commentDiv.outerHTML = `<div class="diff-comment-saved">💬 ${text}</div>`;
+        
+        addSystemMessage(`💬 Comment added to ${file.path}:${lineNum}`);
+      }
+
+      function openFileInEditor(filePath, line) {
+        // Send message to VS Code extension to open file
+        if (vscode && vscode.postMessage) {
+          vscode.postMessage({
+            type: 'openFile',
+            filePath: filePath,
+            line: line || 1
+          });
+        }
+        addSystemMessage(`📂 Opening ${filePath} in editor`);
+      }
+
+      function keepChange(id) {
+        const idx = mockChanges.findIndex(c => c.id === id);
+        if (idx > -1) {
+          const path = mockChanges[idx].path;
+          mockChanges.splice(idx, 1);
+          if (lastClickedChangeId === id) lastClickedChangeId = null;
+          addSystemMessage(`✅ Accepted change: ${path}`);
+          renderCheckpoint();
+        }
+      }
+
+      function revertChange(id) {
+        const idx = mockChanges.findIndex(c => c.id === id);
+        if (idx > -1) {
+          const path = mockChanges[idx].path;
+          mockChanges.splice(idx, 1);
+          if (lastClickedChangeId === id) lastClickedChangeId = null;
+          addSystemMessage(`↩️ Reverted change: ${path}`);
+          renderCheckpoint();
+        }
+      }
+
+      function stageChange(id) {
+        const file = mockChanges.find(c => c.id === id);
+        if (file) {
+          mockStaged.push({ ...file });
+          const idx = mockChanges.indexOf(file);
+          if (idx > -1) mockChanges.splice(idx, 1);
+          addSystemMessage(`📦 Staged: ${file.path}`);
+          renderCheckpoint();
+        }
+      }
+
       function revertAllChanges() {
+        if (mockChanges.length === 0) return;
+        const count = mockChanges.length;
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-dialog-overlay';
+        overlay.innerHTML = `
+          <div class="confirm-dialog" onclick="event.stopPropagation()">
+            <div class="confirm-dialog-title">🗑️ Revert All Changes</div>
+            <div class="confirm-dialog-message">
+              Are you sure you want to revert all ${count} changed files? This action cannot be undone.
+            </div>
+            <div class="confirm-dialog-actions">
+              <button class="cancel-btn" onclick="this.closest('.confirm-dialog-overlay').remove()">Cancel</button>
+              <button class="confirm-btn" style="background:#da3633" onclick="confirmRevertAll()">Revert All</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+      }
+      // Generic confirm dialog helper
+      let _pendingConfirmCallback = null;
+      function showConfirmDialog(title, message, onConfirm, opts = {}) {
+        _pendingConfirmCallback = onConfirm;
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-dialog-overlay';
+        overlay.innerHTML = `
+          <div class="confirm-dialog" onclick="event.stopPropagation()">
+            <div class="confirm-dialog-title">${title}</div>
+            <div class="confirm-dialog-message">${message}</div>
+            <div class="confirm-dialog-actions">
+              <button class="cancel-btn" onclick="this.closest('.confirm-dialog-overlay').remove()">Cancel</button>
+              <button class="confirm-btn" style="${opts.confirmStyle || ''}" id="confirm-dialog-ok">Confirm</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(overlay);
+        overlay.querySelector('#confirm-dialog-ok').addEventListener('click', () => {
+          overlay.remove();
+          if (_pendingConfirmCallback) { _pendingConfirmCallback(); _pendingConfirmCallback = null; }
+        });
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) { overlay.remove(); _pendingConfirmCallback = null; } });
+      }
+
+      function confirmRevertAll() {
+        document.querySelector('.confirm-dialog-overlay')?.remove();
         mockChanges.length = 0;
         renderCheckpoint();
         addSystemMessage('🗑️ All changes reverted');
@@ -1763,11 +3395,13 @@
 
       function stageSelected() {
         const selected = mockChanges.filter(c => c.checked);
-        selected.forEach(file => {
-          mockStaged.push({ ...file });
-          const idx = mockChanges.indexOf(file);
-          if (idx > -1) mockChanges.splice(idx, 1);
-        });
+        if (selected.length === 0) return;
+        selected.forEach(file => mockStaged.push({ ...file }));
+        // Reverse iterate to avoid index shifting during splice
+        for (let i = mockChanges.length - 1; i >= 0; i--) {
+          if (mockChanges[i].checked) mockChanges.splice(i, 1);
+        }
+        lastClickedChangeId = null;
         renderCheckpoint();
         addSystemMessage(`📦 Staged ${selected.length} files`);
       }
@@ -1782,12 +3416,84 @@
       }
 
       function resetStaged() {
+        if (mockStaged.length === 0) return;
+        const count = mockStaged.length;
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-dialog-overlay';
+        overlay.innerHTML = `
+          <div class="confirm-dialog" onclick="event.stopPropagation()">
+            <div class="confirm-dialog-title">↩️ Reset Staged Changes</div>
+            <div class="confirm-dialog-message">
+              Are you sure you want to unstage all ${count} files? They will be moved back to changes.
+            </div>
+            <div class="confirm-dialog-actions">
+              <button class="cancel-btn" onclick="this.closest('.confirm-dialog-overlay').remove()">Cancel</button>
+              <button class="confirm-btn" onclick="confirmResetStaged()">Reset</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+      }
+      function confirmResetStaged() {
+        document.querySelector('.confirm-dialog-overlay')?.remove();
         mockStaged.forEach(file => mockChanges.push({ ...file, checked: false }));
         mockStaged = [];
         renderCheckpoint();
+        addSystemMessage('↩️ All staged files moved back to changes');
       }
 
       function commitStaged() {
+        if (mockStaged.length === 0) return;
+        
+        // Calculate summary
+        const totalAdditions = mockStaged.reduce((sum, f) => sum + (f.additions || 0), 0);
+        const totalDeletions = mockStaged.reduce((sum, f) => sum + (f.deletions || 0), 0);
+        
+        // Show confirmation dialog
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-dialog-overlay';
+        overlay.innerHTML = `
+          <div class="confirm-dialog" onclick="event.stopPropagation()">
+            <div class="confirm-dialog-title">📦 Commit Staged Changes</div>
+            <div class="confirm-dialog-message">
+              Are you sure you want to commit these changes? This action will apply all staged modifications to the repository.
+            </div>
+            <div class="confirm-dialog-summary">
+              <div class="confirm-dialog-summary-row">
+                <span>Files</span>
+                <span class="confirm-dialog-summary-value">${mockStaged.length} files</span>
+              </div>
+              <div class="confirm-dialog-summary-row">
+                <span>Additions</span>
+                <span class="confirm-dialog-summary-value" style="color: #3fb950">+${totalAdditions}</span>
+              </div>
+              <div class="confirm-dialog-summary-row">
+                <span>Deletions</span>
+                <span class="confirm-dialog-summary-value" style="color: #f85149">-${totalDeletions}</span>
+              </div>
+              ${mockStaged.some(f => f.comments) ? `
+              <div class="confirm-dialog-summary-row">
+                <span>Comments</span>
+                <span class="confirm-dialog-summary-value">${mockStaged.reduce((sum, f) => sum + (f.comments?.length || 0), 0)} comments</span>
+              </div>
+              ` : ''}
+            </div>
+            <div class="confirm-dialog-actions">
+              <button class="cancel-btn" onclick="this.closest('.confirm-dialog-overlay').remove()">Cancel</button>
+              <button class="confirm-btn" onclick="confirmCommit()">Commit</button>
+            </div>
+          </div>
+        `;
+        
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', () => overlay.remove());
+      }
+
+      function confirmCommit() {
+        const overlay = document.querySelector('.confirm-dialog-overlay');
+        if (overlay) overlay.remove();
+        
         addSystemMessage('✅ Committed ' + mockStaged.length + ' files');
         mockStaged = [];
         renderCheckpoint();
@@ -1795,19 +3501,77 @@
 
       function restoreCheckpoint(id) {
         const cp = mockCheckpoints.find(c => c.id === id);
-        if (cp) {
+        if (!cp) return;
+        const hasUnsaved = mockChanges.length > 0 || mockStaged.length > 0;
+        if (hasUnsaved) {
+          const overlay = document.createElement('div');
+          overlay.className = 'confirm-dialog-overlay';
+          overlay.innerHTML = `
+            <div class="confirm-dialog" onclick="event.stopPropagation()">
+              <div class="confirm-dialog-title">⏮️ Restore Checkpoint #${cp.number}</div>
+              <div class="confirm-dialog-message">
+                You have ${mockChanges.length} unstaged and ${mockStaged.length} staged changes. Restoring will discard all current changes. Continue?
+              </div>
+              <div class="confirm-dialog-actions">
+                <button class="cancel-btn" onclick="this.closest('.confirm-dialog-overlay').remove()">Cancel</button>
+                <button class="confirm-btn" style="background:#da3633" onclick="confirmRestoreCheckpoint('${id}')">Restore</button>
+              </div>
+            </div>
+          `;
+          document.body.appendChild(overlay);
+          overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+        } else {
           addSystemMessage(`⏮️ Restored to Checkpoint #${cp.number}`);
+        }
+      }
+      function confirmRestoreCheckpoint(id) {
+        document.querySelector('.confirm-dialog-overlay')?.remove();
+        const cp = mockCheckpoints.find(c => c.id === id);
+        if (cp) {
+          mockChanges.length = 0;
+          mockStaged = [];
+          addSystemMessage(`⏮️ Restored to Checkpoint #${cp.number}`);
+          renderCheckpoint();
         }
       }
 
       function compareCheckpoint(id) {
-        addSystemMessage(`🔍 Comparing with Checkpoint #${id}`);
+        const cp = mockCheckpoints.find(c => c.id === id);
+        if (cp) {
+          cp.showDiff = !cp.showDiff;
+          renderCheckpoint();
+          if (cp.showDiff) {
+            addSystemMessage(`🔍 Showing diff for Checkpoint #${cp.number} vs current`);
+          }
+        }
       }
 
       function deleteCheckpoint(id) {
+        const cp = mockCheckpoints.find(c => c.id === id);
+        if (!cp) return;
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-dialog-overlay';
+        overlay.innerHTML = `
+          <div class="confirm-dialog" onclick="event.stopPropagation()">
+            <div class="confirm-dialog-title">🗑️ Delete Checkpoint #${cp.number}</div>
+            <div class="confirm-dialog-message">
+              Are you sure you want to delete this checkpoint? You will not be able to restore to this point.
+            </div>
+            <div class="confirm-dialog-actions">
+              <button class="cancel-btn" onclick="this.closest('.confirm-dialog-overlay').remove()">Cancel</button>
+              <button class="confirm-btn" style="background:#da3633" onclick="confirmDeleteCheckpoint('${id}')">Delete</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+      }
+      function confirmDeleteCheckpoint(id) {
+        document.querySelector('.confirm-dialog-overlay')?.remove();
         const idx = mockCheckpoints.findIndex(c => c.id === id);
         if (idx > -1) mockCheckpoints.splice(idx, 1);
         renderCheckpoint();
+        addSystemMessage('🗑️ Checkpoint deleted');
       }
 
       function createCheckpoint() {
@@ -2147,6 +3911,12 @@
       }
 
       function insertCard(html) {
+        const welcome = document.getElementById('welcome-screen');
+        if (welcome && welcome.style.display !== 'none') {
+          welcome.style.display = 'none';
+          const backBtn = document.getElementById('back-to-welcome');
+          if (backBtn) backBtn.classList.add('visible');
+        }
         const messages = document.getElementById('messages');
         const div = document.createElement('div');
         div.innerHTML = html;
@@ -2202,11 +3972,25 @@
       // Message System
       // ============================================================
 
-      function addSystemMessage(text) {
+      function addSystemMessage(text, taskId) {
+        const welcome = document.getElementById('welcome-screen');
+        if (welcome && welcome.style.display !== 'none') {
+          welcome.style.display = 'none';
+          const backBtn = document.getElementById('back-to-welcome');
+          if (backBtn) backBtn.classList.add('visible');
+          // Re-show any previously hidden messages
+          const msgs = document.getElementById('messages');
+          for (let i = 1; i < msgs.children.length; i++) {
+            msgs.children[i].style.display = '';
+          }
+        }
         const messages = document.getElementById('messages');
         const div = document.createElement('div');
         div.className = 'message';
         div.style.animation = 'fadeInUp 0.3s ease';
+        if (taskId) {
+          div.setAttribute('data-task-id', taskId);
+        }
         div.innerHTML = `
           <div class="avatar ai">🧬</div>
           <div class="message-wrapper mode-${currentMode}">
@@ -2230,17 +4014,28 @@
         div.style.animation = 'fadeInUp 0.3s ease';
         div.innerHTML = `
           <div class="avatar user">👤</div>
-          <div class="message-body">${escapeHtml(text)}</div>
+          <div class="message-wrapper mode-${currentMode}">
+            <div class="message-body">
+              <div class="message-mode-tag">
+                <span>${MODE_CONFIG[currentMode].icon || '💬'}</span>
+                <span>${MODE_CONFIG[currentMode].name} · You</span>
+              </div>
+              <div>${escapeHtml(text)}</div>
+            </div>
+          </div>
         `;
         messages.appendChild(div);
         messages.scrollTop = messages.scrollHeight;
       }
 
-      function addAIResponse(text) {
+      function addAIResponse(text, taskId) {
         const messages = document.getElementById('messages');
         const div = document.createElement('div');
         div.className = 'message';
         div.style.animation = 'fadeInUp 0.3s ease';
+        if (taskId) {
+          div.setAttribute('data-task-id', taskId);
+        }
         div.innerHTML = `
           <div class="avatar ai">🧬</div>
           <div class="message-wrapper mode-${currentMode}">
@@ -2282,28 +4077,207 @@
       function sendMessage() {
         const text = textarea.value.trim();
         if (!text) return;
+        if (isGenerating) return;
 
-        // Hide welcome screen
+        // Hide welcome screen and restore hidden messages
         const welcome = document.getElementById('welcome-screen');
         if (welcome) welcome.style.display = 'none';
+        const backBtn = document.getElementById('back-to-welcome');
+        if (backBtn) backBtn.classList.add('visible');
+        // Re-show any previously hidden messages
+        const messages = document.getElementById('messages');
+        for (let i = 1; i < messages.children.length; i++) {
+          messages.children[i].style.display = '';
+        }
 
         addUserMessage(text);
         textarea.value = '';
         textarea.style.height = 'auto';
 
+        // Show stop button, hide send button
+        isGenerating = true;
+        document.getElementById('send-btn').classList.add('hidden');
+        document.getElementById('stop-btn').classList.remove('hidden');
+
         // Simulate AI response based on mode
-        setTimeout(() => {
+        const responseDelay = setTimeout(() => {
           const responses = {
-            ask: 'I can help answer that! Let me analyze your question...',
-            build: 'I will generate the code for you. Analyzing requirements...',
-            plan: 'Let me break this down into actionable tasks:\n\n1. Analyze current architecture\n2. Identify refactoring points\n3. Implement changes\n4. Run tests',
-            compose: 'Starting multi-file refactoring. I will compose the changes across multiple files...',
-            loop: 'Entering iterative execution loop. I will execute, evaluate, and adapt automatically...',
-            max: 'Activating maximum capability mode. Deploying parallel agents for optimal solution...',
+            ask: { text: 'I can help answer that! Let me analyze your question...' },
+            build: { text: 'I will generate the code for you. Analyzing requirements...' },
+            plan: {
+              text: 'Let me break this down into actionable tasks:\n\n<!-- task: id="t1-1" status="in_progress" progress="30" -->\n1. Analyze current architecture\n<!-- task: id="t1-2" status="completed" -->\n2. Identify refactoring points\n<!-- task: id="t1-3" status="pending" -->\n3. Implement changes\n<!-- task: id="t1-4" status="pending" -->\n4. Run tests',
+              taskId: 't1-1'
+            },
+            compose: { text: 'Starting multi-file refactoring. I will compose the changes across multiple files...' },
+            loop: {
+              text: 'Entering iterative execution loop. Current iteration:\n\n<!-- task: id="loop-iter-1" status="in_progress" progress="45" -->\nEvaluating test results and adapting strategy...',
+              taskId: 'loop-iter-1'
+            },
+            max: { text: 'Activating maximum capability mode. Deploying parallel agents for optimal solution...' },
           };
-          addAIResponse(responses[currentMode] || 'Processing your request...');
+          const resp = responses[currentMode] || { text: 'Processing your request...' };
+          // Parse task markers from the response
+          parseTaskMarkers(resp.text);
+          renderTaskList();
+          addAIResponse(resp.text, resp.taskId);
+          finishGeneration();
         }, 600);
+
+        // Store timeout ID for cancellation
+        window._currentResponseTimeout = responseDelay;
       }
+
+      function stopGeneration() {
+        if (!isGenerating) return;
+        if (window._currentResponseTimeout) {
+          clearTimeout(window._currentResponseTimeout);
+          window._currentResponseTimeout = null;
+        }
+        addSystemMessage('⏹ Generation stopped by user');
+        finishGeneration();
+      }
+
+      function finishGeneration() {
+        isGenerating = false;
+        document.getElementById('send-btn').classList.remove('hidden');
+        document.getElementById('stop-btn').classList.add('hidden');
+      }
+
+      function openSettings() {
+        document.getElementById('settings-overlay').classList.add('active');
+      }
+
+      function closeSettings() {
+        document.getElementById('settings-overlay').classList.remove('active');
+      }
+
+      // Load settings from localStorage or use defaults
+      let settings = loadSettings();
+
+      function loadSettings() {
+        const defaults = {
+          provider: 'openai',
+          model: 'gpt-4o',
+          temperature: 0.7,
+          maxTokens: 4096,
+          contextWindow: 8192,
+          stream: true,
+          autoApprove: false,
+          autoCheckpoint: true,
+          theme: 'dark',
+          fontSize: 14,
+          lineNumbers: true,
+        };
+        try {
+          const saved = localStorage.getItem('helix-settings');
+          return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
+        } catch (e) {
+          return defaults;
+        }
+      }
+
+      function updateSettings() {
+        settings.provider = document.getElementById('setting-provider').value;
+        settings.model = document.getElementById('setting-model').value;
+        settings.temperature = parseFloat(document.getElementById('setting-temperature').value);
+        settings.maxTokens = parseInt(document.getElementById('setting-max-tokens').value);
+        settings.contextWindow = parseInt(document.getElementById('setting-context').value);
+        settings.theme = document.getElementById('setting-theme').value;
+        settings.fontSize = parseInt(document.getElementById('setting-font-size').value);
+      }
+
+      function toggleSetting(btn, key) {
+        btn.classList.toggle('active');
+        settings[key] = btn.classList.contains('active');
+      }
+
+      function updateSliderValue(slider, labelId) {
+        const val = slider.value;
+        const suffix = labelId === 'font-size-value' ? 'px' : '';
+        document.getElementById(labelId).textContent = val + suffix;
+        updateSettings();
+      }
+
+      function saveSettings() {
+        updateSettings();
+        // Persist to localStorage
+        try {
+          localStorage.setItem('helix-settings', JSON.stringify(settings));
+        } catch (e) {
+          console.warn('Failed to save settings to localStorage:', e);
+        }
+        // Also persist to VS Code settings if available
+        if (typeof vscode !== 'undefined' && vscode.postMessage) {
+          vscode.postMessage({ type: 'saveSettings', settings });
+        }
+        addSystemMessage('💾 Settings saved');
+        closeSettings();
+      }
+
+      function resetSettings() {
+        settings = {
+          provider: 'openai',
+          model: 'gpt-4o',
+          temperature: 0.7,
+          maxTokens: 4096,
+          contextWindow: 8192,
+          stream: true,
+          autoApprove: false,
+          autoCheckpoint: true,
+          theme: 'dark',
+          fontSize: 14,
+          lineNumbers: true,
+        };
+        // Reset UI
+        syncSettingsToUI();
+      }
+
+      function syncSettingsToUI() {
+        document.getElementById('setting-provider').value = settings.provider;
+        document.getElementById('setting-model').value = settings.model;
+        document.getElementById('setting-temperature').value = settings.temperature;
+        document.getElementById('temp-value').textContent = settings.temperature;
+        document.getElementById('setting-max-tokens').value = settings.maxTokens;
+        document.getElementById('setting-context').value = settings.contextWindow;
+        document.getElementById('setting-theme').value = settings.theme;
+        document.getElementById('setting-font-size').value = settings.fontSize;
+        document.getElementById('font-size-value').textContent = settings.fontSize + 'px';
+
+        document.getElementById('setting-stream').classList.toggle('active', settings.stream);
+        document.getElementById('setting-auto-approve').classList.toggle('active', settings.autoApprove);
+        document.getElementById('setting-auto-checkpoint').classList.toggle('active', settings.autoCheckpoint);
+        document.getElementById('setting-line-numbers').classList.toggle('active', settings.lineNumbers);
+      }
+
+      function initSettingsUI() {
+        // Wait for DOM to be ready
+        setTimeout(() => {
+          syncSettingsToUI();
+        }, 100);
+      }
+
+      function filterSettings(query) {
+        const q = query.toLowerCase();
+        document.querySelectorAll('.settings-section').forEach(section => {
+          const items = section.querySelectorAll('.settings-item, .settings-shortcut-row');
+          let visible = false;
+          items.forEach(item => {
+            const text = item.textContent.toLowerCase();
+            const match = text.includes(q);
+            item.style.display = match || !q ? 'flex' : 'none';
+            if (match) visible = true;
+          });
+          // For shortcut sections, always show if query is empty or any item matches
+          section.style.display = (visible || !q || section.querySelector('.settings-shortcut-row')) ? 'block' : 'none';
+        });
+      }
+
+      // Escape key to close settings
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && document.getElementById('settings-overlay').classList.contains('active')) {
+          closeSettings();
+        }
+      });
 
       // ============================================================
       // Keyboard Shortcuts
@@ -2319,6 +4293,38 @@
             case 'o': e.preventDefault(); switchMode('compose'); break;
             case 'l': e.preventDefault(); switchMode('loop'); break;
             case 'm': e.preventDefault(); switchMode('max'); break;
+          }
+        }
+        // Open settings: Cmd/Ctrl + ,
+        if ((e.metaKey || e.ctrlKey) && e.key === ',') {
+          e.preventDefault();
+          openSettings();
+        }
+        
+        // Checkpoint/Changes shortcuts (only when Changes tab is active)
+        // Using Alt modifier to avoid conflicts with VS Code native shortcuts
+        if (currentSideTab === 'changes' && currentCheckpointTab === 'changes' && e.altKey) {
+          // Alt+A: Select all changes
+          if (e.key === 'a') {
+            e.preventDefault();
+            selectAllChanges();
+          }
+          // Alt+K: Keep selected changes
+          if (e.key === 'k') {
+            e.preventDefault();
+            const selected = mockChanges.filter(c => c.checked);
+            selected.forEach(file => keepChange(file.id));
+          }
+          // Alt+R: Revert selected changes
+          if (e.key === 'r') {
+            e.preventDefault();
+            const selected = mockChanges.filter(c => c.checked);
+            selected.forEach(file => revertChange(file.id));
+          }
+          // Alt+S: Stage selected changes
+          if (e.key === 's') {
+            e.preventDefault();
+            stageSelected();
           }
         }
       });
@@ -2355,6 +4361,15 @@
       renderPreflight();
       renderCardinal();
       renderZen();
+      renderDriftAlerts();
+      initSettingsUI();
+
+      // Apply default minimal mode
+      document.body.classList.add('minimal-mode');
+      const minimalIcon = document.getElementById('minimal-icon');
+      if (minimalIcon) minimalIcon.textContent = '⬜';
+      renderCollapsible('tasks');
+      renderCollapsible('changes');
 
       // Auto-simulate task progress every 10s
       setInterval(() => {

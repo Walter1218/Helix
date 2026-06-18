@@ -12,10 +12,14 @@ A Visual Studio Code extension that integrates Helix (opencode) directly into yo
 ## Features
 
 - **6-Mode AI Assistant**: Ask (💬), Build (🛠️), Plan (📋), Compose (🎼), Loop (🔄), Max (⚡)
+- **Minimal Mode (Default)**: Clean, distraction-free interface with sidebar and status bar hidden
+- **Collapsible Sidebar**: Click ◀/▶ button to collapse/expand the side panel
 - **Context Awareness**: Automatically share your current selection or tab with Helix
 - **File Reference Shortcuts**: Use `Cmd+Option+K` (Mac) or `Alt+Ctrl+K` (Win/Linux) to insert file references. For example, `@File#L37-42`.
 - **Task List & Checkpoints**: Monitor AI task progress and review file changes directly in the panel
 - **Pre-flight Check & Cardinal**: Harness-layer safety guardrails with UI feedback
+- **Settings Panel**: Configure model, behavior, appearance, and shortcuts (`Cmd+,`)
+- **AlignmentGuard**: Drift detection with visual warnings for file drift, rabbit holes, and distractions
 
 ## Prerequisites
 
