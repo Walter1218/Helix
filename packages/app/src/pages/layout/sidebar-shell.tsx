@@ -30,6 +30,10 @@ export const SidebarContent = (props: {
   onOpenSettings: () => void
   helpLabel: Accessor<string>
   onOpenHelp: () => void
+  homeLabel: Accessor<string>
+  onGoHome: () => void
+  minimalModeEnabled: () => boolean
+  onToggleMinimalMode: () => void
   renderPanel: () => JSX.Element
 }): JSX.Element => {
   const expanded = createMemo(() => !!props.mobile || props.opened())
@@ -90,6 +94,24 @@ export const SidebarContent = (props: {
           </DragDropProvider>
         </div>
         <div class="shrink-0 w-full pt-3 pb-6 flex flex-col items-center gap-2">
+          <Tooltip placement={placement()} value={props.homeLabel()}>
+            <IconButton
+              icon="home"
+              variant="ghost"
+              size="large"
+              onClick={props.onGoHome}
+              aria-label={props.homeLabel()}
+            />
+          </Tooltip>
+          <Tooltip placement={placement()} value={props.minimalModeEnabled() ? 'Full Mode' : 'Minimal Mode'}>
+            <IconButton
+              icon={props.minimalModeEnabled() ? 'expand' : 'collapse'}
+              variant="ghost"
+              size="large"
+              onClick={props.onToggleMinimalMode}
+              aria-label={props.minimalModeEnabled() ? 'Full Mode' : 'Minimal Mode'}
+            />
+          </Tooltip>
           <TooltipKeybind placement={placement()} title={props.settingsLabel()} keybind={props.settingsKeybind() ?? ""}>
             <IconButton
               icon="settings-gear"

@@ -1,137 +1,195 @@
-// This method is called when your extension is deactivated
-export function deactivate() {}
+import * as vscode from "vscode";
+import { HelixWebviewPanel } from "./webview/panel";
+import { HelixServer } from "./server";
+import { HelixSidebarProvider } from "./sidebar/tree-provider";
 
-import * as vscode from "vscode"
-
-const TERMINAL_NAME = "opencode"
+const TERMINAL_NAME = "Helix";
+const server = new HelixServer();
+let activePanel: HelixWebviewPanel | null = null;
 
 export function activate(context: vscode.ExtensionContext) {
+  // ── 注册侧边栏 ──
+  const sidebarProvider = new HelixSidebarProvider();
+  const sidebarTreeView = vscode.window.createTreeView("helix.sidebar", {
+    treeDataProvider: sidebarProvider,
+    showCollapseAll: false
+  });
+
+  // ── 注册新命令：GUI 模式 ──
+  const openGUIDisposable = vscode.commands.registerCommand("helix.openGUI", async () => {
+    await openGUI(context);
+  });
+
+  const openNewGUIDisposable = vscode.commands.registerCommand("helix.openGUI.new", async () => {
+    activePanel?.dispose();
+    activePanel = null;
+    await openGUI(context);
+  });
+
+  // ── 保留原有终端命令（兼容模式） ──
   const openNewTerminalDisposable = vscode.commands.registerCommand("opencode.openNewTerminal", async () => {
-    await openTerminal()
-  })
+    await openTerminal(context);
+  });
 
   const openTerminalDisposable = vscode.commands.registerCommand("opencode.openTerminal", async () => {
-    // An opencode terminal already exists => focus it
-    const existingTerminal = vscode.window.terminals.find((t) => t.name === TERMINAL_NAME)
+    const existingTerminal = vscode.window.terminals.find((t) => t.name === TERMINAL_NAME);
     if (existingTerminal) {
-      existingTerminal.show()
-      return
+      existingTerminal.show();
+      return;
+    }
+    await openTerminal(context);
+  });
+
+  const addFilepathDisposable = vscode.commands.registerCommand("opencode.addFilepathToTerminal", async () => {
+    const fileRef = getActiveFile();
+    if (!fileRef) {return;}
+
+    if (activePanel) {
+      activePanel.sendFileRef(fileRef);
+      return;
     }
 
-    await openTerminal()
-  })
-
-  let addFilepathDisposable = vscode.commands.registerCommand("opencode.addFilepathToTerminal", async () => {
-    const fileRef = getActiveFile()
-    if (!fileRef) {
-      return
-    }
-
-    const terminal = vscode.window.activeTerminal
-    if (!terminal) {
-      return
-    }
-
+    const terminal = vscode.window.activeTerminal;
+    if (!terminal) {return;}
     if (terminal.name === TERMINAL_NAME) {
-      // @ts-ignore
-      const port = terminal.creationOptions.env?.["_EXTENSION_OPENCODE_PORT"]
-      port ? await appendPrompt(parseInt(port), fileRef) : terminal.sendText(fileRef, false)
-      terminal.show()
+      const port = (terminal.creationOptions as any).env?.["_EXTENSION_OPENCODE_PORT"];
+      port ? await appendPrompt(parseInt(port), fileRef) : terminal.sendText(fileRef, false);
+      terminal.show();
     }
-  })
+  });
 
-  context.subscriptions.push(openNewTerminalDisposable, openTerminalDisposable, addFilepathDisposable)
+  context.subscriptions.push(
+    sidebarTreeView,
+    openGUIDisposable,
+    openNewGUIDisposable,
+    openNewTerminalDisposable,
+    openTerminalDisposable,
+    addFilepathDisposable,
+    {
+      dispose: () => {
+        server.stop();
+        activePanel?.dispose();
+      },
+    }
+  );
 
-  async function openTerminal() {
-    // Create a new terminal in split screen
-    const port = Math.floor(Math.random() * (65535 - 16384 + 1)) + 16384
-    const terminal = vscode.window.createTerminal({
-      name: TERMINAL_NAME,
-      iconPath: {
-        light: vscode.Uri.file(context.asAbsolutePath("images/button-dark.svg")),
-        dark: vscode.Uri.file(context.asAbsolutePath("images/button-light.svg")),
-      },
-      location: {
-        viewColumn: vscode.ViewColumn.Beside,
-        preserveFocus: false,
-      },
-      env: {
-        _EXTENSION_OPENCODE_PORT: port.toString(),
-        OPENCODE_CALLER: "vscode",
-      },
+  // 扩展关闭时清理
+  context.subscriptions.push(
+    new vscode.Disposable(() => {
+      server.stop();
     })
+  );
+}
 
-    terminal.show()
-    terminal.sendText(`opencode --port ${port}`)
+export function deactivate() {
+  server.stop();
+  activePanel?.dispose();
+}
 
-    const fileRef = getActiveFile()
-    if (!fileRef) {
-      return
-    }
-
-    // Wait for the terminal to be ready
-    let tries = 10
-    let connected = false
-    do {
-      await new Promise((resolve) => setTimeout(resolve, 200))
+async function openGUI(context: vscode.ExtensionContext) {
+  try {
+    // 如果已有面板，直接显示（即使被隐藏了）
+    if (activePanel) {
       try {
-        await fetch(`http://localhost:${port}/app`)
-        connected = true
-        break
-      } catch {}
-
-      tries--
-    } while (tries > 0)
-
-    // If connected, append the prompt to the terminal
-    if (connected) {
-      await appendPrompt(port, `In ${fileRef}`)
-      terminal.show()
-    }
-  }
-
-  async function appendPrompt(port: number, text: string) {
-    await fetch(`http://localhost:${port}/tui/append-prompt`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ text }),
-    })
-  }
-
-  function getActiveFile() {
-    const activeEditor = vscode.window.activeTextEditor
-    if (!activeEditor) {
-      return
-    }
-
-    const document = activeEditor.document
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri)
-    if (!workspaceFolder) {
-      return
-    }
-
-    // Get the relative path from workspace root
-    const relativePath = vscode.workspace.asRelativePath(document.uri)
-    let filepathWithAt = `@${relativePath}`
-
-    // Check if there's a selection and add line numbers
-    const selection = activeEditor.selection
-    if (!selection.isEmpty) {
-      // Convert to 1-based line numbers
-      const startLine = selection.start.line + 1
-      const endLine = selection.end.line + 1
-
-      if (startLine === endLine) {
-        // Single line selection
-        filepathWithAt += `#L${startLine}`
-      } else {
-        // Multi-line selection
-        filepathWithAt += `#L${startLine}-${endLine}`
+        activePanel.reveal();
+        return;
+      } catch {
+        activePanel = null;
       }
     }
 
-    return filepathWithAt
+    let port: number;
+    try {
+      vscode.window.showInformationMessage("正在启动 Helix 服务...");
+      port = await server.start(context);
+    } catch (err) {
+      // 找不到 mimo 也打开面板，进入离线模式
+      vscode.window.showWarningMessage("Helix 服务未启动，GUI 进入离线模式。可在设置中配置 helix.mimoPath。");
+      port = 0;
+    }
+
+    activePanel = HelixWebviewPanel.createOrShow(context.extensionUri, port);
+    activePanel.onDispose(() => {
+      activePanel = null;
+    });
+    console.log("[Helix] activePanel created");
+  } catch (err) {
+    console.error("[Helix] openGUI error:", err);
+    vscode.window.showErrorMessage(`启动 Helix 失败: ${err instanceof Error ? err.message : String(err)}`);
   }
+}
+
+async function openTerminal(context: vscode.ExtensionContext) {
+  const port = Math.floor(Math.random() * (65535 - 16384 + 1)) + 16384;
+  const terminal = vscode.window.createTerminal({
+    name: TERMINAL_NAME,
+    iconPath: {
+      light: vscode.Uri.file(context.asAbsolutePath("images/button-dark.svg")),
+      dark: vscode.Uri.file(context.asAbsolutePath("images/button-light.svg")),
+    },
+    location: {
+      viewColumn: vscode.ViewColumn.Beside,
+      preserveFocus: false,
+    },
+    env: {
+      _EXTENSION_OPENCODE_PORT: port.toString(),
+      OPENCODE_CALLER: "vscode",
+    },
+  });
+
+  terminal.show();
+  terminal.sendText(`opencode --port ${port}`);
+
+  const fileRef = getActiveFile();
+  if (!fileRef) {return;}
+
+  let tries = 10;
+  let connected = false;
+  do {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    try {
+      await fetch(`http://localhost:${port}/app`);
+      connected = true;
+      break;
+    } catch {}
+    tries--;
+  } while (tries > 0);
+
+  if (connected) {
+    await appendPrompt(port, `In ${fileRef}`);
+    terminal.show();
+  }
+}
+
+async function appendPrompt(port: number, text: string) {
+  await fetch(`http://localhost:${port}/tui/append-prompt`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+}
+
+function getActiveFile(): string | undefined {
+  const activeEditor = vscode.window.activeTextEditor;
+  if (!activeEditor) {return;}
+
+  const document = activeEditor.document;
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+  if (!workspaceFolder) {return;}
+
+  const relativePath = vscode.workspace.asRelativePath(document.uri);
+  let filepathWithAt = `@${relativePath}`;
+
+  const selection = activeEditor.selection;
+  if (!selection.isEmpty) {
+    const startLine = selection.start.line + 1;
+    const endLine = selection.end.line + 1;
+    if (startLine === endLine) {
+      filepathWithAt += `#L${startLine}`;
+    } else {
+      filepathWithAt += `#L${startLine}-${endLine}`;
+    }
+  }
+
+  return filepathWithAt;
 }

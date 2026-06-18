@@ -1,4 +1,4 @@
-<h1 align="center">🧬 Helix — 自主代码智能体</h1>
+<h1 align="center">🧬 Helix — 一念三千</h1>
 
 <p align="center">
   <strong>基于 MiMo-Code 引擎，面向生产环境的自主代码任务执行与自我进化系统</strong>

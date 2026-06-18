@@ -1,4 +1,4 @@
-# 🧬 Helix - Autonomous Code Agent
+# 🧬 Helix — One Thought, Three Thousand Worlds
 
 > **One-liner**: Helix is an autonomous code-task execution engine built on top of the MiMo-Code core. You describe the goal; it plans, executes, verifies, and evolves—without human intervention.
 

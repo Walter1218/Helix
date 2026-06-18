@@ -591,6 +591,7 @@ export const dict = {
   "sidebar.menu.toggle": "切換選單",
   "sidebar.nav.projectsAndSessions": "專案與工作階段",
   "sidebar.settings": "設定",
+  "sidebar.home": "Home",
   "sidebar.help": "說明",
   "sidebar.workspaces.enable": "啟用工作區",
   "sidebar.workspaces.disable": "停用工作區",

@@ -34,6 +34,7 @@ import { GlobalSyncProvider } from "@/context/global-sync"
 import { HighlightsProvider } from "@/context/highlights"
 import { LanguageProvider, type Locale, useLanguage } from "@/context/language"
 import { LayoutProvider } from "@/context/layout"
+import { ModeRegistryProvider } from "@/context/mode-registry"
 import { ModelsProvider } from "@/context/models"
 import { NotificationProvider } from "@/context/notification"
 import { PermissionProvider } from "@/context/permission"
@@ -88,21 +89,23 @@ function QueryProvider(props: ParentProps) {
 
 function AppShellProviders(props: ParentProps) {
   return (
-    <SettingsProvider>
-      <PermissionProvider>
-        <LayoutProvider>
-          <NotificationProvider>
-            <ModelsProvider>
-              <CommandProvider>
-                <HighlightsProvider>
-                  <Layout>{props.children}</Layout>
-                </HighlightsProvider>
-              </CommandProvider>
-            </ModelsProvider>
-          </NotificationProvider>
-        </LayoutProvider>
-      </PermissionProvider>
-    </SettingsProvider>
+    <ModeRegistryProvider>
+      <SettingsProvider>
+        <PermissionProvider>
+          <LayoutProvider>
+            <NotificationProvider>
+              <ModelsProvider>
+                <CommandProvider>
+                  <HighlightsProvider>
+                    <Layout>{props.children}</Layout>
+                  </HighlightsProvider>
+                </CommandProvider>
+              </ModelsProvider>
+            </NotificationProvider>
+          </LayoutProvider>
+        </PermissionProvider>
+      </SettingsProvider>
+    </ModeRegistryProvider>
   )
 }
 

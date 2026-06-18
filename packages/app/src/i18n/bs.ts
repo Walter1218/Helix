@@ -601,6 +601,7 @@ export const dict = {
   "sidebar.menu.toggle": "Prikaži/sakrij meni",
   "sidebar.nav.projectsAndSessions": "Projekti i sesije",
   "sidebar.settings": "Postavke",
+  "sidebar.home": "Home",
   "sidebar.help": "Pomoć",
   "sidebar.workspaces.enable": "Omogući radne prostore",
   "sidebar.workspaces.disable": "Onemogući radne prostore",

@@ -2352,6 +2352,16 @@ export default function Layout(props: ParentProps) {
       onOpenSettings={openSettings}
       helpLabel={() => language.t("sidebar.help")}
       onOpenHelp={() => platform.openLink("https://opencode.ai/desktop-feedback")}
+      homeLabel={() => language.t("sidebar.home")}
+      onGoHome={() => navigate("/")}
+      minimalModeEnabled={() => layout.minimalMode.enabled()}
+      onToggleMinimalMode={() => {
+        layout.minimalMode.toggle()
+        if (layout.minimalMode.enabled()) {
+          layout.sidebar.close()
+          layout.fileTree.close()
+        }
+      }}
       renderPanel={() =>
         mobile ? <SidebarPanel project={currentProject} mobile /> : <SidebarPanel project={currentProject} merged />
       }

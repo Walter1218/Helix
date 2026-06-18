@@ -17,7 +17,7 @@ while (true) {
 **问题**：用户输入的任务描述（如"帮我优化这个函数"）直接进入 `lastUser`，没有以下检查：
 - 目标是否模糊？边界条件是否缺失？
 - 用户对 loop 的介入偏好是什么？（全自动 / 每步确认 / 测试失败时询问）
-- 不同模式（Build/Plan/Compose/Max）的启动前信息需求不同
+- 不同模式（Ask/Build/Plan/Compose/Max）的启动前信息需求不同
 
 ### 1.2 当前运行时卡点处理
 
@@ -36,7 +36,7 @@ while (true) {
 
 1. **先 Harness 后业务**：先补齐信息收集和卡点检测的 Harness 层，再改造 loop 脚本
 2. **不过滤**：让用户决定信息是否充分，不替用户做"这个信息足够/不够"的判断
-3. **模式差异化**：Build/Plan/Compose/Max 四种模式的信息收集策略不同
+3. **模式差异化**：Ask/Build/Plan/Compose/Max 五种模式的信息收集策略不同
 4. **复用优先**：复用现有 `Question` 工具、`BusEvent` 系统、`SessionStatus` 状态机
 5. **成本意识**：启动前信息收集的成本要远小于一轮错误迭代的成本
 
@@ -105,7 +105,7 @@ export const Event = {
     z.object({
       sessionID: SessionID.zod,
       answers: z.array(z.string()),
-      mode: z.enum(["build", "plan", "compose", "max"]),
+      mode: z.enum(["ask", "build", "plan", "compose", "max"]),
       constraints: z.array(z.string()).optional(),
     }),
   ),
@@ -116,7 +116,7 @@ export interface Interface {
   readonly analyze: (input: {
     sessionID: SessionID
     userText: string
-    mode: "build" | "plan" | "compose" | "max"
+    mode: "ask" | "build" | "plan" | "compose" | "max"
     context: { files: string[]; projectType: string }
   }) => Effect.Effect<{ needPreFlight: boolean; questions: Question.Info[]; ambiguity: Ambiguity }>
 
@@ -397,7 +397,7 @@ Confirm to proceed, or let me know if anything needs adjustment.`,
 
 ## 七、Loop 模式整合
 
-### 7.1 四种模式的差异化处理
+### 7.1 五种模式的差异化处理
 
 | 模式 | Pre-flight 重点 | In-flight 卡点 | Post-flight 检查 |
 |------|----------------|---------------|-----------------|

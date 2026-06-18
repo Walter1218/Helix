@@ -33,6 +33,7 @@ import { messageAgentColor } from "@/utils/agent"
 import { sessionTitle } from "@/utils/session-title"
 import { parseCommentNote, readCommentMetadata } from "@/utils/comment-note"
 import { makeTimer } from "@solid-primitives/timer"
+import { useModeRegistry } from "@/context/mode-registry"
 
 type MessageComment = {
   path: string
@@ -241,6 +242,7 @@ export function MessageTimeline(props: {
   const language = useLanguage()
   const { params, sessionKey } = useSessionKey()
   const platform = usePlatform()
+  const registry = useModeRegistry()
 
   const rendered = createMemo(() => props.renderedUserMessages.map((message) => message.id))
   const sessionID = createMemo(() => params.id)
@@ -1087,6 +1089,17 @@ export function MessageTimeline(props: {
                               </Index>
                             </div>
                           </div>
+                        </div>
+                      </Show>
+                      <Show when={active() && registry.activeMode()}>
+                        <div class="flex items-center gap-1 px-4 md:px-5 pt-2 pb-1">
+                          <div
+                            class="w-0.5 h-4 rounded-full"
+                            style={{ background: registry.activeMode().color }}
+                          />
+                          <span class="text-[11px] text-text-weak">
+                            {registry.activeMode().icon} {registry.activeMode().name}
+                          </span>
                         </div>
                       </Show>
                       <SessionTurn

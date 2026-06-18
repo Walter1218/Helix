@@ -7,6 +7,16 @@
   font-style: normal;
 }
 
+@layer base {
+  :root {
+    --helix-mode-build: #fb8147;
+    --helix-mode-plan: #c7e2a8;
+    --helix-mode-compose: #a7a3d8;
+    --helix-mode-loop: #007acc;
+    --helix-mode-max: #e85d75;
+  }
+}
+
 @layer components {
   @keyframes session-progress-whip {
     0% {

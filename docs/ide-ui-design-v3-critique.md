@@ -100,7 +100,7 @@ const DEGRADE_POLICY: Record<CardinalType, DegradeAction> = {
 ┌────────────────────────────────────────┐
 │  Mode Registry                          │
 │  ├─ Built-in Handlers (系统内置)        │
-│  │   Build, Plan, Compose, Max         │
+│  │   Ask, Build, Plan, Compose, Max      │
 │  │   运行在主线程，有完整权限            │
 │  ├─ Config Handlers (用户配置)         │
 │  │   仅允许 prompt + toolAllowlist     │
@@ -192,10 +192,10 @@ const DEGRADE_POLICY: Record<CardinalType, DegradeAction> = {
 
 | 迭代 | 目标 | 内容 | 用户可见性 | 不做清单 |
 |------|------|------|-----------|---------|
-| **Phase 2a (Week 3)** | Pre-flight MVP | Build 模式硬编码问题模板、轻量模型降级为规则匹配、仅 external_dep Cardinal | 高 | 不支持 Plan/Compose/Max 模式、不支持动态问题生成 |
+| **Phase 2a (Week 3)** | Pre-flight MVP | Build 模式硬编码问题模板、轻量模型降级为规则匹配、仅 external_dep Cardinal | 高 | 不支持 Ask/Plan/Compose/Max 模式、不支持动态问题生成 |
 | **Phase 2b (Week 4)** | Cardinal MVP | test_failure + external_dep 两种卡点、状态栏 HUD、无 Deliverable Gate | 高 | 不支持 ambiguity/token_budget/heal_exhausted |
 | **Phase 3a (Week 5)** | 同步屏障 | 子智能体结果不丢失、编排钩子基础框架 | 低 | 不自动分解、不动态 Persona |
-| **Phase 3b (Week 6)** | Mode Registry | 内置模式注册（Build/Plan/Compose/Max）、UI 配置外化 | 中 | 不支持用户自定义 Handler、不支持第三方插件 |
+| **Phase 3b (Week 6)** | Mode Registry | 内置模式注册（Ask/Build/Plan/Compose/Max）、UI 配置外化 | 中 | 不支持用户自定义 Handler、不支持第三方插件 |
 | **Phase 4 (Week 7-8)** | 动态分解 | 显式触发分解（用户手动）、AgentStats 记录 | 中 | 不自动评估是否分解、不动态 Persona |
 
 **对文档的修改**：在 `loop-engineering-extension-roadmap.md` §3.2 中替换现有 P0/P1/P2，使用上述拆分后的表格。

@@ -12,7 +12,7 @@
 
 ### 1.1 背景
 
-Helix 当前的核心引擎（`packages/opencode`）提供完整的 Agent 能力（Build/Plan/Compose/Max 模式、权限、记忆、隔离、子智能体编排），但用户界面仅通过 CLI TUI 和 Web 浏览器访问。用户无法在 IDE 中直接获得 AI 辅助，导致：
+Helix 当前的核心引擎（`packages/opencode`）提供完整的 Agent 能力（Ask/Build/Plan/Compose/Max 模式、权限、记忆、隔离、子智能体编排），但用户界面仅通过 CLI TUI 和 Web 浏览器访问。用户无法在 IDE 中直接获得 AI 辅助，导致：
 - 上下文收集不精准（CLI 无法读取当前文件和选中代码）
 - 代码修改无法直接应用（需要手动复制粘贴）
 - Agent 能力不可见（权限、记忆、执行轨迹都是黑盒）
@@ -63,7 +63,7 @@ Helix 当前的核心引擎（`packages/opencode`）提供完整的 Agent 能力
 ┌───────────────────┼─────────────────────┐
 │  Layer 1: Helix 核心引擎               │
 │  (packages/opencode/src/)              │
-│  - Agent 系统 (build/plan/compose/max) │
+│  - Agent 系统 (ask/build/plan/compose/max) │
 │  - Memory 系统 (SQLite FTS5 + Vec)   │
 │  - Permission 系统                     │
 │  - Worktree 隔离                       │
@@ -117,7 +117,7 @@ VS Code Webview (SolidJS)          VS Code Extension Host (TS)
 | 资产 | 位置 | 复用方式 | 说明 |
 |------|------|---------|------|
 | `mimo serve` HTTP API | `packages/opencode/src/server` | 扩展直接调用 | 已有完整 session/file/event/question 路由 |
-| `Agent` 系统 | `packages/opencode/src/agent` | 通过 API 调用 | Build/Plan/Compose/Max 原生支持 |
+| `Agent` 系统 | `packages/opencode/src/agent` | 通过 API 调用 | Ask/Build/Plan/Compose/Max 原生支持 |
 | `Memory` 存储 | `packages/opencode/src/memory` | 通过 API 调用 | SQLite FTS5 + sqlite-vec，需暴露 API |
 | `Permission` 系统 | `packages/opencode/src/permission` | 通过 API 调用 | 需暴露当前权限矩阵查询 |
 | `Worktree` 隔离 | `packages/opencode/src/worktree` | 通过 API 调用 | 需暴露状态查询 |
@@ -173,11 +173,11 @@ VS Code Webview (SolidJS)          VS Code Extension Host (TS)
 | P1-4 | 实现 `postMessage` 双向通信（Webview ↔ Host） | 1d | Host 能接收 Webview 消息，Webview 能接收 Host 消息 | P1-3 |
 | P1-5 | 实现 Webview → Host → mimo serve 的 HTTP 请求转发 | 1d | 通过 Host 代理调用 mimo serve API，CORS 问题解决 | P1-4 |
 | P1-6 | 实现 SSE 流式响应从 mimo serve → Host → Webview | 1.5d | 消息流能实时逐字渲染，不丢包 | P1-5 |
-| P1-7 | 实现标题栏模式切换器（Build/Plan/Compose/Max） | 1d | 四个模式按钮可切换，高亮当前模式 | P1-6 |
+| P1-7 | 实现标题栏模式切换器（Ask/Build/Plan/Compose/Max） | 1d | 五个模式按钮可切换，高亮当前模式 | P1-6 |
 | P1-8 | 实现消息流模式标识（每条 Agent 消息带模式色条） | 0.5d | 消息气泡左侧 2px 色条跟随模式 | P1-7 |
 | P1-9 | 实现输入框模式快捷栏 + 动态占位符 | 0.5d | 占位符随模式切换变化 | P1-7 |
 | P1-10 | 实现 Max 状态指示器（标题栏 + 状态栏） | 1d | 显示候选进度 "N/M → 状态" | P1-7 |
-| P1-11 | 快捷键绑定（`Ctrl+Shift+B/P/O/M`） | 0.5d | 快捷键可切换模式 | P1-7 |
+| P1-11 | 快捷键绑定（`Ctrl+Shift+A/B/P/O/M`） | 0.5d | 快捷键可切换模式 | P1-7 |
 | P1-12 | 编写 Phase 1 测试 | 1d | 10 个测试用例通过 | 全部 |
 
 **Phase 1 总工时：约 9.5 天（2 周）**
@@ -364,7 +364,7 @@ packages/vscode-extension/
 ### 6.3 测试场景（端到端）
 
 1. 打开 Helix 面板，发送消息，收到流式响应
-2. 切换模式（Build → Plan → Compose → Max），验证 UI 反馈
+2. 切换模式（Ask → Build → Plan → Compose → Max），验证 UI 反馈
 3. 选中代码，打开行内对话，获取建议并应用修改
 4. Agent 返回代码修改，点击接受，文件内容被修改
 5. 打开权限面板，切换 `bash` 权限为 `deny`，发送消息验证权限生效
@@ -402,7 +402,7 @@ packages/vscode-extension/
 
 ## 九、设计稿索引
 
-所有设计稿保存在 `docs/assets/` 目录，共 13 张：
+所有设计稿保存在 `docs/assets/` 目录，共 21 张：
 
 | 文件名 | 内容 | 版本 |
 |--------|------|------|
@@ -416,11 +416,17 @@ packages/vscode-extension/
 | `VS_Code_extension_AGENTS_md_ed_*.png` | AGENTS.md 编辑器 | v2 |
 | `VS_Code_extension_plugin_MCP_m_*.png` | Plugin/MCP 管理器 | v2 |
 | `VS_Code_extension_status_bar_w_*.png` | 状态栏（模式+成本+DPO） | v2 |
-| `VS_Code_extension_AI_coding_as_2026-06-17T04-56-42.png` | 主面板（基础布局） | v1 |
-| `VS_Code_inline_chat_UI_mockup__2026-06-17T04-56-45.png` | 行内对话（基础版） | v1 |
-| `VS_Code_code_diff_preview_UI_m_2026-06-17T04-56-47.png` | 代码 Diff 预览 | v1 |
+| `VS_Code_Extension_main_panel_U_2026-06-17T15-50-09.png` | 主面板 6 模式（含 Ask + Loop） | v3 |
+| `VS_Code_Extension_UI_mockup_sh_2026-06-17T15-50-20.png` | 综合模式概览 6 模式 | v3 |
+| `VS_Code_inline_chat_UI_mockup__2026-06-17T15-50-21.png` | 行内对话（含 6 模式选择条） | v3 |
+| `VS_Code_Extension_UI_Design____2026-06-17T13-14-52.png` | Pre-flight 检查 | v3 |
+| `VS_Code_Extension_UI_Design____2026-06-17T13-14-54.png` | Cardinal 四级阻塞 | v3 |
+| `VS_Code_Extension_UI_Design____2026-06-17T13-14-58.png` | Judge 裁判卡片 | v3 |
+| `VS_Code_Extension_UI_Design____2026-06-17T13-15-01.png` | AlignmentGuard 偏移警告 | v3 |
+| `VS_Code_Extension_UI_Design____2026-06-17T13-15-43.png` | 注意力等级与 Zen Mode | v3 |
+| `VS_Code_Extension_UI_Design____2026-06-17T13-15-49.png` | 容错与降级 | v3 |
 
-完整 UI 规格见 `docs/ide-ui-design.md`（约 700 行，含组件规格、交互流程、动画、字体、无障碍）。
+共 19 张（v2 10 张 + v3 9 张，其中 3 张已更新为 6 模式）。
 
 ---
 

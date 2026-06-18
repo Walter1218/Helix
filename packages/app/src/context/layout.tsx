@@ -255,6 +255,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         mobileSidebar: {
           opened: false,
         },
+        minimalMode: false,
         sessionTabs: {} as Record<string, SessionTabs>,
         sessionView: {} as Record<string, SessionView>,
         handoff: {
@@ -700,6 +701,18 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
         toggle() {
           setStore("mobileSidebar", "opened", (x) => !x)
+        },
+      },
+      minimalMode: {
+        enabled: createMemo(() => store.minimalMode ?? false),
+        enable() {
+          setStore("minimalMode", true)
+        },
+        disable() {
+          setStore("minimalMode", false)
+        },
+        toggle() {
+          setStore("minimalMode", (x) => !x)
         },
       },
       pendingMessage: {

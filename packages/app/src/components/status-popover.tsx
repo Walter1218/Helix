@@ -5,6 +5,7 @@ import { Suspense, createMemo, createSignal, lazy, Show } from "solid-js"
 import { useLanguage } from "@/context/language"
 import { useServer } from "@/context/server"
 import { useSync } from "@/context/sync"
+import { useModeRegistry } from "@/context/mode-registry"
 
 const Body = lazy(() => import("./status-popover-body").then((x) => ({ default: x.StatusPopoverBody })))
 
@@ -12,6 +13,7 @@ export function StatusPopover() {
   const language = useLanguage()
   const server = useServer()
   const sync = useSync()
+  const registry = useModeRegistry()
   const [shown, setShown] = createSignal(false)
   const ready = createMemo(() => server.healthy() === false || sync.data.mcp_ready)
   const healthy = createMemo(() => {
@@ -33,7 +35,7 @@ export function StatusPopover() {
         style: { scale: 1 },
       }}
       trigger={
-        <div class="relative size-4">
+        <div class="relative size-4 flex items-center gap-1">
           <div class="badge-mask-tight size-4 flex items-center justify-center">
             <Icon name={shown() ? "status-active" : "status"} size="small" />
           </div>
@@ -44,6 +46,11 @@ export function StatusPopover() {
               "bg-icon-critical-base": server.healthy() === false || (ready() && !healthy()),
               "bg-border-weak-base": server.healthy() === undefined || !ready(),
             }}
+          />
+          <div
+            class="w-1 h-3 rounded-full"
+            style={{ background: registry.activeMode().color }}
+            title={`${registry.activeMode().icon} ${registry.activeMode().name}`}
           />
         </div>
       }

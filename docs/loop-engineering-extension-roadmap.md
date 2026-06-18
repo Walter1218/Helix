@@ -8,10 +8,11 @@
 
 ### 1.1 现状：模式逻辑硬编码于 `prompt.ts`
 
-当前四种模式（Build/Plan/Compose/Max）的实现方式：
+当前五种模式（Ask/Build/Plan/Compose/Max）的实现方式：
 
 | 模式 | 代码位置 | 实现方式 | 扩展难度 |
 |------|---------|---------|---------|
+| **Ask** | 默认 | 无特殊处理，走标准对话流程，不调用工具 | — |
 | **Compose** | `prompt.ts:451-464` | 硬编码：查找 `agent === "compose"` 的消息，注入 `PROMPT_COMPOSE` + skills block | 需修改 `buildLLMRequestPrefix` 函数 |
 | **Plan** | `prompt.ts:467-499` | 硬编码：判断 `agent.name !== "plan"` 时注入 `BUILD_SWITCH`；是 plan 时注入 plan 限制 prompt | 需修改 `buildLLMRequestPrefix` 函数 |
 | **Max** | `prompt.ts:2779-2810` | 硬编码：判断 `agent.name === MaxMode.MAX_MODE_AGENT` 时调用 `MaxMode.runMaxStep` | 需修改 `runLoop` 核心逻辑 |
@@ -33,12 +34,12 @@
 │                    Mode Registry (模式注册表)                 │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │
 │  │ Mode Handler │  │ Mode Handler │  │ Mode Handler     │  │
-│  │  (build)     │  │  (plan)      │  │  (custom)        │  │
+│  │  (ask)       │  │  (build)     │  │  (custom)        │  │
 │  └──────────────┘  └──────────────┘  └──────────────────┘  │
-│  ┌──────────────┐  ┌──────────────┐                         │
-│  │ Mode Handler │  │ Mode Handler │                         │
-│  │  (compose)   │  │  (max)       │                         │
-│  └──────────────┘  └──────────────┘                         │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │ Mode Handler │  │ Mode Handler │  │ Mode Handler │     │
+│  │  (plan)      │  │  (compose)   │  │  (max)       │     │
+│  └──────────────┘  └──────────────┘  └──────────────┘     │
 └─────────────────────────────────────────────────────────────┘
                           │
                           ▼
@@ -132,7 +133,7 @@ ModeRegistry.register({
 ┌────────────────────────────────────────┐
 │  Mode Registry                          │
 │  ├─ Built-in Handlers (系统内置)        │
-│  │   Build, Plan, Compose, Max         │
+│  │   Ask, Build, Plan, Compose, Max      │
 │  │   运行在主线程，有完整权限            │
 │  ├─ Config Handlers (用户配置)         │
 │  │   仅允许 prompt + toolAllowlist     │
@@ -259,6 +260,8 @@ ModeRegistry.register({
 | **ProgressObserver** | ✅ 已实现 | — | 进度观察 |
 | **Pre-flight 卡片 (UI)** | 设计完成 | P0 | `ide-ui-design.md` §5.9，消息流中可交互的启动前信息收集 |
 | **Cardinal 指示器 (UI)** | 设计完成 | P0 | `ide-ui-design.md` §5.10，运行时卡点检测的卡片和状态栏 HUD |
+| **Judge 裁判卡片 (UI)** | 设计完成 | P0 | `ide-ui-design.md` §5.12，Agent 行为质量裁决的非阻塞展示 |
+| **AlignmentGuard 偏移警告 (UI)** | 设计完成 | P0 | `ide-ui-design.md` §5.13，策略偏移检测的状态栏 + 可展开卡片 |
 | **FSM 状态可视化 (UI)** | 设计完成 | P1 | `ide-ui-design.md` §5.7，状态栏微型状态机 |
 | **DPO 数据反馈 (UI)** | 设计完成 | P1 | `ide-ui-design.md` §5.8，👍/👎 反馈收集 |
 | **成本预算 (UI)** | 设计完成 | P1 | `ide-ui-design.md` §5.6/4.10，Token 用量和预算进度 |
@@ -308,7 +311,7 @@ ModeRegistry.register({
 
 **Registry 方案**：
 - 模式 = Agent 配置 + Handler 逻辑 + UI 配置，三者解耦
-- 内置模式（Build/Plan/Compose/Max）注册在系统初始化时
+- 内置模式（Ask/Build/Plan/Compose/Max）注册在系统初始化时
 - 用户自定义模式通过 `mimocode.json` 的 `agents` 配置 + 可选的 `modeHandlers` 配置声明
 - 第三方插件通过 `Plugin` 系统注册自定义 Handler
 
@@ -320,9 +323,11 @@ ModeRegistry.register({
 - 仅 external_dep Cardinal（Pause 等级，30s 降级）
 - 不支持的：Plan/Compose/Max 模式、动态问题生成、test_failure Cardinal
 
-**P0b（Phase 2b, Week 4）**：Cardinal MVP — 用户可见性高
+**P0b（Phase 2b, Week 4）**：Cardinal + Judge + AlignmentGuard MVP — 用户可见性高
 - test_failure Cardinal（Block 等级，永不降级）
-- 状态栏 HUD（Warn/Pause/Block 指示器）
+- Judge 裁判卡片（UI 外化，非阻塞，展示驳回/存疑/强制回滚裁决）
+- AlignmentGuard 偏移警告（状态栏 + 可展开卡片，文件漂移/兔子洞/分心操作检测）
+- 状态栏 HUD（Warn/Pause/Block/偏移警告 指示器）
 - 无 Deliverable Gate（Phase 4 加入）
 - 不支持的：ambiguity、token_budget、heal_exhausted
 
@@ -332,7 +337,7 @@ ModeRegistry.register({
 - 不自动分解、不动态 Persona
 
 **P0d（Phase 3b, Week 6）**：Mode Registry — 用户可见性中
-- 内置模式注册（Build/Plan/Compose/Max）
+- 内置模式注册（Ask/Build/Plan/Compose/Max）
 - UI 配置外化（从 ModeUIConfig 动态读取）
 - 不支持用户自定义 Handler、不支持第三方插件
 

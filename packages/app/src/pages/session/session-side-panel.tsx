@@ -2,6 +2,7 @@ import { For, Match, Show, Switch, createEffect, createMemo, onCleanup, type JSX
 import { createStore } from "solid-js/store"
 import { createMediaQuery } from "@solid-primitives/media"
 import { Tabs } from "@mimo-ai/ui/tabs"
+import { Icon } from "@mimo-ai/ui/icon"
 import { IconButton } from "@mimo-ai/ui/icon-button"
 import { TooltipKeybind } from "@mimo-ai/ui/tooltip"
 import { ResizeHandle } from "@mimo-ai/ui/resize-handle"
@@ -27,6 +28,8 @@ import { FileTabContent } from "@/pages/session/file-tabs"
 import { createOpenSessionFileTab, createSessionTabs, getTabReorderIndex, type Sizing } from "@/pages/session/helpers"
 import { setSessionHandoff } from "@/pages/session/handoff"
 import { useSessionLayout } from "@/pages/session/session-layout"
+import { TaskListPanel } from "@/pages/session/task-list-panel"
+import { CheckpointPanel } from "@/pages/session/checkpoint-panel"
 
 export function SessionSidePanel(props: {
   canReview: () => boolean
@@ -40,6 +43,8 @@ export function SessionSidePanel(props: {
   focusReviewDiff: (path: string) => void
   reviewSnap: boolean
   size: Sizing
+  taskPanel?: () => JSX.Element
+  checkpointPanel?: () => JSX.Element
 }) {
   const layout = useLayout()
   const platform = usePlatform()
@@ -200,7 +205,7 @@ export function SessionSidePanel(props: {
   })
 
   return (
-    <Show when={isDesktop()}>
+    <Show when={isDesktop() && !layout.minimalMode.enabled()}>
       <aside
         id="review-panel"
         aria-label={language.t("session.panel.reviewAndFiles")}
@@ -249,6 +254,12 @@ export function SessionSidePanel(props: {
                             </Show>
                           </div>
                         </Tabs.Trigger>
+                      </Show>
+                      <Show when={props.taskPanel}>
+                        <Tabs.Trigger value="tasks">✅ Tasks</Tabs.Trigger>
+                      </Show>
+                      <Show when={props.checkpointPanel}>
+                        <Tabs.Trigger value="checkpoints">📋 Checkpoints</Tabs.Trigger>
                       </Show>
                       <Show when={contextOpen()}>
                         <Tabs.Trigger
@@ -307,6 +318,18 @@ export function SessionSidePanel(props: {
                   <Show when={reviewTab() && props.canReview()}>
                     <Tabs.Content value="review" class="flex flex-col h-full overflow-hidden contain-strict">
                       <Show when={activeTab() === "review"}>{props.reviewPanel()}</Show>
+                    </Tabs.Content>
+                  </Show>
+
+                  <Show when={props.taskPanel}>
+                    <Tabs.Content value="tasks" class="flex flex-col h-full overflow-hidden contain-strict">
+                      <Show when={activeTab() === "tasks"}>{props.taskPanel?.()}</Show>
+                    </Tabs.Content>
+                  </Show>
+
+                  <Show when={props.checkpointPanel}>
+                    <Tabs.Content value="checkpoints" class="flex flex-col h-full overflow-hidden contain-strict">
+                      <Show when={activeTab() === "checkpoints"}>{props.checkpointPanel?.()}</Show>
                     </Tabs.Content>
                   </Show>
 

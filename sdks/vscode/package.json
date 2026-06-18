@@ -1,7 +1,7 @@
 {
   "name": "opencode",
-  "displayName": "opencode",
-  "description": "opencode for VS Code",
+  "displayName": "Helix",
+  "description": "Helix for VS Code",
   "version": "1.14.19",
   "publisher": "sst-dev",
   "repository": {
@@ -20,13 +20,54 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand:helix.openGUI",
+    "onCommand:helix.openGUI.new",
+    "onView:helix.sidebar",
+    "onCommand:opencode.openTerminal",
+    "onCommand:opencode.openNewTerminal",
+    "onCommand:opencode.addFilepathToTerminal"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "helix-sidebar",
+          "title": "Helix",
+          "icon": "images/helix.svg"
+        }
+      ]
+    },
+    "views": {
+      "helix-sidebar": [
+        {
+          "id": "helix.sidebar",
+          "name": "Helix",
+          "type": "tree"
+        }
+      ]
+    },
     "commands": [
       {
+        "command": "helix.openGUI",
+        "title": "Open Helix GUI",
+        "icon": {
+          "light": "images/button-dark.svg",
+          "dark": "images/button-light.svg"
+        }
+      },
+      {
+        "command": "helix.openGUI.new",
+        "title": "Open Helix GUI in New Panel",
+        "icon": {
+          "light": "images/button-dark.svg",
+          "dark": "images/button-light.svg"
+        }
+      },
+      {
         "command": "opencode.openTerminal",
-        "title": "Open opencode",
+        "title": "Open Helix (Terminal Mode)",
         "icon": {
           "light": "images/button-dark.svg",
           "dark": "images/button-light.svg"
@@ -34,7 +75,7 @@
       },
       {
         "command": "opencode.openNewTerminal",
-        "title": "Open opencode in new tab",
+        "title": "Open Helix in New Terminal",
         "icon": {
           "light": "images/button-dark.svg",
           "dark": "images/button-light.svg"
@@ -42,29 +83,47 @@
       },
       {
         "command": "opencode.addFilepathToTerminal",
-        "title": "Add Filepath to Terminal"
+        "title": "Add Filepath to Helix"
       }
     ],
     "menus": {
+      "view/title": [
+        {
+          "command": "helix.openGUI",
+          "when": "view == helix.sidebar",
+          "group": "navigation"
+        }
+      ],
       "editor/title": [
         {
-          "command": "opencode.openNewTerminal",
-          "group": "navigation"
+          "command": "helix.openGUI",
+          "group": "navigation",
+          "when": "editorTextFocus"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "helix.openGUI",
+          "when": "true"
+        },
+        {
+          "command": "helix.openGUI.new",
+          "when": "true"
         }
       ]
     },
     "keybindings": [
       {
-        "command": "opencode.openTerminal",
-        "title": "Run opencode",
+        "command": "helix.openGUI",
+        "title": "Open Helix GUI",
         "key": "cmd+escape",
         "mac": "cmd+escape",
         "win": "ctrl+escape",
         "linux": "ctrl+escape"
       },
       {
-        "command": "opencode.openNewTerminal",
-        "title": "Run opencode",
+        "command": "helix.openGUI.new",
+        "title": "Open Helix GUI (New)",
         "key": "cmd+shift+escape",
         "mac": "cmd+shift+escape",
         "win": "ctrl+shift+escape",
@@ -72,7 +131,7 @@
       },
       {
         "command": "opencode.addFilepathToTerminal",
-        "title": "opencode: Insert At-Mentioned",
+        "title": "Helix: Insert At-Mentioned",
         "key": "cmd+alt+k",
         "mac": "cmd+alt+k",
         "win": "ctrl+alt+K",
@@ -81,7 +140,8 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "bun run package",
+    "build:media": "rm -rf media && cp -r ../../packages/app/dist media && cp src/webview/helix-welcome.html media/",
+    "vscode:prepublish": "bun run build:media && bun run package",
     "compile": "bun run check-types && bun run lint && node esbuild.js",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
@@ -94,15 +154,15 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.94.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
+    "@types/vscode": "^1.94.0",
     "@typescript-eslint/eslint-plugin": "^8.31.1",
     "@typescript-eslint/parser": "^8.31.1",
-    "eslint": "^9.25.1",
-    "esbuild": "^0.25.3",
-    "typescript": "^5.8.3",
     "@vscode/test-cli": "^0.0.11",
-    "@vscode/test-electron": "^2.5.2"
+    "@vscode/test-electron": "^2.5.2",
+    "esbuild": "^0.25.3",
+    "eslint": "^9.25.1",
+    "typescript": "^5.8.3"
   }
 }

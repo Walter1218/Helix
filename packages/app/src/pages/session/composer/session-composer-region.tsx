@@ -3,6 +3,7 @@ import { createStore } from "solid-js/store"
 import { useNavigate } from "@solidjs/router"
 import { useSpring } from "@mimo-ai/ui/motion-spring"
 import { PromptInput } from "@/components/prompt-input"
+import { ModeSwitcher } from "@/components/mode-switcher"
 import { useLanguage } from "@/context/language"
 import { usePrompt } from "@/context/prompt"
 import { useSync } from "@/context/sync"
@@ -250,6 +251,9 @@ export function SessionComposerRegion(props: {
                 when={child()}
                 fallback={
                   <Show when={!props.state.blocked()}>
+                    <div class="pb-1">
+                      <ModeSwitcher />
+                    </div>
                     <PromptInput
                       ref={props.inputRef}
                       newSessionWorktree={props.newSessionWorktree}

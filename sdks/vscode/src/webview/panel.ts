@@ -1,0 +1,344 @@
+import * as vscode from "vscode";
+import * as fs from "fs";
+import * as path from "path";
+
+export class HelixWebviewPanel {
+  public static readonly viewType = "helix.webview";
+  private readonly panel: vscode.WebviewPanel;
+  private readonly _extensionUri: vscode.Uri;
+  private readonly _serverPort: number;
+  private _disposables: vscode.Disposable[] = [];
+
+  public static createOrShow(extensionUri: vscode.Uri, serverPort: number) {
+    const column = vscode.ViewColumn.Two;
+
+    const existing = vscode.window.visibleTextEditors.find(
+      (e) => e.viewColumn === column
+    );
+    if (existing) {
+      // 如果已经有面板，聚焦它
+      vscode.window.showTextDocument(existing.document, column);
+    }
+
+    const panel = vscode.window.createWebviewPanel(
+      HelixWebviewPanel.viewType,
+      "Helix",
+      column,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: [
+          vscode.Uri.joinPath(extensionUri, "media"),
+        ],
+      }
+    );
+
+    return new HelixWebviewPanel(panel, extensionUri, serverPort);
+  }
+
+  private _onDispose?: () => void;
+
+  public onDispose(callback: () => void) {
+    this._onDispose = callback;
+  }
+
+  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, serverPort: number) {
+    this.panel = panel;
+    this._extensionUri = extensionUri;
+    this._serverPort = serverPort;
+
+    this.panel.iconPath = {
+      light: vscode.Uri.joinPath(extensionUri, "images", "button-dark.svg"),
+      dark: vscode.Uri.joinPath(extensionUri, "images", "button-light.svg"),
+    };
+
+    this.panel.webview.html = this.getHtml();
+    this.setupMessageBridge();
+
+    this.panel.onDidDispose(() => {
+      this._onDispose?.();
+      this.dispose();
+    }, null, this._disposables);
+  }
+
+  private getHtml(): string {
+    const mediaPath = vscode.Uri.joinPath(this._extensionUri, "media");
+    const indexPath = vscode.Uri.joinPath(mediaPath, "index.html");
+    const welcomePath = vscode.Uri.joinPath(mediaPath, "helix-welcome.html");
+
+    let html: string;
+    // 离线模式加载自定义 Helix 欢迎页
+    if (this._serverPort === 0) {
+      try {
+        html = fs.readFileSync(welcomePath.fsPath, "utf-8");
+      } catch {
+        return this.getFallbackHtml();
+      }
+      const bridgeScript = this.getBridgeScript();
+      html = html.replace("</head>", `${bridgeScript}</head>`);
+      return html;
+    }
+
+    try {
+      html = fs.readFileSync(indexPath.fsPath, "utf-8");
+    } catch {
+      // 如果 media 目录不存在，显示一个简单的错误页面
+      return this.getFallbackHtml();
+    }
+
+    // 替换资源路径：将 /assets/xxx 替换为 vscode-resource 路径
+    const webview = this.panel.webview;
+
+    html = html.replace(
+      /(src|href)=["']\//g,
+      (match, attr) => {
+        const prefix = attr === "src" ? "src=\"" : "href=\"";
+        return prefix;
+      }
+    );
+
+    // 然后替换所有相对路径为 webview URI
+    html = html.replace(
+      /(src|href)=["']([^"']+)["']/g,
+      (match, attr, url) => {
+        if (url.startsWith("http") || url.startsWith("data:")) {
+          return match;
+        }
+        const resourceUri = vscode.Uri.joinPath(mediaPath, url);
+        const webviewUri = webview.asWebviewUri(resourceUri);
+        return `${attr}="${webviewUri}"`;
+      }
+    );
+
+    // 在 </head> 前注入桥接脚本
+    const bridgeScript = this.getBridgeScript();
+    html = html.replace("</head>", `${bridgeScript}</head>`);
+
+    return html;
+  }
+
+  private getBridgeScript(): string {
+    return `
+<script>
+(function() {
+  const vscode = acquireVsCodeApi()
+  window.__HELIX_VSCODE__ = true
+  window.__HELIX_SERVER_PORT__ = ${this._serverPort}
+
+  // 保存原始 fetch
+  const originalFetch = window.fetch
+  window.fetch = function(url, options) {
+    if (typeof url === 'string' && url.startsWith('http://localhost')) {
+      return new Promise((resolve, reject) => {
+        const id = Math.random().toString(36).slice(2)
+        const handler = (event) => {
+          if (event.data && event.data.type === 'api-response' && event.data.id === id) {
+            window.removeEventListener('message', handler)
+            if (event.data.error) {
+              reject(new Error(event.data.error))
+            } else {
+              const response = new Response(
+                event.data.data ? JSON.stringify(event.data.data) : null,
+                { status: event.data.status || 200, headers: event.data.headers || {} }
+              )
+              resolve(response)
+            }
+          }
+        }
+        window.addEventListener('message', handler)
+        vscode.postMessage({ type: 'api', id, url, options })
+      })
+    }
+    return originalFetch.apply(this, arguments)
+  }
+
+  // 桥接 WebSocket
+  const OriginalWebSocket = window.WebSocket
+  window.WebSocket = function(url, protocols) {
+    if (typeof url === 'string' && url.startsWith('ws://localhost')) {
+      const id = Math.random().toString(36).slice(2)
+      const ws = {
+        _id: id,
+        _listeners: {},
+        readyState: 0,
+        CONNECTING: 0,
+        OPEN: 1,
+        CLOSING: 2,
+        CLOSED: 3,
+        send: function(data) {
+          vscode.postMessage({ type: 'ws-send', id, data })
+        },
+        close: function() {
+          this.readyState = 3
+          vscode.postMessage({ type: 'ws-close', id })
+        },
+        addEventListener: function(type, handler) {
+          if (!this._listeners[type]) this._listeners[type] = []
+          this._listeners[type].push(handler)
+        },
+        removeEventListener: function(type, handler) {
+          if (!this._listeners[type]) return
+          this._listeners[type] = this._listeners[type].filter(h => h !== handler)
+        },
+        _dispatch: function(type, event) {
+          if (this._listeners[type]) {
+            this._listeners[type].forEach(h => h(event))
+          }
+          const prop = 'on' + type
+          if (this[prop]) this[prop](event)
+        }
+      }
+
+      const msgHandler = (event) => {
+        if (!event.data || event.data._wsId !== id) return
+        if (event.data.type === 'ws-open') {
+          ws.readyState = 1
+          ws._dispatch('open', {})
+        } else if (event.data.type === 'ws-message') {
+          ws._dispatch('message', { data: event.data.data })
+        } else if (event.data.type === 'ws-close') {
+          ws.readyState = 3
+          ws._dispatch('close', {})
+          window.removeEventListener('message', msgHandler)
+        }
+      }
+      window.addEventListener('message', msgHandler)
+      vscode.postMessage({ type: 'ws-connect', id, url, protocols })
+      return ws
+    }
+    return new OriginalWebSocket(url, protocols)
+  }
+
+  // 监听扩展发来的消息
+  window.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'api-response') {
+      // 由上面的 fetch 处理
+    }
+    if (event.data && event.data.type === 'file-ref') {
+      const input = document.querySelector('textarea, input[type="text"]')
+      if (input) {
+        input.value += ' ' + event.data.ref
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+    }
+  })
+})()
+</script>
+`;
+  }
+
+  private getFallbackHtml(): string {
+    return `<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Helix</title></head>
+<body style="font-family:system-ui,sans-serif;padding:20px;color:#ccc;background:#1e1e1e">
+  <h2>Helix UI 资源未找到</h2>
+  <p>请先运行构建命令将前端产物复制到扩展目录：</p>
+  <pre style="background:#2d2d2d;padding:10px;border-radius:4px">cd /path/to/Helix && cp -r packages/app/dist sdks/vscode/media</pre>
+</body>
+</html>`;
+  }
+
+  private setupMessageBridge() {
+    this.panel.webview.onDidReceiveMessage(
+      async (message) => {
+        switch (message.type) {
+          case "api": {
+            try {
+              const response = await fetch(message.url, message.options);
+              const data = await response.text();
+              let parsed: unknown;
+              try { parsed = JSON.parse(data); } catch { parsed = data; }
+              this.panel.webview.postMessage({
+                type: "api-response",
+                id: message.id,
+                status: response.status,
+                data: parsed,
+                headers: Object.fromEntries(response.headers.entries()),
+              });
+            } catch (err) {
+              this.panel.webview.postMessage({
+                type: "api-response",
+                id: message.id,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+            break;
+          }
+          case "ws-connect": {
+            // WebSocket 连接由扩展管理
+            this.panel.webview.postMessage({ type: "ws-open", _wsId: message.id });
+            break;
+          }
+          case "ws-send": {
+            // 转发 WebSocket 消息
+            break;
+          }
+          case "ws-close": {
+            this.panel.webview.postMessage({ type: "ws-close", _wsId: message.id });
+            break;
+          }
+          case "openFile": {
+            // Open file in VS Code editor
+            try {
+              const filePath = message.filePath;
+              const line = message.line || 1;
+              
+              // Resolve workspace path
+              const workspaceFolders = vscode.workspace.workspaceFolders;
+              if (workspaceFolders && workspaceFolders.length > 0) {
+                const workspaceRoot = workspaceFolders[0].uri.fsPath;
+                const fullPath = path.resolve(workspaceRoot, filePath);
+                
+                const uri = vscode.Uri.file(fullPath);
+                const position = new vscode.Position(line - 1, 0);
+                const selection = new vscode.Range(position, position);
+                
+                await vscode.window.showTextDocument(uri, {
+                  selection: selection,
+                  viewColumn: vscode.ViewColumn.One
+                });
+              }
+            } catch (err) {
+              console.error('Failed to open file:', err);
+              vscode.window.showErrorMessage(`Failed to open file: ${message.filePath}`);
+            }
+            break;
+          }
+          case "saveSettings": {
+            // Persist webview settings to VS Code workspace configuration
+            try {
+              const config = vscode.workspace.getConfiguration('helix');
+              const settings = message.settings;
+              if (settings) {
+                await config.update('provider', settings.provider, vscode.ConfigurationTarget.Global);
+                await config.update('model', settings.model, vscode.ConfigurationTarget.Global);
+                await config.update('temperature', settings.temperature, vscode.ConfigurationTarget.Global);
+                await config.update('maxTokens', settings.maxTokens, vscode.ConfigurationTarget.Global);
+              }
+            } catch (err) {
+              console.error('Failed to save settings:', err);
+            }
+            break;
+          }
+        }
+      },
+      null,
+      this._disposables
+    );
+  }
+
+  public sendFileRef(ref: string) {
+    this.panel.webview.postMessage({ type: "file-ref", ref });
+  }
+
+  public dispose() {
+    this._disposables.forEach((d) => d.dispose());
+    this._disposables = [];
+    this.panel.dispose();
+  }
+
+  public reveal() {
+    this.panel.reveal(vscode.ViewColumn.Two);
+  }
+}

@@ -1,0 +1,2365 @@
+<!DOCTYPE html>
+<html lang="en" style="background-color: #0d1117">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Helix</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        background: #0d1117;
+        color: #c9d1d9;
+        height: 100vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* ===== Phase 1: Mode Registry ===== */
+      .mode-bar {
+        display: flex;
+        gap: 6px;
+        padding: 8px 16px;
+        border-bottom: 1px solid #21262d;
+        justify-content: center;
+        background: #010409;
+        flex-shrink: 0;
+      }
+      .mode-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 12px;
+        border-radius: 4px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: #8b949e;
+        font-size: 11px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+        height: 22px;
+      }
+      .mode-btn:hover {
+        background: #21262d;
+      }
+      .mode-btn.active {
+        background: #21262d;
+        color: #f0f6fc;
+      }
+      .mode-btn.active[data-mode="ask"] { border-left: 3px solid #4a9eff; }
+      .mode-btn.active[data-mode="build"] { border-left: 3px solid #fb8147; }
+      .mode-btn.active[data-mode="plan"] { border-left: 3px solid #c7e2a8; }
+      .mode-btn.active[data-mode="compose"] { border-left: 3px solid #a7a3d8; }
+      .mode-btn.active[data-mode="loop"] { border-left: 3px solid #007acc; }
+      .mode-btn.active[data-mode="max"] { border-left: 3px solid #e85d75; }
+      .mode-btn .mode-icon { font-size: 13px; }
+      .mode-btn .mode-label { font-size: 11px; }
+      .mode-btn .experimental-badge {
+        font-size: 9px;
+        background: #e85d7520;
+        color: #e85d75;
+        padding: 0 4px;
+        border-radius: 3px;
+        margin-left: 2px;
+      }
+
+      /* ===== Main Layout ===== */
+      .main {
+        flex: 1;
+        display: flex;
+        overflow: hidden;
+        min-height: 0;
+      }
+      .chat-area {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        min-width: 0;
+      }
+      .messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        min-height: 0;
+      }
+
+      /* ===== Welcome Screen ===== */
+      .welcome {
+        text-align: center;
+        padding: 60px 20px 40px;
+      }
+      .welcome h1 {
+        font-size: 36px;
+        font-weight: 700;
+        color: #f0f6fc;
+        margin-bottom: 8px;
+        letter-spacing: -1px;
+      }
+      .welcome .subtitle {
+        font-size: 14px;
+        color: #8b949e;
+        margin-bottom: 32px;
+      }
+      .mode-cards {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        max-width: 600px;
+        margin: 0 auto;
+      }
+      .mode-card {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 10px;
+        padding: 16px;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-align: left;
+      }
+      .mode-card:hover {
+        border-color: #484f58;
+        background: #1c2128;
+        transform: translateY(-2px);
+      }
+      .mode-card .card-icon {
+        font-size: 20px;
+        margin-bottom: 8px;
+      }
+      .mode-card .card-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #f0f6fc;
+        margin-bottom: 4px;
+      }
+      .mode-card .card-desc {
+        font-size: 11px;
+        color: #8b949e;
+        line-height: 1.4;
+      }
+      .mode-card .card-color-ask { color: #4a9eff; }
+      .mode-card .card-color-build { color: #fb8147; }
+      .mode-card .card-color-plan { color: #c7e2a8; }
+      .mode-card .card-color-compose { color: #a7a3d8; }
+      .mode-card .card-color-loop { color: #007acc; }
+      .mode-card .card-color-max { color: #e85d75; }
+
+      /* ===== Messages ===== */
+      .message {
+        display: flex;
+        gap: 12px;
+        max-width: 800px;
+        animation: fadeInUp 0.3s ease;
+      }
+      @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        flex-shrink: 0;
+      }
+      .avatar.user { background: #8957e5; }
+      .avatar.ai { background: #1f6feb; }
+      .message-body {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 12px;
+        padding: 12px 16px;
+        font-size: 14px;
+        line-height: 1.6;
+        color: #c9d1d9;
+        flex: 1;
+      }
+      .message-mode-tag {
+        font-size: 11px;
+        color: #8b949e;
+        margin-bottom: 6px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .message-mode-bar {
+        width: 2px;
+        position: absolute;
+        left: 0;
+        top: 8px;
+        bottom: 8px;
+        border-radius: 1px;
+      }
+      .message-wrapper {
+        position: relative;
+        padding-left: 6px;
+      }
+      .message-wrapper.mode-ask { border-left: 2px solid #4a9eff; }
+      .message-wrapper.mode-build { border-left: 2px solid #fb8147; }
+      .message-wrapper.mode-plan { border-left: 2px solid #c7e2a8; }
+      .message-wrapper.mode-compose { border-left: 2px solid #a7a3d8; }
+      .message-wrapper.mode-loop { border-left: 2px solid #007acc; }
+      .message-wrapper.mode-max { border-left: 2px solid #e85d75; }
+
+      /* ===== Code Block ===== */
+      .code-block {
+        background: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 12px;
+        margin-top: 8px;
+        font-family: 'SF Mono', Monaco, 'Fira Code', monospace;
+        font-size: 13px;
+        overflow-x: auto;
+        line-height: 1.5;
+      }
+      .code-block .keyword { color: #ff7b72; }
+      .code-block .function { color: #d2a8ff; }
+      .code-block .string { color: #a5d6ff; }
+      .code-block .comment { color: #8b949e; }
+      .code-block .number { color: #79c0ff; }
+
+      /* ===== Input Area ===== */
+      .input-area {
+        padding: 12px 16px;
+        border-top: 1px solid #21262d;
+        flex-shrink: 0;
+      }
+      .input-box {
+        width: 100%;
+        padding: 12px 16px;
+        background: #010409;
+        border: 1px solid #30363d;
+        border-radius: 12px;
+        color: #f0f6fc;
+        font-size: 14px;
+        outline: none;
+        transition: all 0.2s;
+        resize: none;
+        min-height: 48px;
+        max-height: 200px;
+        font-family: inherit;
+      }
+      .input-box:focus {
+        border-color: #58a6ff;
+        box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
+      }
+      .input-box::placeholder {
+        color: #484f58;
+      }
+      .input-hint {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 8px;
+        font-size: 11px;
+        color: #484f58;
+      }
+      .mode-color-bar {
+        height: 2px;
+        border-radius: 1px;
+        margin-top: 4px;
+        transition: background 0.3s;
+      }
+      .mode-color-bar.ask { background: #4a9eff; }
+      .mode-color-bar.build { background: #fb8147; }
+      .mode-color-bar.plan { background: #c7e2a8; }
+      .mode-color-bar.compose { background: #a7a3d8; }
+      .mode-color-bar.loop { background: #007acc; }
+      .mode-color-bar.max { background: #e85d75; }
+
+      /* ===== Phase 2: Side Panel ===== */
+      .sidebar-right {
+        width: 320px;
+        border-left: 1px solid #21262d;
+        background: #010409;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        flex-shrink: 0;
+      }
+      .sidebar-tabs {
+        display: flex;
+        gap: 2px;
+        padding: 4px 8px;
+        border-bottom: 1px solid #21262d;
+        flex-shrink: 0;
+        overflow-x: auto;
+      }
+      .sidebar-tab {
+        padding: 6px 8px;
+        border-radius: 4px;
+        font-size: 13px;
+        cursor: pointer;
+        color: #8b949e;
+        transition: all 0.2s;
+        white-space: nowrap;
+        border: none;
+        background: transparent;
+      }
+      .sidebar-tab:hover {
+        background: #21262d;
+        color: #c9d1d9;
+      }
+      .sidebar-tab.active {
+        background: #21262d;
+        color: #f0f6fc;
+      }
+      .sidebar-content {
+        flex: 1;
+        overflow-y: auto;
+        min-height: 0;
+      }
+
+      /* Task List Panel */
+      .task-group {
+        padding: 8px 12px;
+        border-bottom: 1px solid #21262d;
+      }
+      .task-group-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        padding: 4px 0;
+      }
+      .task-group-header .expand-icon {
+        font-size: 10px;
+        color: #8b949e;
+        width: 14px;
+      }
+      .task-group-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #f0f6fc;
+        flex: 1;
+      }
+      .task-group-mode {
+        font-size: 10px;
+        padding: 1px 6px;
+        border-radius: 3px;
+        background: #007acc20;
+        color: #007acc;
+      }
+      .task-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 0 4px 20px;
+        cursor: pointer;
+        border-radius: 4px;
+        transition: background 0.15s;
+      }
+      .task-item:hover {
+        background: #21262d50;
+      }
+      .task-status-icon {
+        font-size: 12px;
+        width: 16px;
+      }
+      .task-status-icon.completed { color: #3fb950; }
+      .task-status-icon.in_progress { color: #d29922; }
+      .task-status-icon.pending { color: #8b949e; }
+      .task-status-icon.failed { color: #f85149; }
+      .task-status-icon.paused { color: #bc8c1d; }
+      .task-title {
+        font-size: 12px;
+        color: #c9d1d9;
+        flex: 1;
+      }
+      .task-progress-bar {
+        width: 48px;
+        height: 3px;
+        background: #21262d;
+        border-radius: 2px;
+        overflow: hidden;
+      }
+      .task-progress-fill {
+        height: 100%;
+        border-radius: 2px;
+        transition: width 0.5s;
+      }
+      .task-progress-fill.low { background: #f85149; }
+      .task-progress-fill.mid { background: #d29922; }
+      .task-progress-fill.high { background: #3fb950; }
+      .task-current-action {
+        font-size: 10px;
+        color: #8b949e;
+        max-width: 100px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .task-subitems {
+        padding-left: 20px;
+      }
+      .task-stats {
+        padding: 12px;
+        border-top: 1px solid #21262d;
+        flex-shrink: 0;
+      }
+      .overall-progress {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .overall-progress-bar {
+        flex: 1;
+        height: 4px;
+        background: #21262d;
+        border-radius: 2px;
+        overflow: hidden;
+      }
+      .overall-progress-fill {
+        height: 100%;
+        border-radius: 2px;
+        transition: width 0.7s;
+      }
+      .overall-progress-text {
+        font-size: 11px;
+        color: #8b949e;
+        min-width: 32px;
+        text-align: right;
+      }
+      .stats-row {
+        font-size: 11px;
+        color: #8b949e;
+        display: flex;
+        justify-content: space-between;
+      }
+      .stats-actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 8px;
+      }
+      .stats-actions button {
+        font-size: 11px;
+        color: #8b949e;
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 0;
+      }
+      .stats-actions button:hover {
+        color: #c9d1d9;
+      }
+
+      /* Checkpoint Panel */
+      .checkpoint-tabs {
+        display: flex;
+        gap: 2px;
+        padding: 4px 12px;
+        border-bottom: 1px solid #21262d;
+      }
+      .checkpoint-tab {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        cursor: pointer;
+        color: #8b949e;
+        background: none;
+        border: none;
+        transition: all 0.2s;
+      }
+      .checkpoint-tab:hover { color: #c9d1d9; }
+      .checkpoint-tab.active {
+        background: #21262d;
+        color: #f0f6fc;
+      }
+      .change-file {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .change-file:hover { background: #21262d50; }
+      .change-file.selected { background: #21262d30; }
+      .change-checkbox {
+        accent-color: #58a6ff;
+      }
+      .change-type {
+        font-size: 11px;
+        width: 14px;
+        text-align: center;
+      }
+      .change-type.modified { color: #a371f7; }
+      .change-type.added { color: #3fb950; }
+      .change-type.deleted { color: #f85149; }
+      .change-path {
+        font-size: 12px;
+        color: #c9d1d9;
+        flex: 1;
+        font-family: 'SF Mono', monospace;
+      }
+      .change-lines {
+        font-size: 11px;
+        color: #8b949e;
+      }
+      .diff-preview {
+        padding: 8px 12px;
+        background: #0d1117;
+        border-top: 1px solid #21262d;
+        font-family: 'SF Mono', monospace;
+        font-size: 12px;
+        line-height: 1.5;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+      .diff-line { padding: 1px 4px; }
+      .diff-line.add { background: #23863615; color: #3fb950; }
+      .diff-line.del { background: #da363315; color: #f85149; }
+      .diff-line.meta { color: #8b949e; }
+      .checkpoint-actions {
+        padding: 8px 12px;
+        border-top: 1px solid #21262d;
+        display: flex;
+        gap: 6px;
+      }
+      .checkpoint-actions button {
+        flex: 1;
+        padding: 6px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 500;
+        cursor: pointer;
+        border: 1px solid #30363d;
+        background: #21262d;
+        color: #c9d1d9;
+        transition: all 0.2s;
+      }
+      .checkpoint-actions button:hover {
+        background: #30363d;
+      }
+      .checkpoint-actions button.primary {
+        background: #238636;
+        border-color: #238636;
+        color: #fff;
+      }
+      .checkpoint-actions button.primary:hover {
+        background: #2ea043;
+      }
+      .checkpoint-actions button.danger {
+        color: #f85149;
+      }
+      .checkpoint-actions button.danger:hover {
+        background: #f8514920;
+      }
+      .checkpoint-item {
+        padding: 10px 12px;
+        border-bottom: 1px solid #21262d;
+      }
+      .checkpoint-item-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 4px;
+      }
+      .checkpoint-number {
+        font-size: 13px;
+        font-weight: 600;
+        color: #f0f6fc;
+      }
+      .checkpoint-time {
+        font-size: 11px;
+        color: #8b949e;
+      }
+      .checkpoint-operator {
+        font-size: 10px;
+        padding: 1px 6px;
+        border-radius: 3px;
+      }
+      .checkpoint-operator.agent { background: #1f6feb20; color: #58a6ff; }
+      .checkpoint-operator.user { background: #8957e520; color: #bc8cff; }
+      .checkpoint-desc {
+        font-size: 11px;
+        color: #8b949e;
+        margin-bottom: 6px;
+      }
+      .checkpoint-ops {
+        display: flex;
+        gap: 8px;
+      }
+      .checkpoint-ops button {
+        font-size: 11px;
+        color: #58a6ff;
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 0;
+      }
+      .checkpoint-ops button:hover { text-decoration: underline; }
+      .checkpoint-ops button.danger { color: #f85149; }
+
+      /* ===== Phase 3: Judge Card ===== */
+      .judge-card {
+        border: 1px solid #a855f740;
+        border-radius: 10px;
+        background: #a855f708;
+        overflow: hidden;
+        max-width: 800px;
+        animation: fadeInUp 0.4s ease;
+      }
+      .judge-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 14px;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .judge-card-header:hover { background: #a855f710; }
+      .judge-card-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .judge-card-title span:first-child { font-size: 14px; }
+      .judge-card-title .title-text {
+        font-size: 13px;
+        font-weight: 600;
+        color: #c084fc;
+      }
+      .judge-card-title .timestamp {
+        font-size: 11px;
+        color: #8b949e;
+      }
+      .judge-card-body {
+        padding: 0 14px 12px;
+      }
+      .verdict-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 6px 0;
+        border-bottom: 1px solid #21262d50;
+      }
+      .verdict-row:last-child { border-bottom: none; }
+      .verdict-label {
+        font-size: 12px;
+        color: #8b949e;
+      }
+      .verdict-value {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        font-weight: 500;
+      }
+      .verdict-value.pass { color: #3fb950; }
+      .verdict-value.questionable { color: #d29922; }
+      .verdict-value.reject { color: #f85149; }
+      .judge-message {
+        font-size: 12px;
+        color: #8b949e;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid #21262d50;
+      }
+      .judge-rollback-btn {
+        margin-top: 10px;
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        background: #f8514920;
+        color: #f85149;
+        border: 1px solid #f8514940;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .judge-rollback-btn:hover {
+        background: #f8514930;
+      }
+
+      /* ===== Phase 3: AlignmentGuard ===== */
+      .alignment-alert {
+        border: 1px solid #d9770640;
+        border-radius: 10px;
+        background: #d9770608;
+        overflow: hidden;
+        max-width: 800px;
+        animation: fadeInUp 0.4s ease, pulseBorder 2s infinite;
+      }
+      @keyframes pulseBorder {
+        0%, 100% { border-color: #d9770640; }
+        50% { border-color: #d9770680; }
+      }
+      .alignment-alert-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        cursor: pointer;
+      }
+      .alignment-alert-header .pulse-icon {
+        animation: pulse 1.5s infinite;
+        color: #d97706;
+        font-size: 14px;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+      }
+      .alignment-alert-header .title-text {
+        font-size: 13px;
+        font-weight: 600;
+        color: #d97706;
+      }
+      .alignment-alert-body {
+        padding: 0 14px 12px;
+      }
+      .drift-metric {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 6px 0;
+      }
+      .drift-metric-icon {
+        font-size: 13px;
+        margin-top: 1px;
+      }
+      .drift-metric-content {
+        flex: 1;
+      }
+      .drift-metric-label {
+        font-size: 12px;
+        font-weight: 500;
+        color: #c9d1d9;
+      }
+      .drift-metric-desc {
+        font-size: 11px;
+        color: #8b949e;
+      }
+      .drift-severity {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-top: 4px;
+        flex-shrink: 0;
+      }
+      .drift-severity.high { background: #f85149; }
+      .drift-severity.medium { background: #d97706; }
+      .drift-severity.low { background: #d29922; }
+      .recalibrate-btn {
+        margin-top: 10px;
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        background: #1f6feb20;
+        color: #58a6ff;
+        border: 1px solid #1f6feb40;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .recalibrate-btn:hover {
+        background: #1f6feb30;
+      }
+
+      /* ===== Phase 4: Pre-flight Panel ===== */
+      .preflight-panel {
+        padding: 12px;
+      }
+      .preflight-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+      }
+      .preflight-title {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #f0f6fc;
+      }
+      .preflight-trust {
+        font-size: 10px;
+        padding: 2px 8px;
+        border-radius: 4px;
+      }
+      .preflight-trust.high { background: #23863620; color: #3fb950; }
+      .preflight-trust.medium { background: #d2992220; color: #d29922; }
+      .preflight-trust.low { background: #f8514920; color: #f85149; }
+      .preflight-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 0;
+        cursor: pointer;
+      }
+      .preflight-item-icon {
+        font-size: 13px;
+      }
+      .preflight-item-label {
+        font-size: 12px;
+        color: #c9d1d9;
+        flex: 1;
+      }
+      .preflight-subitems {
+        padding-left: 28px;
+      }
+      .preflight-subitem {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 0;
+        font-size: 11px;
+        color: #8b949e;
+      }
+      .preflight-actions {
+        padding: 10px 12px;
+        border-top: 1px solid #21262d;
+        display: flex;
+        gap: 6px;
+      }
+      .preflight-actions button {
+        flex: 1;
+        padding: 6px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 500;
+        cursor: pointer;
+        border: 1px solid;
+        transition: all 0.2s;
+      }
+      .preflight-actions .proceed {
+        background: #23863620;
+        border-color: #23863640;
+        color: #3fb950;
+      }
+      .preflight-actions .proceed:hover { background: #23863630; }
+      .preflight-actions .pause {
+        background: #d2992220;
+        border-color: #d2992240;
+        color: #d29922;
+      }
+      .preflight-actions .pause:hover { background: #d2992230; }
+      .preflight-actions .block {
+        background: #f8514920;
+        border-color: #f8514940;
+        color: #f85149;
+      }
+      .preflight-actions .block:hover { background: #f8514930; }
+
+      /* ===== Phase 4: Cardinal Panel ===== */
+      .cardinal-panel {
+        padding: 12px;
+      }
+      .cardinal-item {
+        border: 1px solid;
+        border-radius: 8px;
+        overflow: hidden;
+        margin-bottom: 8px;
+      }
+      .cardinal-item.block { border-color: #f8514940; background: #f8514908; }
+      .cardinal-item.pause { border-color: #d9770640; background: #d9770608; }
+      .cardinal-item.stop { border-color: #d2992240; background: #d2992208; }
+      .cardinal-item.warn { border-color: #58a6ff40; background: #58a6ff08; }
+      .cardinal-item-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        cursor: pointer;
+      }
+      .cardinal-item-header .level-icon { font-size: 13px; }
+      .cardinal-item-header .level-label {
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .cardinal-item-header .level-label.block { color: #f85149; }
+      .cardinal-item-header .level-label.pause { color: #d97706; }
+      .cardinal-item-header .level-label.stop { color: #d29922; }
+      .cardinal-item-header .level-label.warn { color: #58a6ff; }
+      .cardinal-item-header .trigger-text {
+        font-size: 12px;
+        color: #c9d1d9;
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .cardinal-item-body {
+        padding: 0 10px 10px;
+      }
+      .cardinal-reason {
+        font-size: 12px;
+        color: #8b949e;
+        margin-bottom: 6px;
+      }
+      .cardinal-recommendation {
+        font-size: 11px;
+        color: #6e7681;
+        margin-bottom: 8px;
+      }
+      .cardinal-actions {
+        display: flex;
+        gap: 6px;
+      }
+      .cardinal-actions button {
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-size: 11px;
+        cursor: pointer;
+        border: 1px solid;
+        background: none;
+        transition: all 0.2s;
+      }
+      .cardinal-actions .resume {
+        border-color: #1f6feb40;
+        color: #58a6ff;
+      }
+      .cardinal-actions .resume:hover { background: #1f6feb15; }
+      .cardinal-actions .degrade {
+        border-color: #d2992240;
+        color: #d29922;
+      }
+      .cardinal-actions .degrade:hover { background: #d2992215; }
+      .cardinal-actions .dismiss {
+        border-color: #484f58;
+        color: #8b949e;
+      }
+      .cardinal-actions .dismiss:hover { background: #21262d; }
+
+      /* ===== Phase 4: Zen Mode ===== */
+      .zen-panel {
+        padding: 12px;
+      }
+      .zen-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #f0f6fc;
+        margin-bottom: 12px;
+      }
+      .zen-level {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+        margin-bottom: 4px;
+      }
+      .zen-level:hover { background: #21262d50; }
+      .zen-level.active { background: #21262d; }
+      .zen-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      .zen-dot.level-1 { background: #ef4444; }
+      .zen-dot.level-2 { background: #eab308; }
+      .zen-dot.level-3 { background: #22c55e; }
+      .zen-dot.level-4 { background: #3b82f6; }
+      .zen-level.active .zen-dot { opacity: 1; }
+      .zen-level:not(.active) .zen-dot { opacity: 0.4; }
+      .zen-level-info {
+        flex: 1;
+      }
+      .zen-level-label {
+        font-size: 12px;
+        font-weight: 500;
+      }
+      .zen-level.active .zen-level-label { color: #f0f6fc; }
+      .zen-level:not(.active) .zen-level-label { color: #8b949e; }
+      .zen-level-desc {
+        font-size: 11px;
+        color: #6e7681;
+      }
+      .zen-active-badge {
+        font-size: 11px;
+        font-weight: 500;
+      }
+
+      /* ===== Phase 5: Mock Jump / Navigation ===== */
+      .nav-panel {
+        padding: 12px;
+      }
+      .nav-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #f0f6fc;
+        margin-bottom: 10px;
+      }
+      .nav-link {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 12px;
+        color: #c9d1d9;
+      }
+      .nav-link:hover { background: #21262d; }
+      .nav-link .nav-icon { font-size: 13px; }
+      .nav-link .nav-arrow {
+        margin-left: auto;
+        font-size: 11px;
+        color: #8b949e;
+      }
+
+      /* ===== Status Bar ===== */
+      .status-bar {
+        padding: 6px 16px;
+        border-top: 1px solid #21262d;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 11px;
+        color: #484f58;
+        flex-shrink: 0;
+        background: #010409;
+      }
+      .status-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .status-indicator {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #3fb950;
+      }
+      .status-dot.offline { background: #f85149; }
+      .status-dot.connecting { background: #d29922; animation: pulse 1.5s infinite; }
+      .status-mode {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .status-mode-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+      }
+      .status-cardinal {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 10px;
+      }
+      .status-cardinal.block { background: #f8514920; color: #f85149; }
+      .status-cardinal.pause { background: #d9770620; color: #d97706; }
+      .status-cardinal.stop { background: #d2992220; color: #d29922; }
+      .status-cardinal.warn { background: #58a6ff20; color: #58a6ff; }
+      .status-drift {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        animation: pulse 2s infinite;
+      }
+      .status-drift-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #d97706;
+      }
+      .status-right {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .status-token {
+        font-size: 10px;
+        color: #6e7681;
+      }
+      .status-version {
+        font-size: 10px;
+        color: #6e7681;
+      }
+
+      /* Tooltip */
+      .tooltip-container {
+        position: relative;
+      }
+      .tooltip-container:hover .tooltip {
+        opacity: 1;
+        visibility: visible;
+      }
+      .tooltip {
+        position: absolute;
+        bottom: calc(100% + 8px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: #21262d;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 12px;
+        color: #c9d1d9;
+        white-space: nowrap;
+        opacity: 0;
+        visibility: hidden;
+        transition: all 0.2s;
+        z-index: 100;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      }
+      .tooltip::after {
+        content: '';
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        border: 5px solid transparent;
+        border-top-color: #21262d;
+      }
+      .tooltip .tooltip-desc {
+        font-size: 11px;
+        color: #8b949e;
+        margin-top: 2px;
+      }
+      .tooltip .tooltip-shortcut {
+        font-size: 10px;
+        color: #6e7681;
+        margin-top: 4px;
+        font-family: monospace;
+      }
+
+      /* Scrollbar */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: #484f58; }
+
+      /* Hidden */
+      .hidden { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <!-- Phase 1: Mode Switcher -->
+    <div class="mode-bar" id="mode-bar">
+      <div class="mode-btn active" data-mode="ask" onclick="switchMode('ask')">
+        <span class="mode-icon">💬</span>
+        <span class="mode-label">Ask</span>
+      </div>
+      <div class="mode-btn" data-mode="build" onclick="switchMode('build')">
+        <span class="mode-icon">🛠️</span>
+        <span class="mode-label">Build</span>
+      </div>
+      <div class="mode-btn" data-mode="plan" onclick="switchMode('plan')">
+        <span class="mode-icon">📋</span>
+        <span class="mode-label">Plan</span>
+      </div>
+      <div class="mode-btn" data-mode="compose" onclick="switchMode('compose')">
+        <span class="mode-icon">🎼</span>
+        <span class="mode-label">Compose</span>
+      </div>
+      <div class="mode-btn" data-mode="loop" onclick="switchMode('loop')">
+        <span class="mode-icon">🔄</span>
+        <span class="mode-label">Loop</span>
+      </div>
+      <div class="mode-btn" data-mode="max" onclick="switchMode('max')">
+        <span class="mode-icon">⚡</span>
+        <span class="mode-label">Max</span>
+        <span class="experimental-badge">β</span>
+      </div>
+    </div>
+
+    <div class="main">
+      <!-- Chat Area -->
+      <div class="chat-area">
+        <div class="messages" id="messages">
+          <!-- Welcome Screen -->
+          <div class="welcome" id="welcome-screen">
+            <h1>One Thought, Three Thousand Worlds</h1>
+            <div class="subtitle">What would you like to build today?</div>
+            <div class="mode-cards">
+              <div class="mode-card" onclick="switchMode('ask')">
+                <div class="card-icon card-color-ask">💬</div>
+                <div class="card-title">Ask</div>
+                <div class="card-desc">Ask questions, get explanations without code changes</div>
+              </div>
+              <div class="mode-card" onclick="switchMode('build')">
+                <div class="card-icon card-color-build">🛠️</div>
+                <div class="card-title">Build</div>
+                <div class="card-desc">Generate code and edit files for your needs</div>
+              </div>
+              <div class="mode-card" onclick="switchMode('plan')">
+                <div class="card-icon card-color-plan">📋</div>
+                <div class="card-title">Plan</div>
+                <div class="card-desc">Decompose goals into actionable tasks</div>
+              </div>
+              <div class="mode-card" onclick="switchMode('compose')">
+                <div class="card-icon card-color-compose">🎼</div>
+                <div class="card-title">Compose</div>
+                <div class="card-desc">Multi-file refactoring and composition</div>
+              </div>
+              <div class="mode-card" onclick="switchMode('loop')">
+                <div class="card-icon card-color-loop">🔄</div>
+                <div class="card-title">Loop</div>
+                <div class="card-desc">Iterative execution with automatic feedback</div>
+              </div>
+              <div class="mode-card" onclick="switchMode('max')">
+                <div class="card-icon card-color-max">⚡</div>
+                <div class="card-title">Max</div>
+                <div class="card-desc">Maximum capability with parallel multi-agent reasoning</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="input-area">
+          <textarea
+            class="input-box"
+            id="input"
+            placeholder="💬 Ask: Describe your question..."
+            rows="1"
+          ></textarea>
+          <div class="mode-color-bar ask" id="mode-color-bar"></div>
+          <div class="input-hint">
+            <span id="input-hint-left">Press Enter to send · Shift+Enter for new line</span>
+            <span>Cmd+K to add context</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 2: Side Panel -->
+      <div class="sidebar-right" id="sidebar-right">
+        <div class="sidebar-tabs" id="sidebar-tabs">
+          <button class="sidebar-tab active" data-tab="tasks" onclick="switchSideTab('tasks')">✅ Tasks</button>
+          <button class="sidebar-tab" data-tab="changes" onclick="switchSideTab('changes')">📋 Changes</button>
+          <button class="sidebar-tab" data-tab="preflight" onclick="switchSideTab('preflight')">🔍 Pre-flight</button>
+          <button class="sidebar-tab" data-tab="cardinal" onclick="switchSideTab('cardinal')">🛡️ Cardinal</button>
+          <button class="sidebar-tab" data-tab="zen" onclick="switchSideTab('zen')">🧘 Zen</button>
+          <button class="sidebar-tab" data-tab="nav" onclick="switchSideTab('nav')">🧭 Mock</button>
+        </div>
+        <div class="sidebar-content" id="sidebar-content">
+          <!-- Tasks Panel -->
+          <div class="tab-content" id="tab-tasks">
+            <div id="task-list-container"></div>
+            <div class="task-stats">
+              <div class="overall-progress">
+                <div class="overall-progress-bar">
+                  <div class="overall-progress-fill high" id="overall-progress" style="width: 40%"></div>
+                </div>
+                <span class="overall-progress-text" id="overall-percent">40%</span>
+              </div>
+              <div class="stats-row">
+                <span id="stats-summary">2/5 completed</span>
+                <span id="stats-detail">1 in progress</span>
+              </div>
+              <div class="stats-actions">
+                <button onclick="expandAllTasks()">Expand All</button>
+                <button onclick="collapseAllTasks()">Collapse All</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Changes Panel -->
+          <div class="tab-content hidden" id="tab-changes">
+            <div class="checkpoint-tabs">
+              <button class="checkpoint-tab active" onclick="switchCheckpointTab('changes')">Changes (3)</button>
+              <button class="checkpoint-tab" onclick="switchCheckpointTab('staged')">Staged (0)</button>
+              <button class="checkpoint-tab" onclick="switchCheckpointTab('history')">History (3)</button>
+            </div>
+            <div id="checkpoint-content"></div>
+          </div>
+
+          <!-- Pre-flight Panel -->
+          <div class="tab-content hidden" id="tab-preflight">
+            <div class="preflight-panel" id="preflight-panel"></div>
+          </div>
+
+          <!-- Cardinal Panel -->
+          <div class="tab-content hidden" id="tab-cardinal">
+            <div class="cardinal-panel" id="cardinal-panel"></div>
+          </div>
+
+          <!-- Zen Panel -->
+          <div class="tab-content hidden" id="tab-zen">
+            <div class="zen-panel" id="zen-panel"></div>
+          </div>
+
+          <!-- Mock Navigation Panel -->
+          <div class="tab-content hidden" id="tab-nav">
+            <div class="nav-panel">
+              <div class="nav-title">Mock Navigation</div>
+              <div class="nav-link" onclick="triggerMock('judge')">
+                <span class="nav-icon">⚖️</span>
+                <span>Show Judge Verdict</span>
+                <span class="nav-arrow">→</span>
+              </div>
+              <div class="nav-link" onclick="triggerMock('alignment')">
+                <span class="nav-icon">🚨</span>
+                <span>Show Alignment Alert</span>
+                <span class="nav-arrow">→</span>
+              </div>
+              <div class="nav-link" onclick="triggerMock('cardinal-block')">
+                <span class="nav-icon">🚫</span>
+                <span>Trigger Cardinal Block</span>
+                <span class="nav-arrow">→</span>
+              </div>
+              <div class="nav-link" onclick="triggerMock('cardinal-pause')">
+                <span class="nav-icon">⏸</span>
+                <span>Trigger Cardinal Pause</span>
+                <span class="nav-arrow">→</span>
+              </div>
+              <div class="nav-link" onclick="triggerMock('preflight')">
+                <span class="nav-icon">🔍</span>
+                <span>Run Pre-flight Check</span>
+                <span class="nav-arrow">→</span>
+              </div>
+              <div class="nav-link" onclick="triggerMock('task-update')">
+                <span class="nav-icon">🔄</span>
+                <span>Simulate Task Progress</span>
+                <span class="nav-arrow">→</span>
+              </div>
+              <div class="nav-link" onclick="triggerMock('new-checkpoint')">
+                <span class="nav-icon">💾</span>
+                <span>Create Checkpoint</span>
+                <span class="nav-arrow">→</span>
+              </div>
+              <div class="nav-link" onclick="clearAllCards()">
+                <span class="nav-icon">🧹</span>
+                <span>Clear All Cards</span>
+                <span class="nav-arrow">→</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+      <div class="status-left">
+        <div class="status-indicator">
+          <span class="status-dot offline" id="status-dot"></span>
+          <span id="status-text">Offline (Mock Mode)</span>
+        </div>
+        <div class="status-mode">
+          <span class="status-mode-dot" id="status-mode-dot" style="background: #4a9eff"></span>
+          <span id="status-mode-name">Ask</span>
+        </div>
+        <div class="status-cardinal hidden" id="status-cardinal"></div>
+        <div class="status-drift hidden" id="status-drift">
+          <span class="status-drift-dot"></span>
+          <span>Drift</span>
+        </div>
+      </div>
+      <div class="status-right">
+        <span class="status-token" id="status-token">~0 tokens</span>
+        <span class="status-version">Helix v0.1.0</span>
+      </div>
+    </div>
+
+    <script>
+      // ============================================================
+      // Phase 5: Mock Data & Service Layer
+      // ============================================================
+
+      const MODE_CONFIG = {
+        ask: { color: '#4a9eff', placeholder: '💬 Ask: Describe your question...', name: 'Ask' },
+        build: { color: '#fb8147', placeholder: '🛠️ Build: Describe your needs...', name: 'Build' },
+        plan: { color: '#c7e2a8', placeholder: '📋 Plan: Describe your goal...', name: 'Plan' },
+        compose: { color: '#a7a3d8', placeholder: '🎼 Compose: Describe refactoring...', name: 'Compose' },
+        loop: { color: '#007acc', placeholder: '🔄 Loop: Describe your task...', name: 'Loop' },
+        max: { color: '#e85d75', placeholder: '⚡ Max: Describe for multi-agent...', name: 'Max' },
+      };
+
+      let currentMode = 'ask';
+      let currentSideTab = 'tasks';
+      let currentCheckpointTab = 'changes';
+      let zenLevel = 2;
+      let expandedTaskGroups = new Set(['group-1', 'group-2']);
+      let expandedCardinalItems = new Set();
+      let expandedJudge = true;
+      let expandedAlignment = true;
+
+      // Mock Task Data
+      const mockTasks = [
+        {
+          id: 'group-1',
+          title: 'Task 1: Optimize DB queries',
+          mode: 'loop',
+          expanded: true,
+          tasks: [
+            { id: 't1-1', title: 'Analyze existing query patterns', status: 'completed' },
+            { id: 't1-2', title: 'Add indexes', status: 'completed' },
+            { id: 't1-3', title: 'Rewrite ORM queries', status: 'in_progress', progress: 65, currentAction: 'Modify src/db.ts', children: [
+              { id: 't1-3-1', title: 'Analyze ORM call chain', status: 'completed' },
+              { id: 't1-3-2', title: 'Refactor batch queries', status: 'in_progress', progress: 80, currentAction: 'Add join optimization' },
+              { id: 't1-3-3', title: 'Update unit tests', status: 'pending' },
+            ]},
+            { id: 't1-4', title: 'Regression tests', status: 'pending' },
+          ]
+        },
+        {
+          id: 'group-2',
+          title: 'Task 2: Add unit tests',
+          mode: 'plan',
+          expanded: true,
+          tasks: [
+            { id: 't2-1', title: 'Design test cases', status: 'completed' },
+            { id: 't2-2', title: 'Write test code', status: 'in_progress', progress: 45 },
+            { id: 't2-3', title: 'Coverage check', status: 'pending' },
+          ]
+        }
+      ];
+
+      // Mock Changes Data
+      const mockChanges = [
+        { id: 'c1', path: 'src/calc.ts', type: 'modified', additions: 12, deletions: 5, checked: true, diff: `@@ -1,5 +1,12 @@
+-export function sum(a: number, b: number) {
+-return a + b
++export function add(a: number, b: number) {
++return a + b
+ }
++
++export function subtract(a: number, b: number) {
++return a - b
++}
++
++export function multiply(a: number, b: number) {
++return a * b
++}` },
+        { id: 'c2', path: 'tests/calc.test.ts', type: 'added', additions: 8, deletions: 0, checked: true, diff: `@@ -0,0 +1,8 @@
++import { add, subtract, multiply } from "../src/calc"
++
++test("add", () => {
++expect(add(1, 2)).toBe(3)
++})
++
++test("subtract", () => {
++expect(subtract(5, 3)).toBe(2)
++})` },
+        { id: 'c3', path: 'package.json', type: 'modified', additions: 3, deletions: 1, checked: false, diff: `@@ -10,5 +10,7 @@
+  "dependencies": {
+-  "lodash": "^4.17.21"
++  "lodash": "^4.17.21",
++  "jest": "^29.0.0",
++  "@types/jest": "^29.0.0"
+  }` },
+      ];
+
+      let mockStaged = [];
+      const mockCheckpoints = [
+        { id: 'cp-1', number: 1, timestamp: '2026-06-17 10:00', fileCount: 2, operator: 'agent', description: 'Initial architecture adjustment', files: [mockChanges[0]] },
+        { id: 'cp-2', number: 2, timestamp: '2026-06-17 10:30', fileCount: 3, operator: 'agent', description: 'Add test framework', files: [mockChanges[0], mockChanges[1]] },
+        { id: 'cp-3', number: 3, timestamp: '2026-06-17 11:00', fileCount: 3, operator: 'user', description: 'Manual save', files: [...mockChanges] },
+      ];
+
+      // Mock Pre-flight Data
+      const mockPreflight = {
+        trustLevel: 'medium',
+        autoLearnEnabled: true,
+        cooldownRemaining: 0,
+        decision: 'proceed',
+        items: [
+          { id: 'pf-1', label: 'Environment check', status: 'completed', subItems: [
+            { id: 'pf-1-1', label: 'Node.js version', status: 'completed' },
+            { id: 'pf-1-2', label: 'Git repository', status: 'completed' },
+          ]},
+          { id: 'pf-2', label: 'Permission check', status: 'warning', details: 'Screen recording permission missing' },
+          { id: 'pf-3', label: 'Context collection', status: 'completed' },
+          { id: 'pf-4', label: 'Trust assessment', status: 'running', details: 'Analyzing task complexity...' },
+        ]
+      };
+
+      // Mock Cardinal Data
+      const mockCardinals = [
+        { id: 'cd-1', level: 'warn', trigger: 'External dependency changed', reason: 'package.json modified by agent', recommendation: 'Review dependency changes before proceeding', canDegrade: true, degraded: false },
+      ];
+
+      // Mock Judge Data
+      const mockJudge = {
+        id: 'j1',
+        decompositionQuality: 'pass',
+        resultQuality: 'pass',
+        valueSuccess: 'questionable',
+        timestamp: '2026-06-17 10:45',
+        message: 'Task decomposition is reasonable, but consider adding rollback strategy for database changes.'
+      };
+
+      // Mock Alignment Data
+      const mockAlignment = {
+        metrics: [
+          { type: 'file_drift', severity: 'medium', description: 'src/calc.ts moved 3 directory levels deep', value: '3 levels' },
+          { type: 'rabbit_hole', severity: 'low', description: '12 consecutive edits without user confirmation', value: '12 edits' },
+          { type: 'distraction', severity: 'low', description: 'Switched to unrelated file package.json', value: 'package.json' },
+        ]
+      };
+
+      // ============================================================
+      // Phase 1: Mode Switching
+      // ============================================================
+
+      function switchMode(mode) {
+        currentMode = mode;
+        const config = MODE_CONFIG[mode];
+
+        // Update mode buttons
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+          btn.classList.toggle('active', btn.dataset.mode === mode);
+        });
+
+        // Update input placeholder
+        document.getElementById('input').placeholder = config.placeholder;
+
+        // Update mode color bar
+        const bar = document.getElementById('mode-color-bar');
+        bar.className = 'mode-color-bar ' + mode;
+
+        // Update status bar
+        document.getElementById('status-mode-dot').style.background = config.color;
+        document.getElementById('status-mode-name').textContent = config.name;
+
+        // Hide welcome on first mode switch (but allow switching back to show it)
+        if (document.getElementById('welcome-screen')) {
+          document.getElementById('welcome-screen').style.display = 'none';
+        }
+
+        // Add system message
+        if (document.getElementById('messages').children.length <= 1) {
+          addSystemMessage(`Switched to ${config.name} mode. ${config.placeholder.replace('...', '')}`);
+        }
+      }
+
+      // ============================================================
+      // Phase 2: Side Panel Tabs
+      // ============================================================
+
+      function switchSideTab(tab) {
+        currentSideTab = tab;
+        document.querySelectorAll('.sidebar-tab').forEach(t => {
+          t.classList.toggle('active', t.dataset.tab === tab);
+        });
+        document.querySelectorAll('.tab-content').forEach(c => {
+          c.classList.toggle('hidden', c.id !== 'tab-' + tab);
+        });
+
+        // Render content if needed
+        if (tab === 'tasks') renderTaskList();
+        if (tab === 'changes') renderCheckpoint();
+        if (tab === 'preflight') renderPreflight();
+        if (tab === 'cardinal') renderCardinal();
+        if (tab === 'zen') renderZen();
+      }
+
+      function switchCheckpointTab(tab) {
+        currentCheckpointTab = tab;
+        document.querySelectorAll('.checkpoint-tab').forEach(t => {
+          t.classList.toggle('active', t.textContent.toLowerCase().startsWith(tab));
+        });
+        renderCheckpoint();
+      }
+
+      // ============================================================
+      // Phase 2: Task List
+      // ============================================================
+
+      const STATUS_ICON = {
+        completed: '✅', in_progress: '🔄', pending: '⏳', failed: '❌', paused: '⏸'
+      };
+      const STATUS_COLOR = {
+        completed: 'completed', in_progress: 'in_progress', pending: 'pending', failed: 'failed', paused: 'paused'
+      };
+
+      function renderTaskList() {
+        const container = document.getElementById('task-list-container');
+        let total = 0, completed = 0, inProgress = 0, failed = 0;
+
+        function countTasks(tasks) {
+          tasks.forEach(t => {
+            total++;
+            if (t.status === 'completed') completed++;
+            if (t.status === 'in_progress') inProgress++;
+            if (t.status === 'failed') failed++;
+            if (t.children) countTasks(t.children);
+          });
+        }
+        mockTasks.forEach(g => countTasks(g.tasks));
+        const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+        let html = '';
+        mockTasks.forEach(group => {
+          const expanded = expandedTaskGroups.has(group.id);
+          const modeColor = MODE_CONFIG[group.mode]?.color || '#666';
+          html += `
+            <div class="task-group">
+              <div class="task-group-header" onclick="toggleTaskGroup('${group.id}')">
+                <span class="expand-icon">${expanded ? '▼' : '▶'}</span>
+                <span class="task-group-title">${group.title}</span>
+                <span class="task-group-mode" style="background: ${modeColor}20; color: ${modeColor}">${group.mode}</span>
+              </div>
+              ${expanded ? renderTaskItems(group.tasks, 0) : ''}
+            </div>
+          `;
+        });
+
+        container.innerHTML = html;
+
+        // Update stats
+        document.getElementById('overall-progress').style.width = percent + '%';
+        document.getElementById('overall-progress').className = 'overall-progress-fill ' + (percent < 30 ? 'low' : percent < 70 ? 'mid' : 'high');
+        document.getElementById('overall-percent').textContent = percent + '%';
+        document.getElementById('stats-summary').textContent = `${completed}/${total} completed`;
+        document.getElementById('stats-detail').textContent = inProgress > 0 ? `${inProgress} in progress` : (failed > 0 ? `${failed} failed` : '');
+      }
+
+      function renderTaskItems(tasks, depth) {
+        let html = '<div class="task-subitems">';
+        tasks.forEach(task => {
+          const hasChildren = task.children && task.children.length > 0;
+          html += `
+            <div class="task-item" onclick="jumpToTask('${task.id}')">
+              <span class="task-status-icon ${STATUS_COLOR[task.status]}">${STATUS_ICON[task.status]}</span>
+              <span class="task-title">${task.title}</span>
+              ${task.progress !== undefined && task.status === 'in_progress' ? `
+                <div class="task-progress-bar">
+                  <div class="task-progress-fill ${task.progress < 30 ? 'low' : task.progress < 70 ? 'mid' : 'high'}" style="width: ${task.progress}%"></div>
+                </div>
+              ` : ''}
+              ${task.currentAction ? `<span class="task-current-action">${task.currentAction}</span>` : ''}
+            </div>
+          `;
+          if (hasChildren) {
+            html += renderTaskItems(task.children, depth + 1);
+          }
+        });
+        html += '</div>';
+        return html;
+      }
+
+      function toggleTaskGroup(id) {
+        if (expandedTaskGroups.has(id)) expandedTaskGroups.delete(id);
+        else expandedTaskGroups.add(id);
+        renderTaskList();
+      }
+
+      function expandAllTasks() {
+        mockTasks.forEach(g => expandedTaskGroups.add(g.id));
+        renderTaskList();
+      }
+
+      function collapseAllTasks() {
+        expandedTaskGroups.clear();
+        renderTaskList();
+      }
+
+      function jumpToTask(taskId) {
+        // Mock: scroll to a message and highlight it
+        addSystemMessage(`📌 Jumped to task: ${taskId}`);
+      }
+
+      // ============================================================
+      // Phase 2: Checkpoint / Changes
+      // ============================================================
+
+      function renderCheckpoint() {
+        const container = document.getElementById('checkpoint-content');
+        if (!container) return;
+
+        if (currentCheckpointTab === 'changes') {
+          let html = '<div style="padding: 8px 0;">';
+          mockChanges.forEach(file => {
+            const typeIcon = file.type === 'modified' ? '●' : file.type === 'added' ? '+' : '−';
+            const typeClass = file.type;
+            html += `
+              <div class="change-file" onclick="toggleSelectChange('${file.id}')">
+                <input type="checkbox" class="change-checkbox" ${file.checked ? 'checked' : ''} onclick="event.stopPropagation()">
+                <span class="change-type ${typeClass}">${typeIcon}</span>
+                <span class="change-path">${file.path}</span>
+                <span class="change-lines">${file.additions > 0 ? '+' + file.additions : ''} ${file.deletions > 0 ? '−' + file.deletions : ''}</span>
+              </div>
+            `;
+          });
+          html += `
+            <div class="checkpoint-actions">
+              <button class="danger" onclick="revertAllChanges()">Revert All</button>
+              <button class="primary" onclick="stageSelected()">Stage Selected</button>
+            </div>
+          </div>`;
+          container.innerHTML = html;
+        } else if (currentCheckpointTab === 'staged') {
+          if (mockStaged.length === 0) {
+            container.innerHTML = '<div style="padding: 20px; text-align: center; color: #8b949e; font-size: 12px;">No staged changes</div>';
+          } else {
+            let html = '<div style="padding: 8px 0;">';
+            mockStaged.forEach(file => {
+              html += `
+                <div class="change-file">
+                  <span class="change-type ${file.type}">${file.type === 'modified' ? '●' : file.type === 'added' ? '+' : '−'}</span>
+                  <span class="change-path">${file.path}</span>
+                  <button style="font-size: 11px; color: #8b949e; background: none; border: none; cursor: pointer;" onclick="unstage('${file.id}')">Unstage</button>
+                </div>
+              `;
+            });
+            html += `
+              <div class="checkpoint-actions">
+                <button class="danger" onclick="resetStaged()">Reset</button>
+                <button class="primary" onclick="commitStaged()">Commit</button>
+              </div>
+            </div>`;
+            container.innerHTML = html;
+          }
+        } else if (currentCheckpointTab === 'history') {
+          let html = '<div style="padding: 8px 0;">';
+          mockCheckpoints.forEach(cp => {
+            html += `
+              <div class="checkpoint-item">
+                <div class="checkpoint-item-header">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="checkpoint-number">Checkpoint #${cp.number}</span>
+                    <span class="checkpoint-time">${cp.timestamp}</span>
+                  </div>
+                  <span class="checkpoint-operator ${cp.operator}">${cp.operator === 'agent' ? 'Agent' : 'User'}</span>
+                </div>
+                <div class="checkpoint-desc">${cp.fileCount} files${cp.description ? ' · ' + cp.description : ''}</div>
+                <div class="checkpoint-ops">
+                  <button onclick="restoreCheckpoint('${cp.id}')">Restore</button>
+                  <button onclick="compareCheckpoint('${cp.id}')">Compare</button>
+                  <button class="danger" onclick="deleteCheckpoint('${cp.id}')">Delete</button>
+                </div>
+              </div>
+            `;
+          });
+          html += `
+            <div class="checkpoint-actions" style="padding: 10px 12px;">
+              <button class="primary" style="width: 100%" onclick="createCheckpoint()">Create Checkpoint</button>
+            </div>
+          </div>`;
+          container.innerHTML = html;
+        }
+      }
+
+      function toggleSelectChange(id) {
+        const file = mockChanges.find(c => c.id === id);
+        if (file) file.checked = !file.checked;
+        renderCheckpoint();
+      }
+
+      function revertAllChanges() {
+        mockChanges.length = 0;
+        renderCheckpoint();
+        addSystemMessage('🗑️ All changes reverted');
+      }
+
+      function stageSelected() {
+        const selected = mockChanges.filter(c => c.checked);
+        selected.forEach(file => {
+          mockStaged.push({ ...file });
+          const idx = mockChanges.indexOf(file);
+          if (idx > -1) mockChanges.splice(idx, 1);
+        });
+        renderCheckpoint();
+        addSystemMessage(`📦 Staged ${selected.length} files`);
+      }
+
+      function unstage(id) {
+        const file = mockStaged.find(s => s.id === id);
+        if (file) {
+          mockChanges.push({ ...file, checked: false });
+          mockStaged = mockStaged.filter(s => s.id !== id);
+        }
+        renderCheckpoint();
+      }
+
+      function resetStaged() {
+        mockStaged.forEach(file => mockChanges.push({ ...file, checked: false }));
+        mockStaged = [];
+        renderCheckpoint();
+      }
+
+      function commitStaged() {
+        addSystemMessage('✅ Committed ' + mockStaged.length + ' files');
+        mockStaged = [];
+        renderCheckpoint();
+      }
+
+      function restoreCheckpoint(id) {
+        const cp = mockCheckpoints.find(c => c.id === id);
+        if (cp) {
+          addSystemMessage(`⏮️ Restored to Checkpoint #${cp.number}`);
+        }
+      }
+
+      function compareCheckpoint(id) {
+        addSystemMessage(`🔍 Comparing with Checkpoint #${id}`);
+      }
+
+      function deleteCheckpoint(id) {
+        const idx = mockCheckpoints.findIndex(c => c.id === id);
+        if (idx > -1) mockCheckpoints.splice(idx, 1);
+        renderCheckpoint();
+      }
+
+      function createCheckpoint() {
+        const next = mockCheckpoints.length + 1;
+        mockCheckpoints.push({
+          id: 'cp-' + next,
+          number: next,
+          timestamp: new Date().toLocaleString(),
+          fileCount: mockChanges.length,
+          operator: 'user',
+          description: 'Manual checkpoint',
+          files: [...mockChanges]
+        });
+        renderCheckpoint();
+        addSystemMessage(`💾 Created Checkpoint #${next}`);
+      }
+
+      // ============================================================
+      // Phase 4: Pre-flight
+      // ============================================================
+
+      function renderPreflight() {
+        const panel = document.getElementById('preflight-panel');
+        const trust = mockPreflight.trustLevel;
+        const trustClass = trust;
+        let html = `
+          <div class="preflight-header">
+            <div class="preflight-title">
+              <span>🔍</span>
+              <span>Pre-flight Check</span>
+            </div>
+            <span class="preflight-trust ${trustClass}">${trust === 'high' ? 'High Trust' : trust === 'medium' ? 'Medium Trust' : 'Low Trust'}</span>
+          </div>
+        `;
+        if (mockPreflight.autoLearnEnabled) {
+          html += `<div style="font-size: 11px; color: #d29922; margin-bottom: 10px;">⚡ auto-learn enabled</div>`;
+        }
+        mockPreflight.items.forEach(item => {
+          const statusIcon = item.status === 'completed' ? '✅' : item.status === 'running' ? '🔄' : item.status === 'warning' ? '⚠️' : '⏳';
+          const statusColor = item.status === 'completed' ? 'text-green-500' : item.status === 'running' ? 'text-blue-400' : item.status === 'warning' ? 'text-amber-500' : 'text-text-weak';
+          html += `
+            <div class="preflight-item">
+              <span class="preflight-item-icon ${statusColor}">${statusIcon}</span>
+              <span class="preflight-item-label">${item.label}</span>
+            </div>
+          `;
+          if (item.subItems) {
+            html += '<div class="preflight-subitems">';
+            item.subItems.forEach(sub => {
+              const subIcon = sub.status === 'completed' ? '✅' : sub.status === 'warning' ? '⚠️' : '⏳';
+              html += `
+                <div class="preflight-subitem">
+                  <span>${subIcon}</span>
+                  <span>${sub.label}</span>
+                </div>
+              `;
+            });
+            html += '</div>';
+          }
+          if (item.details) {
+            html += `<div style="font-size: 11px; color: #8b949e; padding-left: 28px; margin-bottom: 4px;">${item.details}</div>`;
+          }
+        });
+        html += `
+          <div class="preflight-actions">
+            ${mockPreflight.decision === 'proceed' ? '<button class="proceed" onclick="preflightProceed()">✅ Proceed</button>' : ''}
+            ${mockPreflight.decision === 'pause' ? '<button class="pause" onclick="preflightPause()">⏸ Pause (30s)</button>' : ''}
+            ${mockPreflight.decision === 'block' ? '<button class="block" onclick="preflightBlock()">⛔ Block</button>' : ''}
+          </div>
+        `;
+        panel.innerHTML = html;
+      }
+
+      function preflightProceed() {
+        addSystemMessage('✅ Pre-flight check passed. Proceeding...');
+      }
+      function preflightPause() {
+        addSystemMessage('⏸ Pre-flight paused for 30s');
+      }
+      function preflightBlock() {
+        addSystemMessage('⛔ Pre-flight blocked execution');
+      }
+
+      // ============================================================
+      // Phase 4: Cardinal
+      // ============================================================
+
+      function renderCardinal() {
+        const panel = document.getElementById('cardinal-panel');
+        if (mockCardinals.length === 0) {
+          panel.innerHTML = '<div style="padding: 20px; text-align: center; color: #8b949e; font-size: 12px;">No active interventions</div>';
+          return;
+        }
+        let html = '';
+        mockCardinals.forEach(item => {
+          const config = {
+            block: { icon: '🚫', color: 'f85149', label: 'Block' },
+            pause: { icon: '⏸', color: 'd97706', label: 'Pause' },
+            stop: { icon: '🛑', color: 'd29922', label: 'Stop' },
+            warn: { icon: '⚠️', color: '58a6ff', label: 'Warn' },
+          }[item.level];
+          const expanded = expandedCardinalItems.has(item.id);
+          html += `
+            <div class="cardinal-item ${item.level}">
+              <div class="cardinal-item-header" onclick="toggleCardinal('${item.id}')">
+                <span class="level-icon">${config.icon}</span>
+                <span class="level-label ${item.level}">${config.label}</span>
+                <span class="trigger-text">${item.trigger}</span>
+                <span style="font-size: 10px; color: #8b949e;">${expanded ? '▼' : '▶'}</span>
+              </div>
+              ${expanded ? `
+                <div class="cardinal-item-body">
+                  <div class="cardinal-reason">${item.reason}</div>
+                  <div class="cardinal-recommendation">${item.recommendation}</div>
+                  <div class="cardinal-actions">
+                    ${item.level === 'pause' || item.level === 'stop' ? `<button class="resume" onclick="cardinalResume('${item.id}')">Resume</button>` : ''}
+                    ${item.canDegrade && !item.degraded ? `<button class="degrade" onclick="cardinalDegrade('${item.id}')">Degrade</button>` : ''}
+                    ${item.level === 'warn' ? `<button class="dismiss" onclick="cardinalDismiss('${item.id}')">Dismiss</button>` : ''}
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+          `;
+        });
+        panel.innerHTML = html;
+      }
+
+      function toggleCardinal(id) {
+        if (expandedCardinalItems.has(id)) expandedCardinalItems.delete(id);
+        else expandedCardinalItems.add(id);
+        renderCardinal();
+      }
+
+      function cardinalResume(id) {
+        const item = mockCardinals.find(c => c.id === id);
+        if (item) item.level = 'warn';
+        renderCardinal();
+        addSystemMessage('▶️ Cardinal intervention resumed');
+      }
+
+      function cardinalDegrade(id) {
+        const item = mockCardinals.find(c => c.id === id);
+        if (item) { item.degraded = true; item.level = 'warn'; }
+        renderCardinal();
+        addSystemMessage('⬇️ Cardinal intervention degraded to Warn');
+      }
+
+      function cardinalDismiss(id) {
+        mockCardinals = mockCardinals.filter(c => c.id !== id);
+        renderCardinal();
+        addSystemMessage('🗑️ Cardinal intervention dismissed');
+      }
+
+      // ============================================================
+      // Phase 4: Zen Mode
+      // ============================================================
+
+      function renderZen() {
+        const panel = document.getElementById('zen-panel');
+        const levels = [
+          { level: 1, label: 'Alert', color: '#ef4444', desc: 'All notifications on' },
+          { level: 2, label: 'Normal', color: '#eab308', desc: 'Reduce non-essential interruptions' },
+          { level: 3, label: 'Focused', color: '#22c55e', desc: 'Only critical alerts' },
+          { level: 4, label: 'Zen Mode', color: '#3b82f6', desc: 'Minimal UI, no distractions' },
+        ];
+        let html = '<div class="zen-title">Attention Level</div>';
+        levels.forEach(l => {
+          const active = zenLevel === l.level;
+          html += `
+            <div class="zen-level ${active ? 'active' : ''}" onclick="setZenLevel(${l.level})">
+              <div class="zen-dot level-${l.level}" style="background: ${l.color}; opacity: ${active ? 1 : 0.4}"></div>
+              <div class="zen-level-info">
+                <div class="zen-level-label">${l.label}</div>
+                <div class="zen-level-desc">${l.desc}</div>
+              </div>
+              ${active ? `<span class="zen-active-badge" style="color: ${l.color}">Active</span>` : ''}
+            </div>
+          `;
+        });
+        panel.innerHTML = html;
+      }
+
+      function setZenLevel(level) {
+        zenLevel = level;
+        renderZen();
+        const names = ['Alert', 'Normal', 'Focused', 'Zen Mode'];
+        addSystemMessage(`🧘 Attention level set to: ${names[level - 1]}`);
+      }
+
+      // ============================================================
+      // Phase 3: Judge & Alignment Cards
+      // ============================================================
+
+      function renderJudgeCard() {
+        const v = mockJudge;
+        const verdictHtml = (label, value) => {
+          const configs = {
+            pass: { icon: '✅', color: 'verdict-value pass', text: 'Pass' },
+            questionable: { icon: '⚠️', color: 'verdict-value questionable', text: 'Questionable' },
+            reject: { icon: '❌', color: 'verdict-value reject', text: 'Reject' },
+          };
+          const c = configs[value];
+          return `<div class="verdict-row"><span class="verdict-label">${label}</span><div class="${c.color}"><span>${c.icon}</span><span>${c.text}</span></div></div>`;
+        };
+        return `
+          <div class="judge-card">
+            <div class="judge-card-header" onclick="toggleJudge()">
+              <div class="judge-card-title">
+                <span>⚖️</span>
+                <span class="title-text">Judge Verdict</span>
+                <span class="timestamp">${v.timestamp}</span>
+              </div>
+              <span style="font-size: 11px; color: #8b949e;">${expandedJudge ? '▼' : '▶'}</span>
+            </div>
+            ${expandedJudge ? `
+              <div class="judge-card-body">
+                ${verdictHtml('Decomposition Quality', v.decompositionQuality)}
+                ${verdictHtml('Result Quality', v.resultQuality)}
+                ${verdictHtml('Value Success', v.valueSuccess)}
+                ${v.message ? `<div class="judge-message">${v.message}</div>` : ''}
+                ${v.valueSuccess === 'reject' || v.valueSuccess === 'questionable' ? `<button class="judge-rollback-btn" onclick="triggerRollback()">Force Rollback</button>` : ''}
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }
+
+      function toggleJudge() {
+        expandedJudge = !expandedJudge;
+        // Re-render would need to be called from a parent - handled by re-inserting card
+      }
+
+      function renderAlignmentAlert() {
+        const m = mockAlignment;
+        const driftIcons = { file_drift: '📁', rabbit_hole: '🐰', distraction: '🎯' };
+        const driftLabels = { file_drift: 'File Drift', rabbit_hole: 'Rabbit Hole', distraction: 'Distraction' };
+        return `
+          <div class="alignment-alert">
+            <div class="alignment-alert-header" onclick="toggleAlignment()">
+              <span class="pulse-icon">🚨</span>
+              <span class="title-text">Alignment Drift Detected</span>
+              <span style="font-size: 11px; color: #8b949e; margin-left: auto;">${expandedAlignment ? '▼' : '▶'}</span>
+            </div>
+            ${expandedAlignment ? `
+              <div class="alignment-alert-body">
+                ${m.metrics.map(metric => `
+                  <div class="drift-metric">
+                    <span class="drift-metric-icon">${driftIcons[metric.type]}</span>
+                    <div class="drift-metric-content">
+                      <div class="drift-metric-label">${driftLabels[metric.type]}</div>
+                      <div class="drift-metric-desc">${metric.description}</div>
+                      ${metric.value ? `<div class="drift-metric-desc">${metric.value}</div>` : ''}
+                    </div>
+                    <div class="drift-severity ${metric.severity}"></div>
+                  </div>
+                `).join('')}
+                <button class="recalibrate-btn" onclick="recalibrate()">Recalibrate</button>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }
+
+      function toggleAlignment() {
+        expandedAlignment = !expandedAlignment;
+      }
+
+      function triggerRollback() {
+        addSystemMessage('⏮️ Force rollback triggered by Judge');
+      }
+
+      function recalibrate() {
+        addSystemMessage('🔄 Recalibration initiated...');
+        document.querySelector('.alignment-alert')?.remove();
+        document.getElementById('status-drift').classList.add('hidden');
+      }
+
+      // ============================================================
+      // Phase 5: Mock Triggers & Navigation
+      // ============================================================
+
+      function triggerMock(type) {
+        switch(type) {
+          case 'judge':
+            insertCard(renderJudgeCard());
+            addSystemMessage('⚖️ Judge verdict received');
+            break;
+          case 'alignment':
+            insertCard(renderAlignmentAlert());
+            document.getElementById('status-drift').classList.remove('hidden');
+            addSystemMessage('🚨 Alignment drift detected');
+            break;
+          case 'cardinal-block':
+            mockCardinals.push({
+              id: 'cd-' + Date.now(),
+              level: 'block',
+              trigger: 'Test failure detected',
+              reason: '3 tests failed in src/calc.test.ts',
+              recommendation: 'Fix failing tests before continuing',
+              canDegrade: false,
+              degraded: false
+            });
+            renderCardinal();
+            if (currentSideTab !== 'cardinal') switchSideTab('cardinal');
+            updateStatusCardinal('block');
+            addSystemMessage('🚫 Cardinal Block: Test failure');
+            break;
+          case 'cardinal-pause':
+            mockCardinals.push({
+              id: 'cd-' + Date.now(),
+              level: 'pause',
+              trigger: 'External dependency unavailable',
+              reason: 'npm registry unreachable',
+              recommendation: 'Check network connection or retry',
+              canDegrade: true,
+              degraded: false
+            });
+            renderCardinal();
+            if (currentSideTab !== 'cardinal') switchSideTab('cardinal');
+            updateStatusCardinal('pause');
+            addSystemMessage('⏸ Cardinal Pause: External dependency');
+            break;
+          case 'preflight':
+            if (currentSideTab !== 'preflight') switchSideTab('preflight');
+            addSystemMessage('🔍 Running pre-flight check...');
+            break;
+          case 'task-update':
+            simulateTaskProgress();
+            if (currentSideTab !== 'tasks') switchSideTab('tasks');
+            addSystemMessage('🔄 Task progress updated');
+            break;
+          case 'new-checkpoint':
+            createCheckpoint();
+            if (currentSideTab !== 'changes') switchSideTab('changes');
+            break;
+        }
+      }
+
+      function insertCard(html) {
+        const messages = document.getElementById('messages');
+        const div = document.createElement('div');
+        div.innerHTML = html;
+        div.style.marginBottom = '16px';
+        messages.appendChild(div);
+        messages.scrollTop = messages.scrollHeight;
+      }
+
+      function clearAllCards() {
+        document.querySelectorAll('.judge-card, .alignment-alert').forEach(el => el.closest('div').remove());
+        mockCardinals = [];
+        renderCardinal();
+        document.getElementById('status-cardinal').classList.add('hidden');
+        document.getElementById('status-drift').classList.add('hidden');
+        addSystemMessage('🧹 All cards cleared');
+      }
+
+      function updateStatusCardinal(level) {
+        const el = document.getElementById('status-cardinal');
+        el.classList.remove('hidden', 'block', 'pause', 'stop', 'warn');
+        el.classList.add(level);
+        const labels = { block: 'Block', pause: 'Pause', stop: 'Stop', warn: 'Warn' };
+        el.textContent = labels[level];
+      }
+
+      function simulateTaskProgress() {
+        mockTasks.forEach(group => {
+          group.tasks.forEach(task => {
+            if (task.status === 'in_progress' && task.progress !== undefined) {
+              task.progress = Math.min(100, task.progress + 15);
+              if (task.progress >= 100) {
+                task.status = 'completed';
+                task.progress = undefined;
+              }
+            } else if (task.status === 'pending' && Math.random() > 0.5) {
+              task.status = 'in_progress';
+              task.progress = 10;
+            }
+            if (task.children) {
+              task.children.forEach(child => {
+                if (child.status === 'in_progress' && child.progress !== undefined) {
+                  child.progress = Math.min(100, child.progress + 20);
+                  if (child.progress >= 100) child.status = 'completed';
+                }
+              });
+            }
+          });
+        });
+        renderTaskList();
+      }
+
+      // ============================================================
+      // Message System
+      // ============================================================
+
+      function addSystemMessage(text) {
+        const messages = document.getElementById('messages');
+        const div = document.createElement('div');
+        div.className = 'message';
+        div.style.animation = 'fadeInUp 0.3s ease';
+        div.innerHTML = `
+          <div class="avatar ai">🧬</div>
+          <div class="message-wrapper mode-${currentMode}">
+            <div class="message-body">
+              <div class="message-mode-tag">
+                <span>${MODE_CONFIG[currentMode].icon}</span>
+                <span>${MODE_CONFIG[currentMode].name} · System</span>
+              </div>
+              <div>${escapeHtml(text)}</div>
+            </div>
+          </div>
+        `;
+        messages.appendChild(div);
+        messages.scrollTop = messages.scrollHeight;
+      }
+
+      function addUserMessage(text) {
+        const messages = document.getElementById('messages');
+        const div = document.createElement('div');
+        div.className = 'message';
+        div.style.animation = 'fadeInUp 0.3s ease';
+        div.innerHTML = `
+          <div class="avatar user">👤</div>
+          <div class="message-body">${escapeHtml(text)}</div>
+        `;
+        messages.appendChild(div);
+        messages.scrollTop = messages.scrollHeight;
+      }
+
+      function addAIResponse(text) {
+        const messages = document.getElementById('messages');
+        const div = document.createElement('div');
+        div.className = 'message';
+        div.style.animation = 'fadeInUp 0.3s ease';
+        div.innerHTML = `
+          <div class="avatar ai">🧬</div>
+          <div class="message-wrapper mode-${currentMode}">
+            <div class="message-body">
+              <div class="message-mode-tag">
+                <span>${MODE_CONFIG[currentMode].icon}</span>
+                <span>${MODE_CONFIG[currentMode].name} · Helix</span>
+              </div>
+              <div>${text}</div>
+            </div>
+          </div>
+        `;
+        messages.appendChild(div);
+        messages.scrollTop = messages.scrollHeight;
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      // ============================================================
+      // Input Handling
+      // ============================================================
+
+      const textarea = document.getElementById('input');
+      textarea.addEventListener('input', () => {
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+      });
+      textarea.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
+
+      function sendMessage() {
+        const text = textarea.value.trim();
+        if (!text) return;
+
+        // Hide welcome screen
+        const welcome = document.getElementById('welcome-screen');
+        if (welcome) welcome.style.display = 'none';
+
+        addUserMessage(text);
+        textarea.value = '';
+        textarea.style.height = 'auto';
+
+        // Simulate AI response based on mode
+        setTimeout(() => {
+          const responses = {
+            ask: 'I can help answer that! Let me analyze your question...',
+            build: 'I will generate the code for you. Analyzing requirements...',
+            plan: 'Let me break this down into actionable tasks:\n\n1. Analyze current architecture\n2. Identify refactoring points\n3. Implement changes\n4. Run tests',
+            compose: 'Starting multi-file refactoring. I will compose the changes across multiple files...',
+            loop: 'Entering iterative execution loop. I will execute, evaluate, and adapt automatically...',
+            max: 'Activating maximum capability mode. Deploying parallel agents for optimal solution...',
+          };
+          addAIResponse(responses[currentMode] || 'Processing your request...');
+        }, 600);
+      }
+
+      // ============================================================
+      // Keyboard Shortcuts
+      // ============================================================
+
+      document.addEventListener('keydown', (e) => {
+        // Mode shortcuts
+        if (e.metaKey && e.shiftKey) {
+          switch(e.key.toLowerCase()) {
+            case 'a': e.preventDefault(); switchMode('ask'); break;
+            case 'b': e.preventDefault(); switchMode('build'); break;
+            case 'p': e.preventDefault(); switchMode('plan'); break;
+            case 'o': e.preventDefault(); switchMode('compose'); break;
+            case 'l': e.preventDefault(); switchMode('loop'); break;
+            case 'm': e.preventDefault(); switchMode('max'); break;
+          }
+        }
+      });
+
+      // ============================================================
+      // Status Bar
+      // ============================================================
+
+      const port = window.__HELIX_SERVER_PORT__ || 0;
+      const statusDot = document.getElementById('status-dot');
+      const statusText = document.getElementById('status-text');
+      if (port > 0) {
+        statusDot.classList.add('connecting');
+        statusText.textContent = 'Connecting...';
+        fetch('http://localhost:' + port + '/health').then(() => {
+          statusDot.classList.remove('connecting');
+          statusText.textContent = 'Connected';
+        }).catch(() => {
+          statusDot.classList.remove('connecting');
+          statusDot.classList.add('offline');
+          statusText.textContent = 'Offline (Mock Mode)';
+        });
+      } else {
+        statusDot.classList.add('offline');
+        statusText.textContent = 'Offline (Mock Mode)';
+      }
+
+      // ============================================================
+      // Initialize
+      // ============================================================
+
+      renderTaskList();
+      renderCheckpoint();
+      renderPreflight();
+      renderCardinal();
+      renderZen();
+
+      // Auto-simulate task progress every 10s
+      setInterval(() => {
+        if (Math.random() > 0.7) simulateTaskProgress();
+      }, 10000);
+    </script>
+  </body>
+</html>

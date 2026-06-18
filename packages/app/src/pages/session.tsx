@@ -64,6 +64,10 @@ import { Persist, persisted } from "@/utils/persist"
 import { extractPromptFromParts } from "@/utils/prompt"
 import { same } from "@/utils/same"
 import { formatServerError } from "@/utils/server-errors"
+import { createMockTaskService } from "@/services/mock/mock-task-service"
+import { createMockCheckpointService } from "@/services/mock/mock-checkpoint-service"
+import { TaskListPanel } from "@/pages/session/task-list-panel"
+import { CheckpointPanel } from "@/pages/session/checkpoint-panel"
 
 const emptyUserMessages: UserMessage[] = []
 type FollowupItem = FollowupDraft & { id: string }
@@ -1792,6 +1796,12 @@ export default function Page() {
     if (fillFrame !== undefined) cancelAnimationFrame(fillFrame)
   })
 
+  const taskService = createMockTaskService()
+  const cpService = createMockCheckpointService()
+  onCleanup(() => {
+    taskService.dispose()
+  })
+
   return (
     <div class="relative bg-background-base size-full overflow-hidden flex flex-col">
       {sessionSync() ?? ""}
@@ -1963,6 +1973,23 @@ export default function Page() {
           focusReviewDiff={focusReviewDiff}
           reviewSnap={ui.reviewSnap}
           size={size}
+          taskPanel={() => <TaskListPanel groups={taskService.groups} />}
+          checkpointPanel={() => (
+            <CheckpointPanel
+              changes={cpService.changes}
+              staged={cpService.staged}
+              checkpoints={cpService.checkpoints}
+              onKeep={cpService.keep}
+              onRevert={cpService.revert}
+              onStage={cpService.stage}
+              onUnstage={cpService.unstage}
+              onAcceptAll={cpService.acceptAll}
+              onRevertAll={cpService.revertAll}
+              onCommit={cpService.commit}
+              onCreateCheckpoint={cpService.createCheckpoint}
+              onRestoreCheckpoint={cpService.restoreCheckpoint}
+            />
+          )}
         />
       </div>
 
