@@ -1247,12 +1247,21 @@
 
       /* ===== Minimal Mode ===== */
       body.minimal-mode .sidebar-right { display: none !important; }
-      body.minimal-mode .sidebar-collapse-btn { display: none !important; }
       body.minimal-mode .status-bar { display: none !important; }
       body.minimal-mode .mode-selector { justify-content: flex-start; padding: 6px 12px; }
       body.minimal-mode .mode-btn .mode-label { display: none; }
       body.minimal-mode .mode-btn { padding: 4px 8px; }
-      body.minimal-mode .mode-btn { padding: 4px 8px; }
+      /* Show collapse button in minimal mode to allow sidebar expansion */
+      body.minimal-mode .sidebar-collapse-btn {
+        display: flex !important;
+        position: fixed;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        height: auto;
+        padding: 20px 4px;
+        border-radius: 4px 0 0 4px;
+      }
       body.minimal-mode .main { flex: 1; }
       body.minimal-mode .chat-area { flex: 1; }
       body.minimal-mode .welcome .mode-cards { display: none !important; }
@@ -2620,6 +2629,12 @@
       }
 
       function toggleSidebar() {
+        // If in minimal mode, exit minimal mode first to show sidebar
+        if (minimalMode) {
+          toggleMinimalMode();
+          return;
+        }
+        
         sidebarCollapsed = !sidebarCollapsed;
         const sidebar = document.getElementById('sidebar-right');
         const btn = document.getElementById('sidebar-collapse-btn');
