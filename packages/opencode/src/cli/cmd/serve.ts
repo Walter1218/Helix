@@ -8,9 +8,16 @@ import { bootstrap } from "../bootstrap"
 
 export const ServeCommand = cmd({
   command: "serve",
-  builder: (yargs) => withNetworkOptions(yargs),
+  builder: (yargs) =>
+    withNetworkOptions(yargs).option("workspace-id", {
+      describe: "workspace identifier for multi-workspace isolation",
+      type: "string",
+    }),
   describe: "starts a headless mimocode server",
   handler: async (args) => {
+    if (args["workspace-id"]) {
+      process.env.MIMOCODE_WORKSPACE_ID = args["workspace-id"]
+    }
     if (!Flag.MIMOCODE_SERVER_PASSWORD) {
       console.log("Warning: MIMOCODE_SERVER_PASSWORD is not set; server is unsecured.")
     }
