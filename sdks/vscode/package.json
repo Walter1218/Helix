@@ -2,7 +2,7 @@
   "name": "opencode",
   "displayName": "Helix",
   "description": "Helix for VS Code",
-  "version": "1.14.19",
+  "version": "1.14.25",
   "publisher": "sst-dev",
   "repository": {
     "type": "git",
@@ -145,12 +145,17 @@
           "type": "string",
           "default": "",
           "description": "Path to Helix CLI executable (mimo or opencode). Leave empty to auto-detect."
+        },
+        "helix.serverPort": {
+          "type": "number",
+          "default": 0,
+          "description": "Fixed port for Helix server (0 = auto/random). Set to 3095 to reuse an existing mimo server."
         }
       }
     }
   },
   "scripts": {
-    "build:media": "rm -rf media && cp -r ../../packages/app/dist media && cp src/webview/helix-welcome.html media/",
+    "build:media": "rm -rf media && cp -r ../../packages/app/dist media",
     "vscode:prepublish": "bun run build:media && bun run package",
     "compile": "bun run check-types && bun run lint && node esbuild.js",
     "watch:esbuild": "node esbuild.js --watch",
