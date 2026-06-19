@@ -6,8 +6,9 @@ export class HelixWebviewPanel {
   public static readonly viewType = "helix.webview";
   private readonly panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
-  private readonly _serverPort: number;
+  private _serverPort: number;
   private _disposables: vscode.Disposable[] = [];
+  private _sseAbortController: AbortController | null = null;
 
   public static createOrShow(extensionUri: vscode.Uri, serverPort: number) {
     const column = vscode.ViewColumn.Two;
@@ -16,7 +17,6 @@ export class HelixWebviewPanel {
       (e) => e.viewColumn === column
     );
     if (existing) {
-      // 如果已经有面板，聚焦它
       vscode.window.showTextDocument(existing.document, column);
     }
 
@@ -66,7 +66,6 @@ export class HelixWebviewPanel {
     const welcomePath = vscode.Uri.joinPath(mediaPath, "helix-welcome.html");
 
     let html: string;
-    // 始终使用 Helix 自定义 UI
     try {
       html = fs.readFileSync(welcomePath.fsPath, "utf-8");
     } catch {
@@ -78,6 +77,9 @@ export class HelixWebviewPanel {
   }
 
   private getBridgeScript(): string {
+    const pkg = require("../../package.json");
+    const version = pkg.version;
+
     return `
 <script>
 (function() {
@@ -85,9 +87,21 @@ export class HelixWebviewPanel {
   window.__HELIX_VSCODE__ = true
   window.__HELIX_VSCODE_REF__ = vscode
   window.__HELIX_SERVER_PORT__ = ${this._serverPort}
+  window.__HELIX_EXT_VERSION__ = "${version}"
+
+  // 版本检查：扩展更新后自动刷新 webview
+  const storedVersion = localStorage.getItem('__helix_ext_version__')
+  if (storedVersion && storedVersion !== "${version}") {
+    localStorage.setItem('__helix_ext_version__', "${version}")
+    console.log('[HelixGUI] Extension updated from', storedVersion, 'to', "${version}", '— reloading webview...')
+    location.reload()
+    return
+  }
+  localStorage.setItem('__helix_ext_version__', "${version}")
 
   // 保存原始 fetch
   const originalFetch = window.fetch
+  window.__ORIGINAL_FETCH__ = originalFetch
   window.fetch = function(url, options) {
     if (typeof url === 'string' && url.startsWith('http://localhost')) {
       return new Promise((resolve, reject) => {
@@ -175,6 +189,12 @@ export class HelixWebviewPanel {
     if (event.data && event.data.type === 'api-response') {
       // 由上面的 fetch 处理
     }
+    if (event.data && event.data.type === 'connection-state') {
+      // 扩展通知连接状态变化
+      window.dispatchEvent(new CustomEvent('helix-connection-state', {
+        detail: event.data.state
+      }))
+    }
     if (event.data && event.data.type === 'file-ref') {
       const input = document.querySelector('textarea, input[type="text"]')
       if (input) {
@@ -206,10 +226,23 @@ export class HelixWebviewPanel {
         switch (message.type) {
           case "api": {
             try {
+              console.log(`[Helix Bridge] API request: ${message.url}`);
               const response = await fetch(message.url, message.options);
               const data = await response.text();
               let parsed: unknown;
               try { parsed = JSON.parse(data); } catch { parsed = data; }
+
+              if (!response.ok) {
+                console.error(`[Helix Bridge] API error ${response.status}: ${message.url}`);
+                this.panel.webview.postMessage({
+                  type: "api-response",
+                  id: message.id,
+                  error: `HTTP ${response.status}: ${data}`,
+                });
+                return;
+              }
+
+              console.log(`[Helix Bridge] API success: ${message.url}`);
               this.panel.webview.postMessage({
                 type: "api-response",
                 id: message.id,
@@ -218,6 +251,7 @@ export class HelixWebviewPanel {
                 headers: Object.fromEntries(response.headers.entries()),
               });
             } catch (err) {
+              console.error(`[Helix Bridge] API exception:`, err);
               this.panel.webview.postMessage({
                 type: "api-response",
                 id: message.id,
@@ -226,13 +260,90 @@ export class HelixWebviewPanel {
             }
             break;
           }
+          case "sse-connect": {
+            if (this._sseAbortController) {
+              this._sseAbortController.abort();
+              this._sseAbortController = null;
+            }
+            try {
+              const url = message.url;
+              console.log(`[Helix Bridge] SSE connect: ${url}`);
+              this._sseAbortController = new AbortController();
+              const response = await fetch(url, {
+                method: 'GET',
+                headers: { 'Accept': 'text/event-stream' },
+                signal: this._sseAbortController.signal,
+              });
+              if (!response.ok || !response.body) {
+                this.panel.webview.postMessage({
+                  type: 'sse-error',
+                  _sseId: message._sseId,
+                  error: `HTTP ${response.status}`,
+                });
+                return;
+              }
+              const reader = response.body.getReader();
+              const decoder = new TextDecoder();
+              let buffer = '';
+
+              const pump = async () => {
+                try {
+                  while (this._sseAbortController) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const chunk = decoder.decode(value, { stream: true });
+                    buffer += chunk;
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+                    for (const line of lines) {
+                      if (line.startsWith('data: ')) {
+                        this.panel.webview.postMessage({
+                          type: 'sse-event',
+                          _sseId: message._sseId,
+                          data: line.slice(6).trim(),
+                        });
+                      }
+                    }
+                  }
+                  this.panel.webview.postMessage({
+                    type: 'sse-close',
+                    _sseId: message._sseId,
+                  });
+                } catch (err: any) {
+                  if (err.name !== 'AbortError') {
+                    console.error(`[Helix Bridge] SSE pump error:`, err);
+                    this.panel.webview.postMessage({
+                      type: 'sse-error',
+                      _sseId: message._sseId,
+                      error: err.message,
+                    });
+                  }
+                }
+              };
+              pump();
+            } catch (err: any) {
+              console.error(`[Helix Bridge] SSE exception:`, err);
+              this.panel.webview.postMessage({
+                type: 'sse-error',
+                _sseId: message._sseId,
+                error: err.message,
+              });
+            }
+            break;
+          }
+          case "sse-disconnect": {
+            if (this._sseAbortController) {
+              this._sseAbortController.abort();
+              this._sseAbortController = null;
+              console.log(`[Helix Bridge] SSE disconnect: ${message._sseId}`);
+            }
+            break;
+          }
           case "ws-connect": {
-            // WebSocket 连接由扩展管理
             this.panel.webview.postMessage({ type: "ws-open", _wsId: message.id });
             break;
           }
           case "ws-send": {
-            // 转发 WebSocket 消息
             break;
           }
           case "ws-close": {
@@ -240,21 +351,16 @@ export class HelixWebviewPanel {
             break;
           }
           case "openFile": {
-            // Open file in VS Code editor
             try {
               const filePath = message.filePath;
               const line = message.line || 1;
-              
-              // Resolve workspace path
               const workspaceFolders = vscode.workspace.workspaceFolders;
               if (workspaceFolders && workspaceFolders.length > 0) {
                 const workspaceRoot = workspaceFolders[0].uri.fsPath;
                 const fullPath = path.resolve(workspaceRoot, filePath);
-                
                 const uri = vscode.Uri.file(fullPath);
                 const position = new vscode.Position(line - 1, 0);
                 const selection = new vscode.Range(position, position);
-                
                 await vscode.window.showTextDocument(uri, {
                   selection: selection,
                   viewColumn: vscode.ViewColumn.One
@@ -267,7 +373,6 @@ export class HelixWebviewPanel {
             break;
           }
           case "saveSettings": {
-            // Persist webview settings to VS Code workspace configuration
             try {
               const config = vscode.workspace.getConfiguration('helix');
               const settings = message.settings;
@@ -293,10 +398,26 @@ export class HelixWebviewPanel {
     this.panel.webview.postMessage({ type: "file-ref", ref });
   }
 
+  /**
+   * 通知前端连接状态变化
+   */
+  public notifyConnectionState(state: "online" | "offline" | "reconnecting") {
+    this.panel.webview.postMessage({ type: "connection-state", state });
+  }
+
   public dispose() {
+    // 先 abort 活跃的 SSE 流，防止 Reader 连接泄露
+    if (this._sseAbortController) {
+      this._sseAbortController.abort();
+      this._sseAbortController = null;
+    }
     this._disposables.forEach((d) => d.dispose());
     this._disposables = [];
     this.panel.dispose();
+  }
+
+  public updatePort(port: number) {
+    this._serverPort = port;
   }
 
   public reveal() {

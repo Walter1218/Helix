@@ -11,14 +11,17 @@ const server = new HelixServer();
 let activePanel: HelixWebviewPanel | null = null;
 
 export function activate(context: vscode.ExtensionContext) {
-  // ── 注册侧边栏 ──
+  // ── 1. 启动守护进程（VS Code 激活时即启动）──
+  startDaemonAsync(context);
+
+  // ── 2. 注册侧边栏 ──
   const sidebarProvider = new HelixSidebarProvider();
   const sidebarTreeView = vscode.window.createTreeView("helix.sidebar", {
     treeDataProvider: sidebarProvider,
     showCollapseAll: false
   });
 
-  // ── 注册新命令：GUI 模式 ──
+  // ── 3. 注册 GUI 命令 ──
   const openGUIDisposable = vscode.commands.registerCommand("helix.openGUI", async () => {
     await openGUI(context);
   });
@@ -29,7 +32,7 @@ export function activate(context: vscode.ExtensionContext) {
     await openGUI(context);
   });
 
-  // ── 保留原有终端命令（兼容模式） ──
+  // ── 4. 保留原有终端命令（兼容模式）──
   const openNewTerminalDisposable = vscode.commands.registerCommand("opencode.openNewTerminal", async () => {
     await openTerminal(context);
   });
@@ -61,6 +64,14 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
+  // ── 5. 注册进程崩溃监听（仅通知 UI，重启由 HelixServer 内部管理）──
+  server.onExit((code) => {
+    vscode.window.showWarningMessage(`Helix server 已退出 (code: ${code})。正在自动重启...`);
+    if (activePanel) {
+      activePanel.notifyConnectionState("reconnecting");
+    }
+  });
+
   context.subscriptions.push(
     sidebarTreeView,
     openGUIDisposable,
@@ -75,13 +86,6 @@ export function activate(context: vscode.ExtensionContext) {
       },
     }
   );
-
-  // 扩展关闭时清理
-  context.subscriptions.push(
-    new vscode.Disposable(() => {
-      server.stop();
-    })
-  );
 }
 
 export function deactivate() {
@@ -89,29 +93,40 @@ export function deactivate() {
   activePanel?.dispose();
 }
 
+/**
+ * 异步启动守护进程（不阻塞 activate）
+ */
+async function startDaemonAsync(context: vscode.ExtensionContext): Promise<void> {
+  try {
+    const port = await server.startDaemon(context);
+    console.log(`[Helix] Daemon started on port ${port}`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[Helix] Daemon start failed:", msg);
+    vscode.window.showWarningMessage(`Helix 守护进程启动失败: ${msg}。GUI 将以离线模式运行。`);
+  }
+}
+
 async function openGUI(context: vscode.ExtensionContext) {
   try {
-    // 如果已有面板，直接显示（即使被隐藏了）
-    if (activePanel) {
+    // 检查守护进程是否运行
+    const isRunning = await server.isRunning();
+    if (!isRunning) {
+      vscode.window.showWarningMessage("Helix 守护进程未运行，尝试启动...");
       try {
-        activePanel.reveal();
-        return;
-      } catch {
-        activePanel = null;
+        await server.restart();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        vscode.window.showErrorMessage(`Helix 启动失败: ${msg}`);
       }
     }
 
-    let port: number;
-    try {
-      vscode.window.showInformationMessage("正在启动 Helix 服务...");
-      port = await server.start(context);
-      console.log(`[Helix] 服务启动成功，端口: ${port}`);
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      console.error("[Helix] 服务启动失败:", errorMsg);
-      // 找不到 mimo 也打开面板，进入离线模式
-      vscode.window.showWarningMessage(`Helix 服务未启动: ${errorMsg}。GUI 进入离线模式。`);
-      port = 0;
+    const port = server.getPort();
+
+    // 如果已有面板，直接显示
+    if (activePanel) {
+      activePanel.reveal();
+      return;
     }
 
     activePanel = HelixWebviewPanel.createOrShow(context.extensionUri, port);
@@ -127,10 +142,9 @@ async function openGUI(context: vscode.ExtensionContext) {
 
 async function openTerminal(context: vscode.ExtensionContext) {
   const port = Math.floor(Math.random() * (65535 - 16384 + 1)) + 16384;
-  
-  // 查找 CLI 路径
+
   const cliPath = await findCliPath(context);
-  
+
   const terminal = vscode.window.createTerminal({
     name: TERMINAL_NAME,
     iconPath: {
@@ -205,20 +219,17 @@ function getActiveFile(): string | undefined {
 }
 
 async function findCliPath(context: vscode.ExtensionContext): Promise<string> {
-  // 0. 检查用户配置的 CLI 路径
   const config = vscode.workspace.getConfiguration("helix");
   const configuredPath = config.get<string>("cliPath");
   if (configuredPath && fs.existsSync(configuredPath)) {
     return configuredPath;
   }
 
-  // 1. 检查扩展内打包的 CLI
   const bundledCli = path.join(context.extensionPath, "bin", "mimo");
   if (fs.existsSync(bundledCli)) {
     return bundledCli;
   }
 
-  // 2. 尝试在 PATH 中查找
   try {
     const result = childProcess.execSync("which mimo", { stdio: "pipe" }).toString().trim();
     if (result) {
@@ -228,6 +239,5 @@ async function findCliPath(context: vscode.ExtensionContext): Promise<string> {
     // 继续
   }
 
-  // 3. 返回默认名称
   return "mimo";
 }

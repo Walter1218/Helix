@@ -9,6 +9,14 @@ A Visual Studio Code extension that integrates Helix (opencode) directly into yo
 | **GUI Mode** | Full Webview panel with 6-mode switcher (Ask/Build/Plan/Compose/Loop/Max), task list, file review, and inline chat. | `Cmd+Esc` (Mac) / `Ctrl+Esc` (Win/Linux) |
 | **Terminal Mode** | Split terminal with opencode TUI (legacy). | `Cmd+Shift+Esc` (Mac) / `Ctrl+Shift+Esc` (Win/Linux) |
 
+### 2.3 Daemon Process Lifecycle
+
+- **Auto-restart on crash**: Exponential backoff (1s → 30s max), capped at 10 consecutive attempts
+- **Clean shutdown**: `stop()` sets `intentionalShutdown` flag so exit handlers don't respawn a ghost process
+- **No double-restart**: Extension only notifies UI on exit; `HelixServer` manages restart internally
+- **SSE cleanup**: Panel `dispose()` aborts active SSE streams to prevent resource leaks
+- **Offline fallback**: `refreshConnectionStatus()` always returns a Promise, so init never crashes on missing server
+
 ## Features
 
 - **6-Mode AI Assistant**: Ask (💬), Build (🛠️), Plan (📋), Compose (🎼), Loop (🔄), Max (⚡)

@@ -3098,24 +3098,61 @@
       let expandedCollapsible = new Set();
       
       // Session management
+      let connectionState = 'offline';
       let currentSessionId = null;
       let isOnlineMode = false;
-      
-      // Check if we're in online mode (VS Code extension connected)
-      function checkOnlineMode() {
-        if (window.__HELIX_VSCODE__ && window.__HELIX_SERVER_PORT__ > 0) {
-          isOnlineMode = true;
-          updateStatusBar(true);
-          return true;
+      let connectionStateTimer = null;
+
+      // Health check interval (10 seconds)
+      const HEALTH_CHECK_INTERVAL = 10000;
+
+      function setConnectionState(state) {
+        connectionState = state;
+        isOnlineMode = (state === 'online' || state === 'reconnecting');
+        updateStatusBarUI(state);
+        console.log('[HelixGUI] connection state:', state);
+      }
+
+      function updateStatusBarUI(state) {
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const modelIcon = document.getElementById('status-model-icon');
+        const modelName = document.getElementById('status-model-name');
+        if (!statusDot || !statusText) return;
+
+        statusDot.classList.remove('connecting', 'online', 'offline', 'reconnecting');
+
+        if (state === 'online') {
+          statusDot.classList.add('online');
+          statusText.textContent = 'Connected';
+          modelIcon.classList.remove('offline');
+          modelName.textContent = 'mimo-v2.5-pro';
+        } else if (state === 'connecting' || state === 'reconnecting') {
+          statusDot.classList.add('connecting');
+          statusText.textContent = state === 'reconnecting' ? 'Reconnecting...' : 'Connecting...';
+          modelIcon.classList.add('offline');
+          modelName.textContent = 'Not Connected';
+        } else {
+          statusDot.classList.add('offline');
+          statusText.textContent = 'Offline (Mock Mode)';
+          modelIcon.classList.add('offline');
+          modelName.textContent = 'Not Connected';
         }
-        isOnlineMode = false;
-        updateStatusBar(false);
-        return false;
+      }
+
+      // Check if we're in online mode (via actual health check)
+      async function checkOnlineMode() {
+        if (!window.__HELIX_VSCODE__ || !window.__HELIX_SERVER_PORT__) {
+          setConnectionState('offline');
+          return false;
+        }
+        await refreshConnectionStatus();
+        return isOnlineMode;
       }
       
       // Load available models from API
       async function loadAvailableModels() {
-        if (!isOnlineMode) return;
+        if (connectionState !== 'online') return;
         
         try {
           const providers = await fetchApi('/config/providers');
@@ -3151,75 +3188,69 @@
         }
       }
       
-      // Update status bar based on connection status
+      // Update status bar - deprecated, use updateStatusBarUI
       function updateStatusBar(online) {
-        const statusDot = document.getElementById('status-dot');
-        const statusText = document.getElementById('status-text');
-        const modelIcon = document.getElementById('status-model-icon');
-        const modelName = document.getElementById('status-model-name');
-        
-        if (online) {
-          statusDot.classList.remove('offline');
-          statusDot.classList.add('online');
-          statusText.textContent = 'Connected';
-          modelIcon.classList.remove('offline');
-          modelName.textContent = 'mimo-v2.5-pro';
-        } else {
-          statusDot.classList.remove('online');
-          statusDot.classList.add('offline');
-          statusText.textContent = 'Offline (Mock Mode)';
-          modelIcon.classList.add('offline');
-          modelName.textContent = 'Not Connected';
-        }
+        setConnectionState(online ? 'online' : 'offline');
       }
       
       // Initialize session
       async function initSession() {
-        if (!checkOnlineMode()) {
-          // Offline mode: populate mock data for demo
+        const online = await checkOnlineMode();
+        if (!online) {
           initOfflineMockData();
-          return;
+          return false;
         }
 
-        // Online mode: mock arrays stay empty, real data loads below
         try {
-          // Try to get existing sessions
+          console.log('[HelixGUI] initSession: fetching sessions...');
           const response = await fetchApi('/session?limit=1');
-          if (response && response.length > 0) {
+          console.log('[HelixGUI] initSession: sessions response', response);
+
+          // Validate response is an array
+          if (!Array.isArray(response)) {
+            console.error('[HelixGUI] initSession: expected array, got', typeof response, response);
+            addSystemMessage('⚠️ Server returned unexpected data type. Expected JSON array, got ' + (typeof response));
+            return false;
+          }
+
+          if (response.length > 0) {
             currentSessionId = response[0].id;
             console.log('Using existing session:', currentSessionId);
           } else {
-            // Create new session
+            console.log('[HelixGUI] initSession: creating new session...');
             const newSession = await fetchApi('/session', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ title: 'Helix Chat' })
             });
-            if (newSession && newSession.id) {
+            console.log('[HelixGUI] initSession: create response', newSession);
+
+            // Validate newSession is an object with id
+            if (newSession && typeof newSession === 'object' && newSession.id) {
               currentSessionId = newSession.id;
               console.log('Created new session:', currentSessionId);
+            } else {
+              console.error('[HelixGUI] initSession: newSession missing id', newSession);
+              addSystemMessage('⚠️ Failed to create session: server returned invalid data');
+              return false;
             }
           }
 
-          // Load session list for sidebar
           await loadSessionList();
-
-          // Load available models
           await loadAvailableModels();
-
-          // #8: Load real tasks and todo for this session (replaces mock data)
           await loadSessionTasks();
           await loadSessionTodo();
 
-          // #8: Connect SSE for real-time updates (tasks, diffs, status) even when not sending
           const contentDiv = document.getElementById('messages');
           if (contentDiv) {
-            // Listen for task/todo/diff updates in the background
             activeStreamSessionId = currentSessionId;
             connectEventStream(currentSessionId, contentDiv);
           }
+          return true;
         } catch (err) {
           reportError('initSession', err);
+          addSystemMessage('⚠️ Session initialization failed: ' + (err.message || 'Unknown error'));
+          return false;
         }
       }
       
@@ -3228,11 +3259,26 @@
         const port = window.__HELIX_SERVER_PORT__ || 0;
         if (port === 0) throw new Error('Server not available (offline mode)');
         const url = `http://localhost:${port}${endpoint}`;
-        const response = await fetch(url, options);
-        if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        const text = await response.text();
-        if (!text) return null;
-        try { return JSON.parse(text); } catch { return text; }
+        const vscode = window.__HELIX_VSCODE_REF__;
+        if (!vscode) throw new Error('VS Code API not available');
+        return new Promise((resolve, reject) => {
+          const requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+          const timeout = setTimeout(() => {
+            window.removeEventListener('message', responseHandler);
+            reject(new Error('Request timeout'));
+          }, 30000);
+          const responseHandler = (event) => {
+            const message = event.data;
+            if (message.type === 'api-response' && message.id === requestId) {
+              clearTimeout(timeout);
+              window.removeEventListener('message', responseHandler);
+              if (message.error) { reject(new Error(message.error)); }
+              else { resolve(message.data); }
+            }
+          };
+          window.addEventListener('message', responseHandler);
+          vscode.postMessage({ type: 'api', id: requestId, url, options });
+        });
       }
 
       async function newChat() {
@@ -4355,6 +4401,11 @@
 
       function renderPreflight() {
         const panel = document.getElementById('preflight-panel');
+        if (!panel) return;
+        if (!mockPreflight || !mockPreflight.items) {
+          panel.innerHTML = '<div style="padding:10px;color:#8b949e">No preflight data</div>';
+          return;
+        }
         const trust = mockPreflight.trustLevel;
         const trustClass = trust;
         let html = `
@@ -5112,6 +5163,8 @@
         if (!text) return;
         if (isGenerating) return;
 
+        console.log('[HelixGUI] sendMessage: isOnlineMode=', isOnlineMode, 'currentSessionId=', currentSessionId, 'port=', window.__HELIX_SERVER_PORT__);
+
         // Hide welcome screen and restore hidden messages
         const welcome = document.getElementById('welcome-screen');
         if (welcome) welcome.style.display = 'none';
@@ -5134,9 +5187,22 @@
 
         // Check if online mode is available
         if (isOnlineMode && currentSessionId) {
+          console.log('[HelixGUI] sendMessage: path=sendRealMessage');
           sendRealMessage(text);
+        } else if (isOnlineMode && !currentSessionId) {
+          console.log('[HelixGUI] sendMessage: path=initSession then decide');
+          initSession().then((success) => {
+            console.log('[HelixGUI] sendMessage: initSession returned success=', success, 'currentSessionId=', currentSessionId);
+            if (success && currentSessionId) {
+              console.log('[HelixGUI] sendMessage: initSession OK, sendRealMessage');
+              sendRealMessage(text);
+            } else {
+              console.log('[HelixGUI] sendMessage: initSession failed or no sessionId, sendMockMessage');
+              sendMockMessage(text);
+            }
+          });
         } else {
-          // Fallback to mock response for offline mode
+          console.log('[HelixGUI] sendMessage: path=sendMockMessage (offline)');
           sendMockMessage(text);
         }
       }
@@ -5148,6 +5214,8 @@
       let activeStreamMessageDiv = null;
       let activeStreamMessageId = null; // #6: lock to current message, prevent cross-message rendering
       let activeStreamSessionId = null; // #7: track which session the stream belongs to
+      let activeSseId = null;
+      let activeSseHandler = null;
       let sseReconnectTimer = null;
       let sseHeartbeatTimer = null;
       let streamFinishCallback = null;
@@ -5218,15 +5286,15 @@
       function connectEventStream(sessionId, contentDiv) {
         const port = window.__HELIX_SERVER_PORT__ || 0;
         if (port === 0) return;
-        // #7: disconnect any existing stream first
+        // disconnect any existing stream first
         disconnectEventStream();
         activeStreamSessionId = sessionId;
 
         const url = `http://localhost:${port}/event`;
-        const controller = new AbortController();
-        currentEventSource = controller;
+        const sseId = `sse_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+        currentEventSource = { abort: () => { /* handled by disconnectEventStream */ } };
 
-        // #10: heartbeat — if no event in 20s, abort and reconnect
+        // heartbeat
         const resetHeartbeat = () => {
           if (sseHeartbeatTimer) clearTimeout(sseHeartbeatTimer);
           sseHeartbeatTimer = setTimeout(() => {
@@ -5236,52 +5304,41 @@
         };
         resetHeartbeat();
 
-        fetch(url, { method: 'GET', headers: { 'Accept': 'text/event-stream' }, signal: controller.signal })
-          .then(res => {
-            const reader = res.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-            const pump = () => reader.read().then(({ done, value }) => {
-              if (done) {
-                // #10: stream ended unexpectedly, try reconnect
-                if (activeStreamSessionId === sessionId && isGenerating) {
-                  reportError('SSE stream ended', new Error('Unexpected end, reconnecting'));
-                  reconnectEventStream(sessionId, contentDiv);
-                }
-                return;
-              }
-              resetHeartbeat();
-              buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split('\n');
-              buffer = lines.pop() || '';
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  try {
-                    const evt = JSON.parse(line.slice(6));
-                    handleStreamEvent(evt, sessionId, contentDiv);
-                  } catch (e) { /* ignore parse errors */ }
-                }
-              }
-              pump();
-            });
-            pump();
-          })
-          .catch(err => {
-            if (err.name !== 'AbortError') {
-              reportError('SSE fetch', err);
-              // #10: reconnect on error (not abort)
-              if (activeStreamSessionId === sessionId && isGenerating) {
-                reconnectEventStream(sessionId, contentDiv);
-              }
+        // Store SSE handler for this connection
+        activeSseId = sseId;
+        activeSseHandler = (msg) => {
+          if (msg._sseId !== sseId) return;
+          if (msg.type === 'sse-event') {
+            resetHeartbeat();
+            try {
+              const evt = JSON.parse(msg.data);
+              handleStreamEvent(evt, sessionId, contentDiv);
+            } catch (e) { /* ignore parse errors */ }
+          } else if (msg.type === 'sse-error') {
+            reportError('SSE error', new Error(msg.error || 'Unknown'));
+            if (activeStreamSessionId === sessionId && isGenerating) {
+              reconnectEventStream(sessionId, contentDiv);
             }
-          });
+          } else if (msg.type === 'sse-close') {
+            if (activeStreamSessionId === sessionId && isGenerating) {
+              reconnectEventStream(sessionId, contentDiv);
+            }
+          }
+        };
+
+        // Ask extension host to connect SSE
+        if (vscode) {
+          vscode.postMessage({ type: 'sse-connect', url, _sseId: sseId });
+        }
       }
 
-      // #10: reconnect with backoff
+      // reconnect with backoff
       function reconnectEventStream(sessionId, contentDiv) {
         if (sseReconnectTimer) return;
         if (sseHeartbeatTimer) { clearTimeout(sseHeartbeatTimer); sseHeartbeatTimer = null; }
         currentEventSource = null;
+        activeSseId = null;
+        activeSseHandler = null;
         sseReconnectTimer = setTimeout(() => {
           sseReconnectTimer = null;
           if (activeStreamSessionId === sessionId && isGenerating) {
@@ -5290,11 +5347,17 @@
         }, 250);
       }
 
-      // #7: disconnect SSE and clean up timers
+      // disconnect SSE and clean up timers
       function disconnectEventStream() {
-        if (currentEventSource) { currentEventSource.abort(); currentEventSource = null; }
+        if (currentEventSource) { currentEventSource = null; }
         if (sseHeartbeatTimer) { clearTimeout(sseHeartbeatTimer); sseHeartbeatTimer = null; }
         if (sseReconnectTimer) { clearTimeout(sseReconnectTimer); sseReconnectTimer = null; }
+        // Ask extension host to disconnect SSE
+        if (vscode && activeSseId) {
+          vscode.postMessage({ type: 'sse-disconnect', _sseId: activeSseId });
+        }
+        activeSseId = null;
+        activeSseHandler = null;
         activeStreamSessionId = null;
       }
 
@@ -5302,8 +5365,8 @@
       function handleStreamEvent(evt, sessionId, contentDiv) {
         if (!evt || !evt.type) return;
         const p = evt.properties || evt;
-        // Filter: only events for our session (except global events like server.heartbeat)
-        if (p.sessionID && p.sessionID !== sessionId) return;
+        // Filter: only events for our session (except global events and message events from sub-sessions)
+        if (p.sessionID && p.sessionID !== sessionId && !evt.type.startsWith('message.')) return;
 
         // #2: session.status event drives finishGeneration (no polling)
         if (evt.type === 'session.status') {
@@ -5463,6 +5526,56 @@
         }
         const messages = document.getElementById('messages');
         if (messages) messages.scrollTop = messages.scrollHeight;
+      }
+
+      // #5: Build a new part element (creates DOM, then updatePartElement fills content)
+      function buildPartElement(part) {
+        const div = document.createElement('div');
+        if (part.type === 'reasoning') {
+          div.className = 'part-reasoning';
+          div.innerHTML = '<div class="part-reasoning-header"><span class="spinner-icon">⟳</span><span>Thought</span></div><div class="part-reasoning-body"></div>';
+          div.querySelector('.part-reasoning-header').onclick = () => div.classList.toggle('expanded');
+        } else if (part.type === 'tool') {
+          div.innerHTML = buildToolPart(part);
+          div.dataset.toolStatus = part.state ? part.state.status : '';
+          div.dataset.completed = (part.state && part.state.status === 'completed') ? '1' : '0';
+          const block = div.querySelector('.part-tool-block');
+          if (block) {
+            block.onclick = () => {
+              const out = block.querySelector('.block-output');
+              if (out) out.classList.toggle('collapsed');
+            };
+          }
+        } else {
+          div.className = 'part-text';
+          div.innerHTML = '<div class="part-text-content"></div>';
+        }
+        updatePartElement(div, part);
+        return div;
+      }
+
+      function buildToolPart(part) {
+        const tool = part.tool || {};
+        const state = part.state || {};
+        const status = state.status || 'pending';
+        const title = tool.name || 'Tool';
+        const args = tool.args ? JSON.stringify(tool.args, null, 2) : '';
+        const output = state.metadata && state.metadata.output ? stripAnsi(state.metadata.output.trim()) : '';
+        const error = state.error ? String(state.error) : '';
+
+        let html = '<div class="part-tool-block">';
+        html += '<div class="block-title">' + escapeHtml(title) + ' <span class="tool-status">' + escapeHtml(status) + '</span></div>';
+        if (args) {
+          html += '<div class="block-cmd">' + escapeHtml(args) + '</div>';
+        }
+        if (output) {
+          html += '<div class="block-output">' + escapeHtml(output) + '</div>';
+        }
+        if (error) {
+          html += '<div class="block-error">' + escapeHtml(error) + '</div>';
+        }
+        html += '</div>';
+        return html;
       }
 
       // #5: Update an existing part element in place (preserves expand/collapse state)
@@ -5880,29 +5993,49 @@
       });
 
       // ============================================================
+      // Connection Status
+      // ============================================================
+
+      function refreshConnectionStatus() {
+        const port = window.__HELIX_SERVER_PORT__ || 0;
+        if (port <= 0) {
+          setConnectionState('offline');
+          return Promise.resolve();
+        }
+        return fetchApi('/global/health').then((data) => {
+          if (data && data.healthy) {
+            setConnectionState('online');
+            console.log('[HelixGUI] refreshConnectionStatus: online, port=', port);
+          } else {
+            setConnectionState('offline');
+            console.log('[HelixGUI] refreshConnectionStatus: health data invalid', data);
+          }
+        }).catch((err) => {
+          setConnectionState('offline');
+          console.log('[HelixGUI] refreshConnectionStatus: error', err.message);
+        });
+      }
+
+      // 监听扩展发来的 connection-state 消息（守护进程状态变化）
+      window.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'connection-state') {
+          const state = event.data.state; // 'online' | 'offline' | 'reconnecting'
+          setConnectionState(state);
+          if (state === 'online' && !currentSessionId) {
+            initSession();
+          }
+        }
+        // Route SSE events from extension host to active handler
+        if (event.data && (event.data.type === 'sse-event' || event.data.type === 'sse-error' || event.data.type === 'sse-close')) {
+          if (activeSseHandler) activeSseHandler(event.data);
+        }
+      });
+
+      // ============================================================
       // Status Bar
       // ============================================================
 
-      const port = window.__HELIX_SERVER_PORT__ || 0;
-      const statusDot = document.getElementById('status-dot');
-      const statusText = document.getElementById('status-text');
-      if (port > 0) {
-        statusDot.classList.add('connecting');
-        statusText.textContent = 'Connecting...';
-        // Use VS Code bridge to check connection
-        fetchApi('/health').then(() => {
-          statusDot.classList.remove('connecting');
-          statusDot.classList.add('online');
-          statusText.textContent = 'Connected';
-        }).catch(() => {
-          statusDot.classList.remove('connecting');
-          statusDot.classList.add('offline');
-          statusText.textContent = 'Offline (Mock Mode)';
-        });
-      } else {
-        statusDot.classList.add('offline');
-        statusText.textContent = 'Offline (Mock Mode)';
-      }
+      refreshConnectionStatus();
 
       // ============================================================
       // Initialize
@@ -5922,9 +6055,20 @@
       if (minimalIcon) minimalIcon.textContent = '⬜';
       renderCollapsible('tasks');
       renderCollapsible('changes');
-      
-      // Initialize AI session
-      initSession();
+
+      // Connection lifecycle: check health first, then init session
+      refreshConnectionStatus().then(() => {
+        if (isOnlineMode) {
+          initSession();
+        }
+      });
+
+      // Periodic health check (10s)
+      setInterval(() => {
+        if (connectionState !== 'reconnecting') {
+          refreshConnectionStatus();
+        }
+      }, HEALTH_CHECK_INTERVAL);
 
       // Auto-simulate task progress every 10s
       setInterval(() => {
