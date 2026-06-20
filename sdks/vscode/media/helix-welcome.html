@@ -5241,6 +5241,7 @@
           contentDiv.innerHTML = '<div class="part-container" id="stream-parts"></div>';
           activeStreamParts = new Map();
           activeStreamMessageId = null;
+          window._userMessageIds = new Set(); // Clear user message tracking for new stream
 
           const agentMap = { ask:'ask', build:'build', plan:'plan', compose:'compose', loop:'loop', max:'max' };
           const agent = agentMap[currentMode] || 'ask';
@@ -5434,9 +5435,20 @@
           return;
         }
 
-        // #6: filter by messageID for part events — only render parts for the active message
+        // #6: filter by messageID for part events — only render parts for the active ASSISTANT message
+        if (evt.type === 'message.updated') {
+          // Track user message IDs so we can filter them out from part events
+          if (p.info && p.info.role === 'user' && p.info.id) {
+            if (!window._userMessageIds) window._userMessageIds = new Set();
+            window._userMessageIds.add(p.info.id);
+          }
+          return;
+        }
+
         if (evt.type === 'message.part.updated') {
-          // Track the first assistant message we see parts for
+          // Skip user message parts — only render assistant responses
+          if (p.part && window._userMessageIds && window._userMessageIds.has(p.part.messageID)) return;
+          // Track the first ASSISTANT message we see parts for
           if (!activeStreamMessageId && p.part && p.part.messageID) {
             activeStreamMessageId = p.part.messageID;
           }
@@ -5446,6 +5458,8 @@
         }
 
         if (evt.type === 'message.part.delta') {
+          // Skip deltas for user messages
+          if (window._userMessageIds && window._userMessageIds.has(p.messageID)) return;
           if (activeStreamMessageId && p.messageID !== activeStreamMessageId) return;
           appendDeltaToPart(p, contentDiv);
           return;
