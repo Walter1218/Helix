@@ -56,6 +56,8 @@ export class HelixServer {
    * 如果已有进程在运行，复用现有端口
    */
   async startDaemon(context: vscode.ExtensionContext): Promise<number> {
+    this.context = context; // 保存 context 供 findOpencodeCli 查找 bundled CLI
+
     const workspaceFolders = vscode.workspace.workspaceFolders;
     const workspaceName = workspaceFolders && workspaceFolders[0]
       ? path.basename(workspaceFolders[0].uri.fsPath)
