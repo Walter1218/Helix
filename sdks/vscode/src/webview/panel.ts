@@ -282,21 +282,34 @@ export class HelixWebviewPanel {
                 });
                 return;
               }
+              const contentType = response.headers.get('content-type') || 'unknown';
+              console.log(`[Helix Bridge] SSE stream opened, content-type: ${contentType}`);
+              // 通知 webview SSE 连接已就绪，可以安全发送 prompt
+              this.panel.webview.postMessage({
+                type: 'sse-ready',
+                _sseId: message._sseId,
+              });
               const reader = response.body.getReader();
               const decoder = new TextDecoder();
               let buffer = '';
+              let eventCount = 0;
 
               const pump = async () => {
                 try {
                   while (this._sseAbortController) {
                     const { done, value } = await reader.read();
-                    if (done) break;
+                    if (done) { console.log(`[Helix Bridge] SSE stream done, total events: ${eventCount}`); break; }
                     const chunk = decoder.decode(value, { stream: true });
+                    console.log(`[Helix Bridge] SSE chunk: ${chunk.length} bytes, preview: ${chunk.slice(0, 120)}`);
                     buffer += chunk;
                     const lines = buffer.split('\n');
                     buffer = lines.pop() || '';
                     for (const line of lines) {
                       if (line.startsWith('data: ')) {
+                        eventCount++;
+                        if (eventCount <= 3 || eventCount % 50 === 0) {
+                          console.log(`[Helix Bridge] SSE event #${eventCount}: ${line.slice(0, 200)}`);
+                        }
                         this.panel.webview.postMessage({
                           type: 'sse-event',
                           _sseId: message._sseId,
@@ -305,6 +318,7 @@ export class HelixWebviewPanel {
                       }
                     }
                   }
+                  console.log(`[Helix Bridge] SSE pump finished, events forwarded: ${eventCount}`);
                   this.panel.webview.postMessage({
                     type: 'sse-close',
                     _sseId: message._sseId,

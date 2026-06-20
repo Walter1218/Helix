@@ -5254,7 +5254,8 @@
           streamFinishCallback = () => { finishGeneration(); applyToolVisibility(); };
 
           // Connect SSE BEFORE sending prompt to not miss early events
-          connectEventStream(currentSessionId, contentDiv);
+          // Now waits for sse-ready confirmation from extension host
+          await connectEventStream(currentSessionId, contentDiv);
 
           await fetchApi(`/session/${currentSessionId}/prompt_async`, {
             method: 'POST',
@@ -5330,6 +5331,19 @@
         if (vscode) {
           vscode.postMessage({ type: 'sse-connect', url, _sseId: sseId });
         }
+        // 返回 Promise，在 SSE 连接真正建立后才 resolve
+        return new Promise((resolve) => {
+          const readyHandler = (event) => {
+            if (event.data && event.data.type === 'sse-ready' && event.data._sseId === sseId) {
+              window.removeEventListener('message', readyHandler);
+              console.log('[HelixGUI] SSE ready, connection established');
+              resolve();
+            }
+          };
+          window.addEventListener('message', readyHandler);
+          // 超时保护：最多等 5 秒
+          setTimeout(() => { window.removeEventListener('message', readyHandler); resolve(); }, 5000);
+        });
       }
 
       // reconnect with backoff
