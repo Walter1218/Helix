@@ -297,18 +297,28 @@ export class HelixServer {
     }
 
     // 本地开发：搜索编译产物（支持多平台目录结构）
-    const distDir = path.join(process.cwd(), "packages", "opencode", "dist");
-    const localCandidates = [
-      path.join(distDir, "mimo"),                                    // 旧路径
-      path.join(distDir, "mimocode-darwin-arm64", "bin", "mimo"),    // macOS ARM
-      path.join(distDir, "mimocode-darwin-x64", "bin", "mimo"),     // macOS Intel
-      path.join(distDir, "mimocode-linux-arm64", "bin", "mimo"),     // Linux ARM
-      path.join(distDir, "mimocode-linux-x64", "bin", "mimo"),       // Linux x64
-    ];
-    for (const cliPath of localCandidates) {
-      if (fs.existsSync(cliPath)) {
-        console.log("[Helix] 使用本地开发的 CLI:", cliPath);
-        return cliPath;
+    // process.cwd() 在 VSCode 扩展中不是项目根，需用 workspaceFolders
+    const projectRoots: string[] = [];
+    const wsFolders = vscode.workspace.workspaceFolders;
+    if (wsFolders && wsFolders.length > 0) {
+      projectRoots.push(wsFolders[0].uri.fsPath);
+    }
+    projectRoots.push(process.cwd()); // fallback
+
+    for (const root of projectRoots) {
+      const distDir = path.join(root, "packages", "opencode", "dist");
+      const localCandidates = [
+        path.join(distDir, "mimo"),                                    // 旧路径
+        path.join(distDir, "mimocode-darwin-arm64", "bin", "mimo"),    // macOS ARM
+        path.join(distDir, "mimocode-darwin-x64", "bin", "mimo"),     // macOS Intel
+        path.join(distDir, "mimocode-linux-arm64", "bin", "mimo"),     // Linux ARM
+        path.join(distDir, "mimocode-linux-x64", "bin", "mimo"),       // Linux x64
+      ];
+      for (const cliPath of localCandidates) {
+        if (fs.existsSync(cliPath)) {
+          console.log("[Helix] 使用本地开发的 CLI:", cliPath);
+          return cliPath;
+        }
       }
     }
 
