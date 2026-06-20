@@ -3244,7 +3244,8 @@
           const contentDiv = document.getElementById('messages');
           if (contentDiv) {
             activeStreamSessionId = currentSessionId;
-            connectEventStream(currentSessionId, contentDiv);
+            await connectEventStream(currentSessionId, contentDiv);
+            console.log('[HelixGUI] Persistent SSE connection established');
           }
           return true;
         } catch (err) {
@@ -5232,8 +5233,10 @@
       // Send message to real AI API (SSE streaming via /event + prompt_async)
       async function sendRealMessage(text) {
         try {
-          // #7: cleanup any previous stream
-          disconnectEventStream();
+          // SSE is now persistent — only connect if not already active
+          if (!activeSseHandler) {
+            await connectEventStream(currentSessionId, document.getElementById('messages'));
+          }
 
           const responseDiv = addAIResponse('', null, true);
           activeStreamMessageDiv = responseDiv;
@@ -5387,8 +5390,8 @@
         if (evt.type === 'session.status') {
           const statusInfo = p.status || {};
           if (statusInfo.type === 'idle') {
-            // Session finished — disconnect SSE and call finish callback
-            disconnectEventStream();
+            // Session finished — call finish callback but KEEP SSE alive
+            // SSE is a persistent global stream, don't disconnect on idle
             if (streamFinishCallback) { const cb = streamFinishCallback; streamFinishCallback = null; cb(); }
           } else if (statusInfo.type === 'busy') {
             // Session is working — update any busy indicator
@@ -5404,7 +5407,7 @@
           const errObj = p.error || {};
           const errMsg = (errObj.data && errObj.data.message) || errObj.name || 'Session error';
           addSystemMessage('⚠️ ' + escapeHtml(errMsg));
-          disconnectEventStream();
+          // Keep SSE alive — only call finish callback
           if (streamFinishCallback) { const cb = streamFinishCallback; streamFinishCallback = null; cb(); }
           return;
         }
@@ -5542,7 +5545,9 @@
       // #5: Render or update a part — incremental, preserves DOM and user interactions
       function renderOrUpdatePart(part, contentDiv) {
         if (!part || !part.type) return;
-        const container = contentDiv.querySelector('#stream-parts') || contentDiv;
+        // Use the active stream div if available (persistent SSE mode)
+        const targetDiv = activeStreamMessageDiv || contentDiv;
+        const container = targetDiv.querySelector('#stream-parts') || targetDiv;
         const existing = activeStreamParts.get(part.id);
         if (existing) {
           // #5: incremental update — only refresh content, don't rebuild DOM
