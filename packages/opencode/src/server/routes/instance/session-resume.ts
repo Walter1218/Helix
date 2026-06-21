@@ -145,7 +145,7 @@ export const SessionResumeRoutes = lazy(() =>
           for (let i = msgs.length - 1; i >= 0; i--) {
             const msg = msgs[i]
             if (msg.info.role !== "assistant") continue
-            const parts = MessageV2.parts(msg.id)
+            const parts = MessageV2.parts(msg.info.id)
             for (const part of parts) {
               if (
                 part.type === "tool" &&

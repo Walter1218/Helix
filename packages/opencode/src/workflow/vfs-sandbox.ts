@@ -45,7 +45,7 @@ export class VFSOverlay {
           if (e.isDirectory()) {
             walk(p)
           } else if (e.isFile()) {
-            total += e.size ?? fs.statSync(p).size
+            total += fs.statSync(p).size
           }
         }
       }

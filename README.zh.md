@@ -168,7 +168,42 @@ bun run packages/opencode/script/build.ts
 bun run packages/opencode/script/build.ts --single
 ```
 
-### 方式一：飞书 IM（推荐，完全自主模式）
+### 方式一：VS Code 扩展（推荐，图形界面）
+
+```bash
+# 1. 编译核心引擎（首次必须）
+bun run packages/opencode/script/build.ts --single
+
+# 2. 编译 VS Code 扩展
+cd sdks/vscode && bun install && bun run package
+
+# 3. 安装 VSIX
+# 在 VS Code 中：Extensions → ... → Install from VSIX → 选择 sdks/vscode/*.vsix
+
+# 4. 配置 API Key
+# 全局配置：~/.config/mimocode/mimocode.json
+# 参考 mimocode.example.json 填入你的 Token Plan Key
+```
+
+启动后按 `Cmd+Esc`（Mac）/ `Ctrl+Esc`（Win/Linux）打开 GUI 面板。
+
+### 方式二：命令行 TUI / CLI
+
+```bash
+# 交互式 TUI（默认入口）
+mimo
+
+# 单次任务执行（Headless）
+mimo run "重构 src/types.ts，提取公共类型到独立模块"
+
+# HTTP API 守护进程（供 GUI / 网关调用）
+mimo serve --port 3095
+
+# Web 界面（启动 server + 浏览器）
+mimo web
+```
+
+### 方式三：飞书 IM（完全自主模式）
 
 ```bash
 # 1. 配置飞书凭证
@@ -176,26 +211,23 @@ cd packages/feishu-gateway
 cp .env.example .env
 # 编辑 .env 填入 FEISHU_APP_ID 和 FEISHU_APP_SECRET
 
-# 2. 一键启动
+# 2. 一键启动（mimo serve + feishu-gateway）
 ./start-feishu.sh
 ```
 
 然后在飞书中给机器人发消息即可。机器人会自主规划、执行、验证，直到完成。
 
-### 方式二：命令行
+### 方式四：Desktop 桌面应用（开发中）
 
 ```bash
-# 交互式 TUI
-mimo
-
-# 单次任务执行
-mimo run "重构 src/types.ts，提取公共类型到独立模块"
-
-# HTTP API 服务
-mimo serve --port 3095
+cd packages/desktop
+bun install
+bun dev              # 开发模式（热更新）
+# 或构建打包
+bun run build && bun run package:mac   # macOS
 ```
 
-### 方式三：启动进化飞轮（开发者）
+### 方式五：启动进化飞轮（开发者）
 
 ```bash
 # 生成测试用例
@@ -208,6 +240,14 @@ bun run script/dogfooding/export_dpo.ts
 bash script/dogfooding/setup_local_cron.sh
 ```
 
+### 方式六：IM 网关（Slack）
+
+```bash
+cd packages/slack
+bun install
+bun run src/index.ts
+```
+
 ---
 
 ## 架构概览
@@ -215,7 +255,7 @@ bash script/dogfooding/setup_local_cron.sh
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  用户入口层                                                   │
-│  飞书 IM │ CLI │ HTTP API │ MCP Server                        │
+│  VS Code 扩展 │ Desktop 应用 │ CLI/TUI │ HTTP API │ 飞书/Slack│
 └──────────────────────────┬───────────────────────────────────┘
                            │
 ┌──────────────────────────▼─────────────────────────────────┐
@@ -239,17 +279,23 @@ bash script/dogfooding/setup_local_cron.sh
 Helix/
 ├── packages/
 │   ├── opencode/          # 核心引擎（MiMo-Code 基础 + Helix 增强）
+│   ├── app/               # Web UI（SolidJS + Tailwind，嵌入二进制）
+│   ├── desktop/           # Desktop 桌面应用（Electron + electron-vite）
+│   ├── console/           # Console 应用
 │   ├── feishu-gateway/    # 飞书 IM 网关（WebSocket、完全自主模式）
-│   ├── app/               # Web UI（SolidJS + Tailwind）
-│   └── sdk/               # JavaScript SDK
+│   ├── slack/             # Slack 集成
+│   ├── sdk/js/            # JavaScript SDK
+│   ├── plugin/            # 插件系统
+│   └── ui/                # 共享 UI 组件
+├── sdks/vscode/           # VS Code 扩展（GUI 面板 + 守护进程管理）
 ├── script/dogfooding/     # 进化飞轮工具链（14 个文件）
 ├── docs/                  # 架构文档与测试套件
-│   ├── architecture/      # 核心架构白皮书、能力路线图
-│   ├── testing/           # Dogfooding 测试套件（50+ 用例）
-│   └── integration/       # 集成方案设计
 ├── AGENTS.md              # 智能体规则与进化指南
+├── mimocode.example.json  # 配置文件示例
 └── start-feishu.sh        # 飞书一键启动脚本
 ```
+
+> ⚠️ **安全提醒**：API Key 等敏感信息应配置在 `~/.config/mimocode/mimocode.json`（全局）或项目的 `.mimocode/mimocode.json` 中，**切勿提交到 Git**。参考 `mimocode.example.json` 使用 `${ENV_VAR}` 语法引用环境变量。
 
 ---
 

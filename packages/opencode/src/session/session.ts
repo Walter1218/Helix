@@ -416,6 +416,13 @@ export interface Interface {
     options?: { agentID?: string },
   ) => Effect.Effect<Option.Option<MessageV2.WithParts>>
   readonly lastMainMessageID: (sessionID: SessionID) => Effect.Effect<MessageID | undefined>
+  readonly appendMessage: (input: {
+    sessionID: SessionID
+    agentID?: string
+    role: "user" | "assistant"
+    content: string
+    metadata?: Record<string, unknown>
+  }) => Effect.Effect<MessageV2.Info>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Session") {}
@@ -760,6 +767,28 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Storage.Service | 
       return row?.id
     })
 
+    const appendMessage = Effect.fn("Session.appendMessage")(function* (input: {
+      sessionID: SessionID
+      agentID?: string
+      role: "user" | "assistant"
+      content: string
+      metadata?: Record<string, unknown>
+    }) {
+      const messageID = MessageID.ascending()
+      const now = Date.now()
+      const message = {
+        id: messageID,
+        sessionID: input.sessionID,
+        agentID: input.agentID ?? "main",
+        role: input.role as "user",
+        time: { created: now },
+        agent: input.agentID ?? "main",
+        model: { providerID: "" as any, modelID: "" as any },
+      } satisfies MessageV2.User
+      yield* updateMessage(message as any)
+      return message as MessageV2.Info
+    })
+
     return Service.of({
       create,
       fork,
@@ -776,6 +805,7 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Storage.Service | 
       children,
       remove,
       updateMessage,
+      appendMessage,
       removeMessage,
       removePart,
       updatePart,

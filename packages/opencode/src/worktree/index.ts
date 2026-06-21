@@ -157,13 +157,13 @@ function failedRemoves(...chunks: string[]) {
 // ---------------------------------------------------------------------------
 
 export interface Interface {
-  readonly makeWorktreeInfo: (name?: string) => Effect.Effect<Info>
-  readonly createFromInfo: (info: Info, startCommand?: string) => Effect.Effect<void>
-  readonly create: (input?: CreateInput) => Effect.Effect<Info>
-  readonly remove: (input: RemoveInput) => Effect.Effect<boolean>
-  readonly reset: (input: ResetInput) => Effect.Effect<boolean>
-  readonly head: (directory: string) => Effect.Effect<string>
-  readonly isPristine: (directory: string, base: string) => Effect.Effect<boolean>
+  readonly makeWorktreeInfo: (name?: string) => Effect.Effect<Info, never, any>
+  readonly createFromInfo: (info: Info, startCommand?: string) => Effect.Effect<void, never, any>
+  readonly create: (input?: CreateInput) => Effect.Effect<Info, never, any>
+  readonly remove: (input: RemoveInput) => Effect.Effect<boolean, never, any>
+  readonly reset: (input: ResetInput) => Effect.Effect<boolean, never, any>
+  readonly head: (directory: string) => Effect.Effect<string, never, any>
+  readonly isPristine: (directory: string, base: string) => Effect.Effect<boolean, never, any>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Worktree") {}

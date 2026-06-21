@@ -164,7 +164,42 @@ bun run packages/opencode/script/build.ts
 bun run packages/opencode/script/build.ts --single
 ```
 
-### Feishu IM (Recommended)
+### VS Code Extension (Recommended, GUI)
+
+```bash
+# 1. Compile the core engine (required first time)
+bun run packages/opencode/script/build.ts --single
+
+# 2. Build VS Code extension
+cd sdks/vscode && bun install && bun run package
+
+# 3. Install the VSIX in VS Code
+# Extensions → ... → Install from VSIX → select sdks/vscode/*.vsix
+
+# 4. Configure API Key
+# Global config: ~/.config/mimocode/mimocode.json
+# See mimocode.example.json for Token Plan setup
+```
+
+Press `Cmd+Esc` (Mac) / `Ctrl+Esc` (Win/Linux) to open the GUI panel.
+
+### CLI / TUI
+
+```bash
+# Interactive TUI (default entry)
+mimo
+
+# One-shot task (headless)
+mimo run "Refactor src/types.ts, extract shared types into a common module"
+
+# HTTP API daemon (for GUI / gateway)
+mimo serve --port 3095
+
+# Web interface (server + browser)
+mimo web
+```
+
+### Feishu IM (Fully Autonomous)
 
 ```bash
 cd packages/feishu-gateway
@@ -174,19 +209,29 @@ cp .env.example .env
 ./start-feishu.sh
 ```
 
-Then simply message the bot in Feishu!
+Then simply message the bot in Feishu — it plans, executes, and validates autonomously.
 
-### CLI
+### Desktop App (In Development)
 
 ```bash
-# Interactive TUI
-mimo
+cd packages/desktop
+bun install
+bun dev                              # Dev mode (hot reload)
+bun run build && bun run package:mac # Build macOS app
+```
 
-# One-shot task
-mimo run "Refactor src/types.ts, extract shared types into a common module"
+### Evolution Flywheel (Developers)
 
-# HTTP API server
-mimo serve --port 3095
+```bash
+bun run script/dogfooding/generate_cases.ts  # Generate test cases
+bun run script/dogfooding/export_dpo.ts      # Export DPO dataset
+bash script/dogfooding/setup_local_cron.sh   # Setup cron job
+```
+
+### Slack Gateway
+
+```bash
+cd packages/slack && bun install && bun run src/index.ts
 ```
 
 ---
@@ -196,7 +241,7 @@ mimo serve --port 3095
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  User Entrypoints                                            │
-│  Feishu IM │ CLI │ HTTP API │ MCP Server                    │
+│  VS Code │ Desktop │ CLI/TUI │ HTTP API │ Feishu/Slack     │
 └──────────────────────────┬─────────────────────────────────┘
                            │
 ┌──────────────────────────▼─────────────────────────────────┐

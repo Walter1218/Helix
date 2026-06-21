@@ -2,7 +2,6 @@ import { Effect, Layer, Context, Ref, Stream } from "effect"
 import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import { Log } from "@/util"
-import { MessageV2 } from "@/session/message-v2"
 import type { SessionID } from "@/session/schema"
 import { inboxServiceRef } from "@/inbox/inbox-ref"
 import z from "zod"
@@ -24,8 +23,8 @@ function tryDeliverToInbox(sid: string, suggestion: string) {
   Effect.runSync(
     inbox
       .send({
-        receiverSessionID: sid,
-        receiverActorID: "" as SessionID, // 主智能体 actor_id 为空字符串
+        receiverSessionID: sid as SessionID,
+        receiverActorID: "" as SessionID,
         senderActorID: "alignment-guard",
         content: `<alignment-guard notification="true">${suggestion}</alignment-guard>`,
         type: "actor_notification",
@@ -156,15 +155,14 @@ export const layer = Layer.effect(
       Stream.runForEach(bus.subscribeAll(), (event) => {
         const props = (event as any)?.properties as Record<string, any> | undefined
         const sid = props?.sessionID as string | undefined
-        if (!sid) return
+        if (!sid) return Effect.void
 
         const stat = getOrCreate(sid)
 
         // PartDelta 事件：大模型产出了一段新输出（可能是工具调用开始）
         if ((event as any).type === "message.part.delta") {
-          const field = props?.field as string | undefined
           const delta = props?.delta as string | undefined
-          if (!delta) return
+          if (!delta) return Effect.void
 
           // 检测"分心"操作（如突然去 curl 了外部 URL）
           for (const pattern of DISTRACTION_PATTERNS) {
@@ -245,7 +243,8 @@ export const layer = Layer.effect(
           const nodeName = props?.name as string | undefined
           if (filePath && (nodeName?.includes("write") || nodeName?.includes("edit"))) {
             stat.modifiedFiles.add(filePath)
-            const goal = goals.getRef().unsafeGet().get(sid)
+            const goalMap = Effect.runSync(Ref.get(goals))
+            const goal = goalMap.get(sid)
             const drifts = fileDriftsFromGoal(goal, stat.modifiedFiles)
             if (drifts.length >= DEFAULT_CONFIG.fileDriftThreshold) {
               const payload: AlignmentAlertPayload = {
@@ -268,6 +267,8 @@ export const layer = Layer.effect(
             }
           }
         }
+
+        return Effect.void
       }),
     )
 

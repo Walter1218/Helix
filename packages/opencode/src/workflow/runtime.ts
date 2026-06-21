@@ -129,14 +129,14 @@ interface AgentOpts {
 }
 
 export interface Interface {
-  readonly start: (input: StartInput) => Effect.Effect<{ runID: string }>
+  readonly start: (input: StartInput) => Effect.Effect<{ runID: string }, never, any>
   readonly status: (input: {
     runID: string
-  }) => Effect.Effect<{ status: RunStatus | "unknown"; agentCount: number; currentPhase?: string }>
-  readonly wait: (input: { runID: string; timeoutMs?: number }) => Effect.Effect<RunOutcome>
-  readonly cancel: (input: { runID: string }) => Effect.Effect<void>
-  readonly list: (input?: { sessionID?: SessionID }) => Effect.Effect<RunSummary[]>
-  readonly resume: (input: { runID: string; agentTimeoutMs?: number }) => Effect.Effect<{ runID: string; resumed: boolean }>
+  }) => Effect.Effect<{ status: RunStatus | "unknown"; agentCount: number; currentPhase?: string }, never, any>
+  readonly wait: (input: { runID: string; timeoutMs?: number }) => Effect.Effect<RunOutcome, never, any>
+  readonly cancel: (input: { runID: string }) => Effect.Effect<void, never, any>
+  readonly list: (input?: { sessionID?: SessionID }) => Effect.Effect<RunSummary[], never, any>
+  readonly resume: (input: { runID: string; agentTimeoutMs?: number }) => Effect.Effect<{ runID: string; resumed: boolean }, never, any>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/WorkflowRuntime") {}
@@ -345,7 +345,7 @@ export const layer = Layer.effect(
         )
       })
 
-    const cancelEntry = (entry: RunEntry): Effect.Effect<void> =>
+    const cancelEntry = (entry: RunEntry): Effect.Effect<void, never, any> =>
       Effect.gen(function* () {
         if (entry.status !== "running") return
         yield* reclaim(entry)

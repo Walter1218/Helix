@@ -1,5 +1,5 @@
 import { Effect, Layer, Context } from "effect"
-import { TraceEvent } from "./trace-reporter"
+import type { TraceEvent } from "./trace-reporter"
 import { Log } from "@/util"
 
 const log = Log.create({ service: "heuristic-filter" })

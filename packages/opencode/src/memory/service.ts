@@ -46,7 +46,7 @@ export const layer: Layer.Layer<Service, never, Config.Service> = Layer.effect(
 
     // Lazy init embedder + vec store from config
     let vec: VecStore | undefined
-    function getVec(cfg: Awaited<ReturnType<typeof config.get>>) {
+    function getVec(cfg: Config.Info) {
       if (vec) return vec
       const vc = cfg.memory?.vector
       const embedder = new Embedder({
@@ -191,7 +191,7 @@ export const layer: Layer.Layer<Service, never, Config.Service> = Layer.effect(
 
       // ---- Hybrid: BM25 + Vector Rerank ----
       const v = getVec(cfg)
-      if (v.embedder.enabled && bm25Results.length > 0) {
+      if (v.isEmbeddingEnabled && bm25Results.length > 0) {
         const vecResults = yield* Effect.promise(() => v.search(input.query, limit))
         const vecScoreMap = new Map(vecResults.map((r) => [r.memory_path, r.score]))
 

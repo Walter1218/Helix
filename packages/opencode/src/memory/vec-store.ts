@@ -14,8 +14,15 @@ export interface VecSearchRow {
 
 export class VecStore {
   private initialized = false
+  public readonly embedder: Embedder
 
-  constructor(private embedder: Embedder) {}
+  constructor(embedder: Embedder) {
+    this.embedder = embedder
+  }
+
+  get isEmbeddingEnabled(): boolean {
+    return this.embedder.enabled
+  }
 
   async init() {
     if (this.initialized) return
@@ -81,7 +88,7 @@ export class VecStore {
         .filter((r) => r.score >= COSINE_FLOOR)
         .slice(0, limit)
     } catch (err) {
-      log.warn("vec search failed", { error: String(err) })
+      log.warn("search failed", { error: String(err) })
       return []
     }
   }

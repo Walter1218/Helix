@@ -636,7 +636,7 @@ export const layer = Layer.effect(
                 throw part.error
               }
             }
-            log.info("agent.generate.completed", { identifier: result.object.identifier })
+            log.info("agent.generate.completed", { identifier: (await result.object).identifier })
             return result.object
           })
         }
