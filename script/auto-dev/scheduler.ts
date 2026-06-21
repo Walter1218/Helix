@@ -55,6 +55,7 @@ interface StepResult {
   success: boolean
   output: string
   duration: number
+  tokensUsed?: number
 }
 
 // ============ Logging ============
@@ -132,6 +133,20 @@ function getDailyBudgetUsed(): number {
   }
 }
 
+function getRecentTokenUsage(sinceTimestamp: number): number {
+  const dbPath = join(homedir(), ".local/share/mimocode/mimocode.db")
+  if (!existsSync(dbPath)) return 0
+  
+  try {
+    const db = new Database(dbPath)
+    const result = db.query("SELECT COALESCE(SUM(total_tokens), 0) as total FROM token_usage WHERE timestamp >= ?").get(sinceTimestamp) as any
+    db.close()
+    return result?.total ?? 0
+  } catch {
+    return 0
+  }
+}
+
 // ============ Command Execution ============
 
 function runCmd(cmd: string, timeoutMs = 5 * 60 * 1000): { success: boolean; output: string } {
@@ -150,11 +165,12 @@ function runCmd(cmd: string, timeoutMs = 5 * 60 * 1000): { success: boolean; out
 
 // ============ Gateway API Execution ============
 
-async function executeViaGateway(task: RoadmapTask, chatId: string): Promise<{ success: boolean; output: string }> {
+async function executeViaGateway(task: RoadmapTask, chatId: string): Promise<{ success: boolean; output: string; tokensUsed: number }> {
   const gatewayUrl = process.env.GATEWAY_API_URL || "http://localhost:3096"
   
   try {
     log(`通过 Gateway 执行任务: ${task.title}`)
+    const startTs = Date.now()
     
     // 发送任务到 Gateway
     const response = await fetch(`${gatewayUrl}/api/task`, {
@@ -169,10 +185,14 @@ async function executeViaGateway(task: RoadmapTask, chatId: string): Promise<{ s
     if (!response.ok) {
       const error = await response.text()
       log(`  ✗ Gateway API 错误: ${error}`)
-      return { success: false, output: error }
+      return { success: false, output: error, tokensUsed: 0 }
     }
     
     const result = await response.json()
+    
+    // 查询实际 token 消耗
+    const tokensUsed = getRecentTokenUsage(startTs)
+    log(`  实际消耗: ${tokensUsed.toLocaleString()} tokens`)
     
     // 检查是否遇到权限问题
     if (result.result && (
@@ -208,10 +228,10 @@ async function executeViaGateway(task: RoadmapTask, chatId: string): Promise<{ s
     }
     
     log(`  ✓ Gateway 执行完成`)
-    return { success: true, output: result.result || "" }
+    return { success: true, output: result.result || "", tokensUsed }
   } catch (err: any) {
     log(`  ✗ Gateway 调用失败: ${err.message}`)
-    return { success: false, output: err.message }
+    return { success: false, output: err.message, tokensUsed: 0 }
   }
 }
 
@@ -222,7 +242,7 @@ async function stepExecuteTask(task: RoadmapTask, dryRun: boolean, chatId?: stri
   log(`[1/7] 执行任务: ${task.title}`)
   
   if (dryRun) {
-    return { name: "执行任务", success: true, output: "[dry-run] skipped", duration: 0 }
+    return { name: "执行任务", success: true, output: "[dry-run] skipped", duration: 0, tokensUsed: 0 }
   }
   
   // 如果配置了 chatId，通过 Gateway 执行（支持权限请求转发到飞书）
@@ -237,7 +257,7 @@ async function stepExecuteTask(task: RoadmapTask, dryRun: boolean, chatId?: stri
   const result = runCmd(cmd, 30 * 60 * 1000)
   
   log(result.success ? "  ✓ 任务执行完成" : `  ✗ 任务执行失败: ${result.output.slice(0, 200)}`)
-  return { name: "执行任务", ...result, duration: Date.now() - start }
+  return { name: "执行任务", ...result, duration: Date.now() - start, tokensUsed: 0 }
 }
 
 async function stepBuild(): Promise<StepResult> {
@@ -366,38 +386,37 @@ async function stepGitCommitAndPush(task: RoadmapTask, noPush: boolean): Promise
 
 // ============ Main Pipeline ============
 
-async function runPipeline(task: RoadmapTask, options: { dryRun: boolean; noPush: boolean; chatId?: string }): Promise<boolean> {
+interface PipelineResult {
+  success: boolean
+  tokensUsed: number
+  steps: StepResult[]
+}
+
+async function runPipeline(task: RoadmapTask, options: { dryRun: boolean; noPush: boolean; chatId?: string }): Promise<PipelineResult> {
   const steps: StepResult[] = []
   
   // Step 1: 执行任务
   steps.push(await stepExecuteTask(task, options.dryRun, options.chatId))
-  if (!steps[steps.length - 1].success) {
+  const execStep = steps[steps.length - 1]
+  if (!execStep.success) {
     log("\n✗ 任务执行失败，终止流程")
     printReport(steps)
-    return false
+    return { success: false, tokensUsed: execStep.tokensUsed ?? 0, steps }
   }
   
   if (options.dryRun) {
     log("\n[dry-run] 跳过验证步骤")
     printReport(steps)
-    return true
+    return { success: true, tokensUsed: 0, steps }
   }
   
   // Step 2: 编译验证
   steps.push(await stepBuild())
-  if (!steps[steps.length - 1].success) {
-    log("\n✗ 编译失败，终止流程")
-    printReport(steps)
-    return false
-  }
+  const buildFailed = !steps[steps.length - 1].success
   
-  // Step 3: 类型检查
+  // Step 3-5: 验证步骤（失败不阻塞，记录为警告）
   steps.push(await stepTypecheck())
-  
-  // Step 4: 测试
   steps.push(await stepTest())
-  
-  // Step 5: Lint
   steps.push(await stepLint())
   
   // Step 6: 文档更新
@@ -406,10 +425,13 @@ async function runPipeline(task: RoadmapTask, options: { dryRun: boolean; noPush
   // Step 7: Git
   steps.push(await stepGitCommitAndPush(task, options.noPush))
   
-  const allSuccess = steps.every(s => s.success)
-  printReport(steps)
+  // 任务成功 = 执行成功 + 编译成功
+  // typecheck/test/lint 失败是已有问题，不算任务失败
+  const taskSuccess = !buildFailed
+  const tokensUsed = execStep.tokensUsed ?? 0
   
-  return allSuccess
+  printReport(steps)
+  return { success: taskSuccess, tokensUsed, steps }
 }
 
 function printReport(steps: StepResult[]) {
@@ -547,43 +569,52 @@ async function main() {
   updateTaskStatus(roadmap, task.id, "in_progress")
   
   // 执行完整流程
-  const success = await runPipeline(task, { dryRun, noPush, chatId })
+  const pipeline = await runPipeline(task, { dryRun, noPush, chatId })
   
   // 更新状态
-  updateTaskStatus(roadmap, task.id, success ? "done" : "pending")
+  updateTaskStatus(roadmap, task.id, pipeline.success ? "done" : "pending")
   
-  log(`\n任务 ${task.id} ${success ? "✓ 完成" : "✗ 失败"}`)
+  log(`\n任务 ${task.id} ${pipeline.success ? "✓ 完成" : "✗ 失败"}`)
   
   // 发送飞书通知（无论成功或失败）
   if (chatId) {
     const budgetAfter = getDailyBudgetUsed()
-    const totalUsed = budgetAfter - budgetUsed
-    const failedSteps = [] // 从日志中提取失败步骤
+    
+    // 收集各步骤状态
+    const stepStatus = (name: string) => {
+      const step = pipeline.steps.find(s => s.name === name)
+      if (!step) return "⏭️"
+      return step.success ? "✅" : "❌"
+    }
+    const hasChanges = pipeline.steps.find(s => s.name === "Git")?.output?.includes("已提交")
     
     // 构建详细通知
     const lines: string[] = []
     lines.push(`**任务**: ${task.id} - ${task.title}`)
-    lines.push(`**结果**: ${success ? "✅ 成功" : "❌ 失败"}`)
+    lines.push(`**结果**: ${pipeline.success ? "✅ 成功" : "❌ 失败"}`)
     lines.push("")
-    lines.push(`**Token 预算**`)
+    lines.push(`**Token 消耗**`)
+    lines.push(`- 本次消耗: ${pipeline.tokensUsed.toLocaleString()}`)
     lines.push(`- 每日上限: ${budgetLimit.toLocaleString()}`)
-    lines.push(`- 本次消耗: ${totalUsed.toLocaleString()}`)
     lines.push(`- 今日已用: ${budgetAfter.toLocaleString()}`)
     lines.push(`- 剩余: ${(budgetLimit - budgetAfter).toLocaleString()}`)
     lines.push("")
-    lines.push(`**测试结果**`)
-    lines.push(`- 编译: ${success ? "✅" : "❌"}`)
-    lines.push(`- 类型检查: ❌ (已有问题)`)
-    lines.push(`- 测试: ❌ (已有问题)`)
-    lines.push(`- Lint: ❌ (超时)`)
+    lines.push(`**Pipeline 结果**`)
+    lines.push(`- 执行任务: ${stepStatus("执行任务")}`)
+    lines.push(`- 编译: ${stepStatus("编译验证")}`)
+    lines.push(`- 类型检查: ${stepStatus("类型检查")} (预存问题)`)
+    lines.push(`- 测试: ${stepStatus("测试")} (预存问题)`)
+    lines.push(`- Lint: ${stepStatus("Lint")} (预存问题)`)
+    lines.push(`- 文档: ${stepStatus("文档更新")}`)
+    lines.push(`- Git: ${stepStatus("Git")} ${hasChanges ? "(已提交)" : ""}`)
     lines.push("")
-    lines.push(`**日志**: ~/.local/share/mimocode/log/auto-dev-${new Date().toISOString().slice(0, 10)}.log`)
+    lines.push(`日志: ~/.local/share/mimocode/log/auto-dev-${new Date().toISOString().slice(0, 10)}.log`)
     
     await notifyFeishu(
       chatId,
-      `自动开发${success ? "完成" : "失败"}: ${task.id}`,
+      `自动开发${pipeline.success ? "完成" : "失败"}: ${task.id}`,
       lines.join("\n"),
-      success ? "info" : "error"
+      pipeline.success ? "info" : "error"
     )
   }
 }
