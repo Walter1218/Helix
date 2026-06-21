@@ -269,21 +269,60 @@ export class HelixServer {
     this.onExitCallbacks = [];
   }
 
+  /**
+   * Verify a CLI binary can actually execute (catches macOS provenance/signing issues,
+   * corruption, wrong architecture, etc.)
+   */
+  private async verifyCli(cliPath: string, timeoutMs = 5000): Promise<boolean> {
+    try {
+      const result = childProcess.spawnSync(cliPath, ["--version"], {
+        timeout: timeoutMs,
+        stdio: "pipe",
+        killSignal: "SIGKILL",
+      });
+      if (result.status === 0 || result.stdout.toString().trim().length > 0) {
+        console.log(`[Helix] CLI 验证通过: ${cliPath} → ${result.stdout.toString().trim()}`);
+        return true;
+      }
+      // On macOS, provenance-blocked processes exit with signal SIGKILL and no output
+      if (result.signal || result.error) {
+        console.warn(`[Helix] CLI 验证失败: ${cliPath} (signal=${result.signal}, error=${result.error?.message})`);
+        return false;
+      }
+      // Non-zero exit but with output might be acceptable (some CLIs print version on stderr)
+      if (result.stderr.toString().length > 0 || result.stdout.toString().length > 0) {
+        console.log(`[Helix] CLI 验证通过（非零退出码但有输出）: ${cliPath}`);
+        return true;
+      }
+      console.warn(`[Helix] CLI 验证失败: ${cliPath} (exit=${result.status}, no output)`);
+      return false;
+    } catch (err) {
+      console.warn(`[Helix] CLI 验证异常: ${cliPath}`, err);
+      return false;
+    }
+  }
+
   private async findOpencodeCli(): Promise<string | null> {
     const config = vscode.workspace.getConfiguration("helix");
     const configuredPath = config.get<string>("cliPath");
     console.log("[Helix] 配置的 CLI 路径:", configuredPath);
     if (configuredPath && fs.existsSync(configuredPath)) {
-      console.log("[Helix] 使用配置的 CLI 路径:", configuredPath);
-      return configuredPath;
+      if (await this.verifyCli(configuredPath)) {
+        console.log("[Helix] 使用配置的 CLI 路径:", configuredPath);
+        return configuredPath;
+      }
+      console.warn("[Helix] 配置的 CLI 验证失败，尝试其他路径");
     }
 
     if (this.context) {
       const bundledCli = path.join(this.context.extensionPath, "bin", "mimo");
       console.log("[Helix] 检查打包的 CLI:", bundledCli);
       if (fs.existsSync(bundledCli)) {
-        console.log("[Helix] 使用打包的 CLI:", bundledCli);
-        return bundledCli;
+        if (await this.verifyCli(bundledCli)) {
+          console.log("[Helix] 使用打包的 CLI:", bundledCli);
+          return bundledCli;
+        }
+        console.warn("[Helix] 打包的 CLI 验证失败（可能是 macOS provenance 问题），降级搜索其他路径");
       }
     }
 
@@ -291,8 +330,10 @@ export class HelixServer {
     for (const cmd of candidates) {
       try {
         childProcess.execSync(`which ${cmd}`, { stdio: "pipe" });
-        console.log("[Helix] 使用 PATH 中的 CLI:", cmd);
-        return cmd;
+        if (await this.verifyCli(cmd)) {
+          console.log("[Helix] 使用 PATH 中的 CLI:", cmd);
+          return cmd;
+        }
       } catch {
         // 继续尝试下一个
       }
@@ -318,8 +359,11 @@ export class HelixServer {
       ];
       for (const cliPath of localCandidates) {
         if (fs.existsSync(cliPath)) {
-          console.log("[Helix] 使用本地开发的 CLI:", cliPath);
-          return cliPath;
+          if (await this.verifyCli(cliPath)) {
+            console.log("[Helix] 使用本地开发的 CLI:", cliPath);
+            return cliPath;
+          }
+          console.warn("[Helix] 本地 CLI 验证失败，继续:", cliPath);
         }
       }
     }

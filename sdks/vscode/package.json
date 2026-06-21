@@ -2,7 +2,7 @@
   "name": "opencode",
   "displayName": "Helix",
   "description": "Helix for VS Code",
-  "version": "1.14.32",
+  "version": "1.14.33",
   "publisher": "sst-dev",
   "repository": {
     "type": "git",
