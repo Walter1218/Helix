@@ -366,6 +366,36 @@ const InfoSchema = Schema.Struct({
       }),
     }),
   ),
+  token_budget: Schema.optional(
+    Schema.Struct({
+      daily_limit: Schema.optional(NonNegativeInt).annotate({
+        description: "Daily token usage limit (input + output). 0 means unlimited.",
+      }),
+      planning_ratio: Schema.optional(Schema.Number).annotate({
+        description: "Token ratio for planning phase (0-1). Default: 0.15.",
+      }),
+      execution_ratio: Schema.optional(Schema.Number).annotate({
+        description: "Token ratio for execution phase (0-1). Default: 0.70.",
+      }),
+      review_ratio: Schema.optional(Schema.Number).annotate({
+        description: "Token ratio for review phase (0-1). Default: 0.10.",
+      }),
+      reserve_ratio: Schema.optional(Schema.Number).annotate({
+        description: "Token ratio reserved (0-1). Default: 0.05.",
+      }),
+      auto_allocate: Schema.optional(Schema.Boolean).annotate({
+        description: "Auto-allocate tokens to tasks. Default: true.",
+      }),
+      rollover_unused: Schema.optional(Schema.Boolean).annotate({
+        description: "Roll over unused tokens to next day. Default: false.",
+      }),
+      warn_threshold: Schema.optional(Schema.Number).annotate({
+        description: "Warn when budget usage exceeds this ratio (0-1). Default: 0.8.",
+      }),
+    }),
+  ).annotate({
+    description: "Token budget management for automated development.",
+  }),
   experimental: Schema.optional(
     Schema.Struct({
       disable_paste_summary: Schema.optional(Schema.Boolean),

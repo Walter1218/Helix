@@ -38,6 +38,7 @@ import { ClaudeImport } from "./session/claude-import"
 import { errorMessage } from "./util/error"
 import { PluginCommand } from "./cli/cmd/plug"
 import { Heap } from "./cli/heap"
+import { AutoDevCommand } from "./cli/cmd/auto-dev"
 import { drizzle } from "drizzle-orm/bun-sqlite"
 import { ensureProcessMetadata } from "./util/mimo-process"
 
@@ -183,6 +184,7 @@ const cli = yargs(args)
   .command(WebCommand)
   .command(ModelsCommand)
   .command(StatsCommand)
+  .command(AutoDevCommand)
   .command(ExportCommand)
   .command(ImportCommand)
   .command(GithubCommand)

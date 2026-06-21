@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.helix.auto-dev</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/onetwo/.bun/bin/bun</string>
+        <string>run</string>
+        <string>/Users/onetwo/Documents/trae_projects/Helix/script/auto-dev/scheduler.ts</string>
+        <string>--once</string>
+    </array>
+    
+    <key>WorkingDirectory</key>
+    <string>/Users/onetwo/Documents/trae_projects/Helix</string>
+    
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>2</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    
+    <key>StandardOutPath</key>
+    <string>/Users/onetwo/.local/share/mimocode/log/auto-dev-launchd.log</string>
+    
+    <key>StandardErrorPath</key>
+    <string>/Users/onetwo/.local/share/mimocode/log/auto-dev-launchd-error.log</string>
+    
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/onetwo/.bun/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>/Users/onetwo</string>
+    </dict>
+    
+    <key>RunAtLoad</key>
+    <false/>
+    
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>

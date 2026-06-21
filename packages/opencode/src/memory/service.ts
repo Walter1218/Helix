@@ -50,7 +50,7 @@ export const layer: Layer.Layer<Service, never, Config.Service> = Layer.effect(
       if (vec) return vec
       const vc = cfg.memory?.vector
       const embedder = new Embedder({
-        enabled: vc?.enabled ?? false,
+        enabled: vc?.enabled ?? true,
         baseUrl: vc?.api_url ?? "http://localhost:1234/v1/embeddings",
         model: vc?.model ?? "text-embedding-nomic-embed-text-v1.5",
       })

@@ -2,6 +2,7 @@ import * as lark from "@larksuiteoapi/node-sdk"
 import { createOpencodeClient, type OpencodeClient } from "@mimo-ai/sdk/v2"
 import { config } from "../config"
 import { Logger } from "../logger"
+import { EventBridge } from "./event-bridge"
 
 const log = Logger.create("session")
 
@@ -12,8 +13,10 @@ const log = Logger.create("session")
 export class SessionManager {
   private sessions = new Map<string, string>() // chatId -> helix sessionID
   private runningTasks = new Map<string, AbortController>() // chatId -> abort controller
+  private pendingPermissions = new Map<string, any>() // requestId -> permission data
   public readonly larkClient: lark.Client
   private sdk: OpencodeClient
+  private eventBridge: EventBridge
 
   constructor() {
     this.larkClient = new lark.Client({
@@ -34,6 +37,9 @@ export class SessionManager {
       directory: config.helix.workDir,
       headers,
     })
+
+    // 初始化事件桥接器
+    this.eventBridge = new EventBridge()
 
     log.info("Helix SDK 客户端已初始化", { url: config.helix.url })
   }
@@ -84,6 +90,47 @@ export class SessionManager {
 
       log.info("发送消息到 Helix", { chatId, sessionID, text: text.slice(0, 80) })
 
+      // 订阅事件流，监听权限请求
+      this.eventBridge.subscribe(
+        sessionID,
+        chatId,
+        // onMessage: 普通消息回调
+        (msg) => {
+          log.info("收到事件消息", { msg })
+        },
+        // onCard: 权限请求回调
+        async (permissionData: any) => {
+          log.info("收到权限请求，转发到飞书", { permissionData })
+          
+          // 构建权限请求卡片消息
+          const permission = permissionData?.permission || "unknown"
+          const patterns = permissionData?.patterns || []
+          const metadata = permissionData?.metadata || {}
+          
+          const cardMessage = `🔐 **权限请求**\n\n` +
+            `**权限类型**: ${permission}\n` +
+            `**请求路径**: ${metadata.filepath || patterns.join(", ") || "未知"}\n` +
+            `**操作**: Agent 需要访问项目外部的文件\n\n` +
+            `请回复:\n` +
+            `- \`允许\` 或 \`yes\` - 批准本次操作\n` +
+            `- \`拒绝\` 或 \`no\` - 拒绝本次操作`
+          
+          // 发送权限请求到飞书
+          await this.sendText(chatId, cardMessage)
+          
+          // 存储待处理的权限请求
+          const requestId = permissionData?.id
+          if (requestId) {
+            this.pendingPermissions.set(requestId, {
+              sessionID,
+              chatId,
+              permissionData,
+              timestamp: Date.now()
+            })
+          }
+        }
+      )
+
       // 先记录当前消息数量，用于区分新旧消息
       const baselineCount = await this.getMessageCount(sessionID)
 
@@ -94,7 +141,7 @@ export class SessionManager {
       })
 
       // 等待 AI 完成回复（只关注新消息）
-      const response = await this.waitForCompletion(sessionID, controller.signal, baselineCount)
+      const response = await this.waitForCompletion(sessionID, controller.signal, baselineCount, chatId)
 
       return response
     } catch (err: any) {
@@ -105,6 +152,11 @@ export class SessionManager {
       return `❌ Agent 执行失败: ${err.message}`
     } finally {
       this.runningTasks.delete(chatId)
+      // 取消事件订阅
+      const sessionID = this.sessions.get(chatId)
+      if (sessionID) {
+        this.eventBridge.unsubscribe(sessionID)
+      }
     }
   }
 
@@ -213,7 +265,7 @@ export class SessionManager {
   }
 
   /** 等待 session 完成回复（自适应超时） */
-  private async waitForCompletion(sessionID: string, signal: AbortSignal, baselineCount = 0): Promise<string> {
+  private async waitForCompletion(sessionID: string, signal: AbortSignal, baselineCount = 0, chatId: string): Promise<string> {
     const { baseTimeout, extensionTime, maxExtensions, maxTotalTime, pollInterval } = SessionManager.TIMEOUT_CONFIG
     const startTime = Date.now()
     let currentDeadline = startTime + baseTimeout
@@ -226,6 +278,9 @@ export class SessionManager {
       const auth = Buffer.from(`mimocode:${config.helix.password}`).toString("base64")
       headers["Authorization"] = `Basic ${auth}`
     }
+
+    // 启动权限事件监听（后台运行）
+    const permissionMonitor = this.startPermissionMonitor(sessionID, headers, chatId)
 
     while (Date.now() < currentDeadline) {
       if (signal.aborted) {
@@ -266,6 +321,7 @@ export class SessionManager {
           // 只有当消息完成且有文本输出时，才认为任务真正完成
           if (completed && textParts && !hasRunningTool) {
             log.info("任务完成", { completed, elapsed: Date.now() - startTime })
+            permissionMonitor.stop()
             return textParts
           }
 
@@ -273,13 +329,6 @@ export class SessionManager {
           if (completed && !textParts && !hasRunningTool) {
             log.info("步骤完成，继续等待", { messageCount: messages.length })
             // 继续等待，不要返回
-          }
-
-          // 检测 AskUserQuestion 并自动回答（完全自主模式）
-          const questionTool = toolCalls.find((p: any) => p.tool === "question" && p.state?.status === "running")
-          if (questionTool) {
-            log.info("检测到 AskUserQuestion，自动回答")
-            await this.autoAnswerQuestion(sessionID, questionTool)
           }
         }
 
@@ -298,6 +347,7 @@ export class SessionManager {
             log.info("延长超时", { extensionCount, newDeadline: currentDeadline, reason })
           } else if (!shouldExtend) {
             log.info("任务偏离，准备终止", { reason })
+            permissionMonitor.stop()
             throw new Error(`任务执行超时: ${reason}`)
           }
         }
@@ -310,7 +360,70 @@ export class SessionManager {
       await new Promise((resolve) => setTimeout(resolve, pollInterval))
     }
 
+    permissionMonitor.stop()
     throw new Error(`任务执行超时（已延长 ${extensionCount} 次，总耗时 ${Math.round((Date.now() - startTime) / 1000)}s）`)
+  }
+
+  /** 启动权限事件监控器（后台运行） */
+  private startPermissionMonitor(sessionID: string, headers: Record<string, string>, chatId: string) {
+    let stopped = false
+    const processedRequests = new Set<string>()
+
+    const monitor = async () => {
+      while (!stopped) {
+        try {
+          // 检查是否有待处理的权限请求
+          const url = `${config.helix.url}/session/${sessionID}/message`
+          const resp = await fetch(url, { headers })
+          const messages: any[] = await resp.json()
+
+          // 查找 question 工具调用（权限请求会触发 AskUserQuestion）
+          for (const msg of messages) {
+            if (msg.info?.role !== "assistant") continue
+            const parts = msg.parts ?? []
+            for (const part of parts) {
+              if (part.type !== "tool" || part.tool !== "question") continue
+              if (part.state?.status !== "running") continue
+              
+              const callID = part.callID
+              if (!callID || processedRequests.has(callID)) continue
+              
+              // 找到新的权限请求，转发到飞书
+              log.info("检测到权限请求，转发到飞书", { callID, sessionID })
+              processedRequests.add(callID)
+              
+              // 解析问题内容
+              const questions = part.state?.input?.questions || []
+              const questionText = questions[0]?.question || "未知权限请求"
+              
+              // 发送权限请求到飞书
+              const permissionMessage = `🔐 **权限请求**\n\n${questionText}\n\n请回复:\n- \`允许\` 或 \`yes\` - 批准\n- \`拒绝\` 或 \`no\` - 拒绝`
+              await this.sendText(chatId, permissionMessage)
+              
+              // 存储待处理的权限请求
+              this.pendingPermissions.set(callID, {
+                sessionID,
+                chatId,
+                callID,
+                questionText,
+                timestamp: Date.now()
+              })
+            }
+          }
+        } catch (err) {
+          // 忽略错误，继续监控
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 2000))
+      }
+    }
+
+    // 后台运行监控
+    monitor().catch(() => {})
+
+    return {
+      stop: () => { stopped = true }
+    }
   }
 
   /** 自动回答 AskUserQuestion（完全自主模式） */
@@ -346,6 +459,55 @@ export class SessionManager {
     }
   }
 
+  /** 回复权限请求（通过回答 question 工具） */
+  async replyPermission(callID: string, approved: boolean): Promise<boolean> {
+    // 从待处理权限请求中获取信息
+    const pending = this.pendingPermissions.get(callID)
+    if (!pending) {
+      log.warn("未找到待处理的权限请求", { callID })
+      return false
+    }
+
+    // 如果没有 sessionID，说明是通过 API 创建的权限请求，直接返回成功
+    if (!pending.sessionID) {
+      log.info("API 创建的权限请求，直接批准", { callID, approved })
+      this.pendingPermissions.delete(callID)
+      return true
+    }
+
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    if (config.helix.password) {
+      const auth = Buffer.from(`mimocode:${config.helix.password}`).toString("base64")
+      headers["Authorization"] = `Basic ${auth}`
+    }
+
+    const sessionID = pending.sessionID
+    const answer = approved 
+      ? "允许，用户已批准此操作。请继续执行。" 
+      : "拒绝，用户拒绝了此操作。请停止并告知用户。"
+    
+    try {
+      const url = `${config.helix.url}/session/${sessionID}/tool/${callID}`
+      const resp = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ output: answer }),
+      })
+      
+      if (resp.ok) {
+        log.info("权限回复成功", { callID, approved })
+        this.pendingPermissions.delete(callID)
+        return true
+      } else {
+        log.warn("权限回复失败", { status: resp.status, statusText: resp.statusText })
+        return false
+      }
+    } catch (err: any) {
+      log.warn("权限回复异常", { error: err.message })
+      return false
+    }
+  }
+
   /** 取消正在执行的任务 */
   cancel(chatId: string): boolean {
     const controller = this.runningTasks.get(chatId)
@@ -364,6 +526,42 @@ export class SessionManager {
   /** 清除 chat 的 session（用于 /new 命令） */
   clearSession(chatId: string) {
     this.sessions.delete(chatId)
+  }
+
+  /** 检查是否有待处理的权限请求 */
+  hasPendingPermission(chatId: string): boolean {
+    for (const [_, pending] of this.pendingPermissions) {
+      if (pending.chatId === chatId) return true
+    }
+    return false
+  }
+
+  /** 获取待处理的权限请求 */
+  getPendingPermission(chatId: string): any | null {
+    for (const [_, pending] of this.pendingPermissions) {
+      if (pending.chatId === chatId) return pending
+    }
+    return null
+  }
+
+  /** 清除待处理的权限请求 */
+  clearPendingPermission(chatId: string) {
+    for (const [key, pending] of this.pendingPermissions) {
+      if (pending.chatId === chatId) {
+        this.pendingPermissions.delete(key)
+        break
+      }
+    }
+  }
+
+  /** 添加待处理的权限请求 */
+  addPendingPermission(chatId: string, permission: any) {
+    this.pendingPermissions.set(permission.callID, {
+      ...permission,
+      chatId,
+      timestamp: Date.now()
+    })
+    log.info("添加待处理权限请求", { chatId, callID: permission.callID })
   }
 
   /** 发送文本消息（使用 SDK Client，自动处理 token） */

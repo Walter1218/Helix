@@ -1,6 +1,7 @@
+import { eq, sql } from "drizzle-orm"
 import { Database } from "../storage"
 import { Embedder } from "./embedder"
-import { VEC0_CREATE_SQL } from "./vec.sql"
+import { MemoryVecTable } from "./vec.sql"
 import { Log } from "../util"
 
 const log = Log.create({ service: "vec-store" })
@@ -12,8 +13,11 @@ export interface VecSearchRow {
   score: number
 }
 
+function bufferToFloat32Array(buf: Buffer): number[] {
+  return Array.from(new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4))
+}
+
 export class VecStore {
-  private initialized = false
   public readonly embedder: Embedder
 
   constructor(embedder: Embedder) {
@@ -24,23 +28,20 @@ export class VecStore {
     return this.embedder.enabled
   }
 
-  async init() {
-    if (this.initialized) return
-    Database.Client().$client.run(VEC0_CREATE_SQL)
-    this.initialized = true
-  }
-
   async indexOne(memoryPath: string, body: string): Promise<void> {
     if (!this.embedder.enabled) return
-    await this.init()
     try {
       const vec = await this.embedder.embed(body.slice(0, 8000))
-      const blob = new Float32Array(vec)
-      Database.Client().$client.run(
-        `INSERT OR REPLACE INTO memory_vec_index(rowid, embedding)
-         SELECT memory_fts.rowid, ?
-         FROM memory_fts WHERE memory_fts.path = ?`,
-        [blob, memoryPath],
+      const blob = Buffer.from(new Float32Array(vec).buffer)
+      Database.use((db) =>
+        db
+          .insert(MemoryVecTable)
+          .values({ memory_path: memoryPath, embedding: blob, embedded_at: new Date().toISOString() })
+          .onConflictDoUpdate({
+            target: MemoryVecTable.memory_path,
+            set: { embedding: blob, embedded_at: new Date().toISOString() },
+          })
+          .run(),
       )
     } catch (err) {
       log.warn("indexOne failed", { path: memoryPath, error: String(err) })
@@ -49,44 +50,40 @@ export class VecStore {
 
   async indexMany(items: Array<{ memoryPath: string; body: string }>): Promise<void> {
     if (!this.embedder.enabled || items.length === 0) return
-    await this.init()
     const bodies = items.map((i) => i.body.slice(0, 8000))
     const vecs = await this.embedder.embedBatch(bodies)
+    const now = new Date().toISOString()
 
-    const db = Database.Client().$client
-    for (let i = 0; i < items.length; i++) {
-      const blob = new Float32Array(vecs[i])
-      db.run(
-        `INSERT OR REPLACE INTO memory_vec_index(rowid, embedding)
-         SELECT memory_fts.rowid, ?
-         FROM memory_fts WHERE memory_fts.path = ?`,
-        [blob, items[i].memoryPath],
-      )
-    }
+    Database.use((db) => {
+      for (let i = 0; i < items.length; i++) {
+        const blob = Buffer.from(new Float32Array(vecs[i]).buffer)
+        db.insert(MemoryVecTable)
+          .values({ memory_path: items[i].memoryPath, embedding: blob, embedded_at: now })
+          .onConflictDoUpdate({
+            target: MemoryVecTable.memory_path,
+            set: { embedding: blob, embedded_at: now },
+          })
+          .run()
+      }
+    })
   }
 
   async search(queryText: string, limit = 5): Promise<VecSearchRow[]> {
     if (!this.embedder.enabled) return []
-    await this.init()
     try {
       const qVec = await this.embedder.embed(queryText)
-      const blob = new Float32Array(qVec)
+      const rows = Database.use((db) => db.select().from(MemoryVecTable).all())
 
-      const rows = Database.Client().$client
-        .query(
-          `SELECT memory_fts.path AS memory_path, distance
-           FROM memory_vec_index
-           JOIN memory_fts ON memory_fts.rowid = memory_vec_index.rowid
-           WHERE embedding MATCH ?
-           ORDER BY distance
-           LIMIT ?`,
-        )
-        .all(blob, limit * 3) as Array<{ memory_path: string; distance: number }>
-
-      return rows
-        .map((r) => ({ memory_path: r.memory_path, score: 1 / (1 + r.distance) }))
+      const scored = rows
+        .map((r) => {
+          const vec = bufferToFloat32Array(r.embedding as Buffer)
+          return { memory_path: r.memory_path, score: Embedder.cosine(qVec, vec) }
+        })
         .filter((r) => r.score >= COSINE_FLOOR)
+        .sort((a, b) => b.score - a.score)
         .slice(0, limit)
+
+      return scored
     } catch (err) {
       log.warn("search failed", { error: String(err) })
       return []

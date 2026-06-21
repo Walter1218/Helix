@@ -1,7 +1,10 @@
 import { FeishuWSClient } from "./client/feishu-ws"
 import { MessageRouter } from "./router/message-router"
+import { createApiRouter } from "./router/api-router"
 import { config, validate } from "./config"
 import { Logger } from "./logger"
+import { Hono } from "hono"
+import { serve } from "@hono/node-server"
 
 const log = Logger.create("gateway")
 
@@ -37,7 +40,21 @@ async function main() {
   // 2. 创建消息路由器
   const router = new MessageRouter()
 
-  // 3. 建立飞书 WebSocket 长连接（官方 SDK）
+  // 3. 启动 HTTP API 服务器（供自动开发任务调用）
+  const apiPort = 3096
+  const apiApp = new Hono()
+  const apiRoutes = createApiRouter(router.sessions)
+  apiApp.route("/api", apiRoutes)
+
+  serve({
+    fetch: apiApp.fetch,
+    port: apiPort,
+  }, (info) => {
+    log.info(`API 服务器已启动`, { port: apiPort })
+    console.log(`📡 API 服务器: http://localhost:${apiPort}`)
+  })
+
+  // 4. 建立飞书 WebSocket 长连接（官方 SDK）
   const client = new FeishuWSClient(
     config.feishu.appId,
     config.feishu.appSecret,

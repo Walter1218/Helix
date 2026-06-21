@@ -13,7 +13,7 @@ const log = Logger.create("router")
  */
 export class MessageRouter {
   private commands: CommandHandler
-  private sessions: SessionManager
+  public sessions: SessionManager
   private cards: CardBuilder
   private processedMessages = new Set<string>()
   private readonly MESSAGE_ID_TTL = 60_000 // 1 分钟过期
@@ -61,6 +61,13 @@ export class MessageRouter {
 
       const text = this.stripMention(content)
 
+      // 检查是否是权限请求的回复
+      if (this.sessions.hasPendingPermission(chatId)) {
+        const approved = this.isApprovalReply(text)
+        await this.handlePermissionReply(chatId, approved)
+        return
+      }
+
       // 内置命令
       if (text.startsWith("/")) {
         await this.handleCommand(senderId, chatId, text)
@@ -95,6 +102,37 @@ export class MessageRouter {
 
   private stripMention(text: string): string {
     return text.replace(/@\S+/g, "").trim()
+  }
+
+  private isApprovalReply(text: string): boolean {
+    const lower = text.toLowerCase()
+    return ["允许", "批准", "yes", "y", "ok", "approve", "同意"].some(k => lower.includes(k))
+  }
+
+  private async handlePermissionReply(chatId: string, approved: boolean) {
+    const pending = this.sessions.getPendingPermission(chatId)
+    if (!pending) {
+      await this.sessions.sendText(chatId, "⚠️ 没有待处理的权限请求")
+      return
+    }
+
+    const callID = pending.callID
+    if (!callID) {
+      await this.sessions.sendText(chatId, "⚠️ 权限请求 ID 无效")
+      return
+    }
+
+    // 调用 Helix API 回复权限请求
+    const success = await this.sessions.replyPermission(callID, approved)
+    
+    if (success) {
+      await this.sessions.sendText(chatId, approved ? "✅ 已批准权限请求，Agent 继续执行..." : "❌ 已拒绝权限请求")
+    } else {
+      await this.sessions.sendText(chatId, "⚠️ 回复权限请求失败，请重试")
+    }
+
+    // 清除待处理的权限请求
+    this.sessions.clearPendingPermission(chatId)
   }
 
   private async handleCommand(senderId: string, chatId: string, cmd: string) {

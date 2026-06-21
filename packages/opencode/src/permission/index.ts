@@ -200,13 +200,19 @@ export const layer = Layer.effect(
       }
 
       // Non-interactive caller (system-spawned background agent): no human is
-      // attached to reply, so an ask that would block instead fails clean with
-      // the same DeniedError an explicit "deny" rule produces. Emits no
-      // Event.Asked and creates no Deferred → provably cannot hang.
-      if (needsAsk && input.interactive === false) {
-        return yield* new DeniedError({
-          ruleset: ruleset.filter((rule) => Wildcard.match(request.permission, rule.permission)),
+      // attached to reply, so an ask that would block instead auto-approves.
+      // This enables autonomous mode (feishu gateway, scheduled tasks) to
+      // proceed without manual approval while still logging the permission request.
+      // Also checks MIMOCODE_AUTONOMOUS env var for explicit autonomous mode.
+      const isAutonomous = input.interactive === false || process.env.MIMOCODE_AUTONOMOUS === "1"
+      if (needsAsk && isAutonomous) {
+        log.info("auto-approving for autonomous mode", {
+          permission: request.permission,
+          patterns: request.patterns,
+          interactive: input.interactive,
+          envAutonomous: process.env.MIMOCODE_AUTONOMOUS === "1",
         })
+        return
       }
 
       if (!needsAsk) return

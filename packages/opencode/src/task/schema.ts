@@ -7,6 +7,12 @@ export type TaskID = z.infer<typeof TaskID>
 export const TaskStatus = z.enum(["open", "in_progress", "blocked", "done", "abandoned"])
 export type TaskStatus = z.infer<typeof TaskStatus>
 
+export const TaskPriority = z.enum(["critical", "high", "medium", "low"])
+export type TaskPriority = z.infer<typeof TaskPriority>
+
+export const TaskComplexity = z.enum(["simple", "moderate", "complex", "epic"])
+export type TaskComplexity = z.infer<typeof TaskComplexity>
+
 export const Task = z.object({
   id: TaskID,
   session_id: SessionID.zod,
@@ -18,6 +24,12 @@ export const Task = z.object({
   last_event_at: z.number(),
   ended_at: z.number().optional(),
   cleanup_after: z.number().optional(),
+  priority: TaskPriority.optional().default("medium"),
+  complexity: TaskComplexity.optional().default("moderate"),
+  estimated_tokens: z.number().optional(),
+  actual_tokens: z.number().optional(),
+  goal_alignment: z.number().min(0).max(1).optional(),
+  tags: z.array(z.string()).optional(),
 })
 export type Task = z.infer<typeof Task>
 

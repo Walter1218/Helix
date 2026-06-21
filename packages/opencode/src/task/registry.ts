@@ -4,7 +4,7 @@ import { Bus } from "../bus"
 import { Config } from "../config"
 import type { SessionID } from "../session/schema"
 import { TaskTable, TaskEventTable } from "./task.sql"
-import type { Task, TaskEvent } from "./schema"
+import type { Task, TaskEvent, TaskPriority, TaskComplexity } from "./schema"
 import { Created as TaskCreated, Updated as TaskUpdated, type UpdatedKind } from "./events"
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -24,6 +24,12 @@ function fromTaskRow(row: TaskRow): Task {
     last_event_at: row.last_event_at,
     ended_at: row.ended_at ?? undefined,
     cleanup_after: row.cleanup_after ?? undefined,
+    priority: row.priority ?? "medium",
+    complexity: row.complexity ?? "moderate",
+    estimated_tokens: row.estimated_tokens ?? undefined,
+    actual_tokens: row.actual_tokens ?? undefined,
+    goal_alignment: row.goal_alignment ?? undefined,
+    tags: row.tags ? JSON.parse(row.tags) : undefined,
   }
 }
 
@@ -55,6 +61,11 @@ export interface Interface {
     summary: string
     parent_id?: string
     owner?: string
+    priority?: Task["priority"]
+    complexity?: Task["complexity"]
+    estimated_tokens?: number
+    goal_alignment?: number
+    tags?: string[]
   }) => Effect.Effect<Task>
 
   readonly list: (input: {
@@ -118,6 +129,11 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Config.Service> = 
       summary: string
       parent_id?: string
       owner?: string
+      priority?: Task["priority"]
+      complexity?: Task["complexity"]
+      estimated_tokens?: number
+      goal_alignment?: number
+      tags?: string[]
     }) {
       const now = Date.now()
       const siblings = Database.use((db) =>
@@ -148,6 +164,12 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Config.Service> = 
         last_event_at: now,
         ended_at: null,
         cleanup_after: null,
+        priority: input.priority ?? "medium",
+        complexity: input.complexity ?? "moderate",
+        estimated_tokens: input.estimated_tokens ?? null,
+        actual_tokens: null,
+        goal_alignment: input.goal_alignment ?? null,
+        tags: input.tags ? JSON.stringify(input.tags) : null,
       }
       Database.use((db) => db.insert(TaskTable).values(row).run())
       insertEvent(input.session_id, id, "created", undefined, now)
