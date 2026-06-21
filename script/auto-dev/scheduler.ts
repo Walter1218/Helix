@@ -2,7 +2,7 @@
 /**
  * Helix Auto-Dev Scheduler
  * 
- * 完整流程: 执行任务 → 编译 → 类型检查 → 测试 → Lint → 文档 → Git Commit → Git Push
+ * 完整流程: 执行任务 → Judge审查 → 编译 → 类型检查 → 测试 → Lint → 文档 → Git Commit → Git Push
  * 用法: bun run script/auto-dev/scheduler.ts [--once] [--dry-run] [--no-push]
  */
 
@@ -239,7 +239,7 @@ async function executeViaGateway(task: RoadmapTask, chatId: string): Promise<{ s
 
 async function stepExecuteTask(task: RoadmapTask, dryRun: boolean, chatId?: string): Promise<StepResult> {
   const start = Date.now()
-  log(`[1/7] 执行任务: ${task.title}`)
+  log(`[1/9] 执行任务: ${task.title}`)
   
   if (dryRun) {
     return { name: "执行任务", success: true, output: "[dry-run] skipped", duration: 0, tokensUsed: 0 }
@@ -272,7 +272,7 @@ async function stepBuild(): Promise<StepResult> {
 
 async function stepTypecheck(): Promise<StepResult> {
   const start = Date.now()
-  log("[3/7] 类型检查...")
+  log("[3/9] 类型检查...")
   
   const result = runCmd("bun typecheck", 2 * 60 * 1000)
   
@@ -289,7 +289,7 @@ async function stepTypecheck(): Promise<StepResult> {
 
 async function stepTest(): Promise<StepResult> {
   const start = Date.now()
-  log("[4/7] 运行测试...")
+  log("[4/9] 运行测试...")
   
   const result = runCmd("cd packages/opencode && bun test", 5 * 60 * 1000)
   
@@ -299,7 +299,7 @@ async function stepTest(): Promise<StepResult> {
 
 async function stepLint(): Promise<StepResult> {
   const start = Date.now()
-  log("[5/7] Lint 检查...")
+  log("[5/9] Lint 检查...")
   
   const result = runCmd("bun run lint", 5 * 60 * 1000)
   
@@ -307,9 +307,136 @@ async function stepLint(): Promise<StepResult> {
   return { name: "Lint", ...result, duration: Date.now() - start }
 }
 
+// ============ Judge Review (裁判审查) ============
+
+interface JudgeVerdict {
+  approved: boolean
+  issues: string[]
+  suggestions: string[]
+}
+
+function judgeReviewChanges(): JudgeVerdict {
+  const issues: string[] = []
+  const suggestions: string[] = []
+  
+  // 获取变更文件列表
+  const { output: statusOutput } = runCmd("git status --porcelain")
+  const changedFiles = statusOutput
+    .split("\n")
+    .filter(l => l.trim())
+    .map(l => l.slice(3).trim())
+  
+  if (changedFiles.length === 0) {
+    return { approved: true, issues: [], suggestions: [] }
+  }
+  
+  // 获取 diff 内容
+  const { output: diff } = runCmd("git diff HEAD --unified=3")
+  const { output: diffStaged } = runCmd("git diff --cached --unified=3")
+  const fullDiff = diff + "\n" + diffStaged
+  
+  // ── 检查 1: 测试文件删除/断言减少 ──
+  const testFilesChanged = changedFiles.filter(f => 
+    f.includes(".test.") || f.includes(".spec.") || f.includes("__tests__")
+  )
+  
+  for (const testFile of testFilesChanged) {
+    const { output: testDiff } = runCmd(`git diff HEAD -- "${testFile}"`)
+    
+    // 检测删除的断言行
+    const removedAssertions = (testDiff.match(/^-\s*(expect|assert)\b.*$/gm) || []).length
+    const addedAssertions = (testDiff.match(/^\+\s*(expect|assert)\b.*$/gm) || []).length
+    
+    if (removedAssertions > 0 && addedAssertions < removedAssertions) {
+      const reduction = removedAssertions - addedAssertions
+      issues.push(`测试文件 ${testFile} 删除了 ${reduction} 个断言`)
+    }
+    
+    // 检测删除的 test/it 块
+    const removedTests = (testDiff.match(/^-\s*(test|it)\s*\(/gm) || []).length
+    const addedTests = (testDiff.match(/^\+\s*(test|it)\s*\(/gm) || []).length
+    
+    if (removedTests > addedTests) {
+      issues.push(`测试文件 ${testFile} 删除了 ${removedTests - addedTests} 个测试用例`)
+    }
+    
+    // 检测断言简化（toBe(true) → toBeTruthy() 等）
+    const trivialPatterns = [
+      { from: /\.toBe\(.*\)/, to: /\.toBeTruthy\(\)/, desc: "具体值断言 → truthy" },
+      { from: /\.toEqual\(.*\)/, to: /\.toBeDefined\(\)/, desc: "具体值断言 → defined" },
+    ]
+    for (const p of trivialPatterns) {
+      if (fullDiff.match(p.from) && fullDiff.match(p.to)) {
+        issues.push(`检测到断言简化: ${p.desc}`)
+      }
+    }
+  }
+  
+  // ── 检查 2: 危险文件修改 ──
+  const dangerousFiles = [
+    "AGENTS.md",
+    ".mimocode/roadmap.json",
+    "packages/opencode/src/permission/",
+    "packages/opencode/src/storage/db.ts",
+  ]
+  
+  for (const pattern of dangerousFiles) {
+    const matches = changedFiles.filter(f => f.includes(pattern))
+    if (matches.length > 0) {
+      suggestions.push(`修改了敏感文件: ${matches.join(", ")}`)
+    }
+  }
+  
+  // ── 检查 3: 新增文件过多（可能是垃圾代码）──
+  const newFiles = statusOutput.split("\n").filter(l => l.startsWith("??")).length
+  if (newFiles > 20) {
+    suggestions.push(`新增了 ${newFiles} 个文件，建议检查是否都是必要的`)
+  }
+  
+  // ── 检查 4: 大量删除（可能是破坏性重构）──
+  const deletedLines = (fullDiff.match(/^-\s*\S/gm) || []).length
+  const addedLines = (fullDiff.match(/^\+\s*\S/gm) || []).length
+  if (deletedLines > 500 && deletedLines > addedLines * 3) {
+    issues.push(`删除了 ${deletedLines} 行代码（新增 ${addedLines} 行），可能是破坏性重构`)
+  }
+  
+  const approved = issues.length === 0
+  return { approved, issues, suggestions }
+}
+
+async function stepJudgeReview(): Promise<StepResult> {
+  const start = Date.now()
+  log("[2/9] Judge 审查...")
+  
+  const verdict = judgeReviewChanges()
+  
+  if (verdict.issues.length > 0) {
+    log("  ✗ Judge 发现问题:")
+    for (const issue of verdict.issues) {
+      log(`    - ${issue}`)
+    }
+    return {
+      name: "Judge审查",
+      success: false,
+      output: `发现问题: ${verdict.issues.join("; ")}`,
+      duration: Date.now() - start,
+    }
+  }
+  
+  if (verdict.suggestions.length > 0) {
+    log("  ⚠ Judge 建议:")
+    for (const s of verdict.suggestions) {
+      log(`    - ${s}`)
+    }
+  }
+  
+  log("  ✓ Judge 审查通过")
+  return { name: "Judge审查", success: true, output: "审查通过", duration: Date.now() - start }
+}
+
 async function stepUpdateDocs(task: RoadmapTask): Promise<StepResult> {
   const start = Date.now()
-  log("[6/7] 更新文档...")
+  log("[7/9] 更新文档...")
   
   // 检查是否有未提交的文档变更
   const { output: gitStatus } = runCmd("git status --porcelain")
@@ -410,24 +537,33 @@ async function runPipeline(task: RoadmapTask, options: { dryRun: boolean; noPush
     return { success: true, tokensUsed: 0, steps }
   }
   
-  // Step 2: 编译验证
+  // Step 2: Judge 审查（检查代码变更是否有害）
+  steps.push(await stepJudgeReview())
+  const judgeFailed = !steps[steps.length - 1].success
+  if (judgeFailed) {
+    log("\n✗ Judge 审查失败，终止流程")
+    printReport(steps)
+    return { success: false, tokensUsed: execStep.tokensUsed ?? 0, steps }
+  }
+  
+  // Step 3: 编译验证
   steps.push(await stepBuild())
   const buildFailed = !steps[steps.length - 1].success
   
-  // Step 3-5: 验证步骤（失败不阻塞，记录为警告）
+  // Step 4-6: 验证步骤（失败不阻塞，记录为警告）
   steps.push(await stepTypecheck())
   steps.push(await stepTest())
   steps.push(await stepLint())
   
-  // Step 6: 文档更新
+  // Step 7: 文档更新
   steps.push(await stepUpdateDocs(task))
   
-  // Step 7: Git
+  // Step 8: Git
   steps.push(await stepGitCommitAndPush(task, options.noPush))
   
-  // 任务成功 = 执行成功 + 编译成功
+  // 任务成功 = 执行成功 + Judge通过 + 编译成功
   // typecheck/test/lint 失败是已有问题，不算任务失败
-  const taskSuccess = !buildFailed
+  const taskSuccess = !buildFailed && !judgeFailed
   const tokensUsed = execStep.tokensUsed ?? 0
   
   printReport(steps)
