@@ -268,8 +268,12 @@ Helix/
 │   ├── feishu-gateway/    # Feishu IM gateway (WebSocket, fully autonomous)
 │   ├── app/               # Web UI (SolidJS + Tailwind)
 │   └── sdk/               # JavaScript SDK
-├── script/dogfooding/     # Evolution flywheel tools (14 files)
-├── docs/                  # Architecture docs & testing suite
+├── script/
+│   ├── dogfooding/        # Evolution flywheel tools (14 files)
+│   └── auto-dev/          # Auto-dev scheduler & launchd setup
+├── .mimocode/
+│   └── roadmap.json       # Mainline task definitions
+├ docs/                    # Architecture docs & testing suite
 ├── AGENTS.md              # Agent rules & evolution guidelines
 └── start-feishu.sh        # One-click Feishu launcher
 ```
@@ -282,6 +286,7 @@ Helix/
 - [Evolution Flywheel Design](docs/testing/dogfooding_suite/beta_evolution_loop.md)
 - [Feishu Gateway Design](docs/integration/feishu_gateway_design.md)
 - [Capability Roadmap](docs/architecture/helix_capability_roadmap.md)
+- [Auto-Dev Scheduler](docs/features/auto-dev.md)
 - [Usage Guide](docs/USAGE.md)
 
 ---

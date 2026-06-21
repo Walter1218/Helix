@@ -61,3 +61,21 @@ sdks/vscode/test-*.json
 sdks/vscode/test-*.html
 sdks/vscode/run-tests.sh
 sdks/vscode/test-server.js
+
+# === Auto-dev & Security ===
+# API keys and secrets
+.dev-home/
+*.db
+*.db-wal
+*.db-shm
+
+# Compiled binaries
+packages/opencode/dist/
+packages/feishu-gateway/dist/
+
+# Logs
+*.log
+.local/
+
+# Temp files
+/tmp/
