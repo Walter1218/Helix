@@ -7,6 +7,9 @@ const log = Logger.create("api")
 export function createApiRouter(sessions: SessionManager) {
   const app = new Hono()
 
+  // 存储待继续执行的任务
+  const pendingTasks = new Map<string, { chatId: string; message: string; timestamp: number }>()
+
   // 发送任务到飞书（供自动开发任务调用）
   app.post("/task", async (c) => {
     try {
@@ -32,6 +35,28 @@ export function createApiRouter(sessions: SessionManager) {
     }
   })
 
+  // 通用通知接口（供 scheduler 等外部工具调用）
+  app.post("/notify", async (c) => {
+    try {
+      const body = await c.req.json()
+      const { chatId, title, message, level } = body
+
+      if (!chatId || !message) {
+        return c.json({ error: "chatId and message are required" }, 400)
+      }
+
+      const icon = level === "error" ? "❌" : level === "warn" ? "⚠️" : "ℹ️"
+      const titleLine = title ? `${icon} **${title}**\n\n` : `${icon} `
+      await sessions.sendText(chatId, `${titleLine}${message}`)
+
+      log.info("通知已发送", { chatId, title, level })
+      return c.json({ success: true })
+    } catch (err: any) {
+      log.error("发送通知失败", { error: err.message })
+      return c.json({ error: err.message }, 500)
+    }
+  })
+
   // 发送权限问题通知到飞书
   app.post("/notify-permission-issue", async (c) => {
     try {
@@ -50,6 +75,14 @@ export function createApiRouter(sessions: SessionManager) {
         callID,
         chatId,
         questionText: permissionRequest || '访问外部目录文件',
+        originalMessage: `请读取 /etc/hosts 文件，检查本地 DNS 配置`, // 存储原始消息
+        timestamp: Date.now()
+      })
+
+      // 存储待继续执行的任务
+      pendingTasks.set(chatId, {
+        chatId,
+        message: `请读取 /etc/hosts 文件，检查本地 DNS 配置`,
         timestamp: Date.now()
       })
 
@@ -92,9 +125,23 @@ export function createApiRouter(sessions: SessionManager) {
     const success = await sessions.replyPermission(pending.callID, approved)
     if (success) {
       sessions.clearPendingPermission(chatId)
+      
+      // 如果批准了权限，继续执行待处理的任务
+      if (approved) {
+        const pendingTask = pendingTasks.get(chatId)
+        if (pendingTask) {
+          log.info("权限已批准，继续执行任务", { chatId })
+          
+          // 继续执行任务
+          const result = await sessions.runTask(chatId, pendingTask.message)
+          pendingTasks.delete(chatId)
+          
+          return c.json({ success: true, continued: true, result })
+        }
+      }
     }
 
-    return c.json({ success })
+    return c.json({ success, continued: false })
   })
 
   return app

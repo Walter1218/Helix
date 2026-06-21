@@ -7,10 +7,12 @@
     
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/onetwo/.bun/bin/bun</string>
+        <string>/Users/onetwo/.npm-global/bin/bun</string>
         <string>run</string>
         <string>/Users/onetwo/Documents/trae_projects/Helix/script/auto-dev/scheduler.ts</string>
         <string>--once</string>
+        <string>--chat-id</string>
+        <string>oc_adb8a26e34983ef16da7589560e24f5a</string>
     </array>
     
     <key>WorkingDirectory</key>
@@ -19,7 +21,7 @@
     <key>StartCalendarInterval</key>
     <dict>
         <key>Hour</key>
-        <integer>2</integer>
+        <integer>14</integer>
         <key>Minute</key>
         <integer>0</integer>
     </dict>
@@ -33,7 +35,7 @@
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/Users/onetwo/.bun/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <string>/Users/onetwo/.npm-global/bin:/usr/local/bin:/usr/bin:/bin</string>
         <key>HOME</key>
         <string>/Users/onetwo</string>
     </dict>

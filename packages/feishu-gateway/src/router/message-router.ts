@@ -127,6 +127,15 @@ export class MessageRouter {
     
     if (success) {
       await this.sessions.sendText(chatId, approved ? "✅ 已批准权限请求，Agent 继续执行..." : "❌ 已拒绝权限请求")
+      
+      // 如果批准了权限，继续执行待处理的任务
+      if (approved && pending.originalMessage) {
+        log.info("权限已批准，继续执行任务", { chatId, originalMessage: pending.originalMessage })
+        
+        // 继续执行原始任务
+        const result = await this.sessions.runTask(chatId, pending.originalMessage)
+        log.info("任务继续执行完成", { chatId, resultLength: result.length })
+      }
     } else {
       await this.sessions.sendText(chatId, "⚠️ 回复权限请求失败，请重试")
     }

@@ -32,7 +32,7 @@ install() {
     launchctl load "$PLIST_DST"
     
     echo "✅ Installed successfully"
-    echo "   Schedule: Daily at 2:00 AM"
+    echo "   Schedule: Daily at 2:00 PM"
     echo "   Logs: $LOG_DIR/auto-dev-launchd.log"
 }
 
@@ -54,7 +54,7 @@ status() {
     
     if [ -f "$PLIST_DST" ]; then
         echo "Status: Installed"
-        echo "Schedule: Daily at 2:00 AM"
+        echo "Schedule: Daily at 2:00 PM"
         echo ""
         echo "Recent logs:"
         tail -5 "$LOG_DIR/auto-dev-launchd.log" 2>/dev/null || echo "  No logs yet"

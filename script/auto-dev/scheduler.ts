@@ -423,6 +423,61 @@ function printReport(steps: StepResult[]) {
   log("=".repeat(50))
 }
 
+// ============ Feishu Notification ============
+
+const GATEWAY_URL = process.env.GATEWAY_API_URL || "http://localhost:3096"
+
+async function ensureGateway(): Promise<boolean> {
+  try {
+    const resp = await fetch(`${GATEWAY_URL}/health`, { signal: AbortSignal.timeout(2000) })
+    if (resp.ok) return true
+  } catch {}
+
+  // gateway 没有 /health，直接尝试 notify 端点可达性
+  try {
+    const resp = await fetch(`${GATEWAY_URL}/api/notify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chatId: "ping", message: "ping" }),
+      signal: AbortSignal.timeout(3000),
+    })
+    // 400 也算可达（参数不对但服务在）
+    return resp.status < 500
+  } catch {
+    log("Gateway 不可达，尝试启动...")
+    try {
+      execSync(`cd ${PROJECT_ROOT}/packages/feishu-gateway && bun run src/index.ts &`, {
+        encoding: "utf-8",
+        timeout: 5000,
+        stdio: "ignore",
+      })
+      // 等几秒让 gateway 起来
+      await new Promise(r => setTimeout(r, 5000))
+      return true
+    } catch (e: any) {
+      log(`Gateway 启动失败: ${e.message}`)
+      return false
+    }
+  }
+}
+
+async function notifyFeishu(chatId: string, title: string, message: string, level: "error" | "warn" | "info" = "error") {
+  try {
+    const resp = await fetch(`${GATEWAY_URL}/api/notify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chatId, title, message, level }),
+    })
+    if (resp.ok) {
+      log(`飞书通知已发送: ${title}`)
+    } else {
+      log(`飞书通知失败: ${resp.status}`)
+    }
+  } catch (err: any) {
+    log(`飞书通知异常: ${err.message}`)
+  }
+}
+
 // ============ Entry Point ============
 
 async function main() {
@@ -441,9 +496,15 @@ async function main() {
   log(`模式: ${once ? "单次" : "持续"} | 干运行: ${dryRun} | 不推送: ${noPush}`)
   if (chatId) log(`飞书 Chat ID: ${chatId}`)
   
+  // 确保 gateway 可用
+  if (chatId) {
+    await ensureGateway()
+  }
+  
   const roadmap = loadRoadmap()
   if (!roadmap) {
     log("未找到 roadmap.json，退出")
+    if (chatId) await notifyFeishu(chatId, "自动开发失败", "未找到 roadmap.json")
     return
   }
   
@@ -460,6 +521,7 @@ async function main() {
   
   if (budgetRemaining < 10000) {
     log("预算不足，退出")
+    if (chatId) await notifyFeishu(chatId, "自动开发跳过", `预算不足: ${budgetUsed.toLocaleString()} / ${budgetLimit.toLocaleString()}`, "warn")
     return
   }
   
@@ -483,9 +545,23 @@ async function main() {
   updateTaskStatus(roadmap, task.id, success ? "done" : "pending")
   
   log(`\n任务 ${task.id} ${success ? "✓ 完成" : "✗ 失败"}`)
+  
+  // 失败时通知飞书
+  if (!success && chatId) {
+    const failedSteps = [] // 从日志中提取失败步骤
+    await notifyFeishu(
+      chatId,
+      `自动开发失败: ${task.id} - ${task.title}`,
+      `任务执行失败，请检查日志:\n~/.local/share/mimocode/log/auto-dev-${new Date().toISOString().slice(0, 10)}.log`
+    )
+  }
 }
 
-main().catch(e => {
+main().catch(async (e) => {
   log(`致命错误: ${e.message}`)
+  const args = process.argv.slice(2)
+  const chatIdIndex = args.indexOf("--chat-id")
+  const chatId = chatIdIndex !== -1 && args[chatIdIndex + 1] ? args[chatIdIndex + 1] : undefined
+  if (chatId) await notifyFeishu(chatId, "自动开发致命错误", e.message)
   process.exit(1)
 })
