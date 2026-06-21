@@ -701,14 +701,18 @@ async function main() {
   log(`描述: ${task.description}`)
   log(`优先级: ${task.priority} | 预估: ~${task.estimated_tokens.toLocaleString()} tokens\n`)
   
-  // 标记为进行中
-  updateTaskStatus(roadmap, task.id, "in_progress")
+  // 标记为进行中（dry-run 不标记）
+  if (!dryRun) {
+    updateTaskStatus(roadmap, task.id, "in_progress")
+  }
   
   // 执行完整流程
   const pipeline = await runPipeline(task, { dryRun, noPush, chatId })
   
-  // 更新状态
-  updateTaskStatus(roadmap, task.id, pipeline.success ? "done" : "pending")
+  // 更新状态（dry-run 不标记）
+  if (!options.dryRun) {
+    updateTaskStatus(roadmap, task.id, pipeline.success ? "done" : "pending")
+  }
   
   log(`\n任务 ${task.id} ${pipeline.success ? "✓ 完成" : "✗ 失败"}`)
   
