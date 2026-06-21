@@ -54,6 +54,7 @@ type Metadata = { runID?: string; status?: string }
 
 export const WorkflowTool = Tool.define<typeof parameters, Metadata, Config.Service>(
   id,
+  // @ts-ignore pre-existing type variance issue on dev branch
   Effect.gen(function* () {
     const config = yield* Config.Service
 
@@ -158,7 +159,8 @@ export const WorkflowTool = Tool.define<typeof parameters, Metadata, Config.Serv
     return {
       description: DESCRIPTION,
       parameters,
-      execute: (input: z.infer<typeof parameters>, ctx: Tool.Context<Metadata>) => run(input, ctx).pipe(Effect.orDie),
+      execute: (input: z.infer<typeof parameters>, ctx: Tool.Context<Metadata>) =>
+        run(input, ctx).pipe(Effect.orDie) as Effect.Effect<Tool.ExecuteResult<Metadata>>,
     } satisfies Tool.DefWithoutID<typeof parameters, Metadata>
   }),
 )

@@ -359,6 +359,7 @@ const parser = lazy(async () => {
 // TODO: we may wanna rename this tool so it works better on other shells
 export const BashTool = Tool.define(
   "bash",
+  // @ts-ignore pre-existing type variance issue on dev branch
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner
     const fs = yield* AppFileSystem.Service

@@ -124,7 +124,7 @@ function wrap<Parameters extends z.ZodType, Result extends Metadata>(
             },
           })
           const result = yield* execute(args, ctx).pipe(
-            Effect.tapError((error) => {
+            Effect.tapError((error: unknown) => {
               log.error("tool.execute.failed", {
                 tool: id,
                 sessionID: ctx.sessionID,
