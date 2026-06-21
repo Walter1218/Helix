@@ -35,7 +35,6 @@ tsconfig.tsbuildinfo
 .claude/
 *.pid
 .mimo-worktrees
-.mimocode/
 
 # Dogfooding runtime sandboxes and trace data (source scripts under script/dogfooding/ stay)
 .dogfooding/
