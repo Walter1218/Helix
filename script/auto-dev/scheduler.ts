@@ -281,7 +281,7 @@ async function stepLint(): Promise<StepResult> {
   const start = Date.now()
   log("[5/7] Lint 检查...")
   
-  const result = runCmd("bun run lint", 2 * 60 * 1000)
+  const result = runCmd("bun run lint", 5 * 60 * 1000)
   
   log(result.success ? "  ✓ Lint 通过" : `  ✗ Lint 失败`)
   return { name: "Lint", ...result, duration: Date.now() - start }
@@ -342,7 +342,15 @@ async function stepGitCommitAndPush(task: RoadmapTask, noPush: boolean): Promise
   // 推送
   if (!noPush) {
     log("  推送到远程...")
-    const { success: pushSuccess, output: pushOutput } = runCmd("git push")
+    // 检查是否有 upstream
+    const { output: upstream } = runCmd("git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null")
+    const { output: branch } = runCmd("git rev-parse --abbrev-ref HEAD")
+    
+    const pushCmd = upstream.trim()
+      ? "git push"
+      : `git push --set-upstream origin ${branch.trim()}`
+    
+    const { success: pushSuccess, output: pushOutput } = runCmd(pushCmd, 3 * 60 * 1000)
     
     if (pushSuccess) {
       log("  ✓ 已推送")

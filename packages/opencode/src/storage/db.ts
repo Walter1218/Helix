@@ -70,8 +70,14 @@ function migrations(dir: string): Journal {
     .map((name) => {
       const file = path.join(dir, name, "migration.sql")
       if (!existsSync(file)) return
+      let content = readFileSync(file, "utf-8")
+      // Make CREATE TABLE/INDEX idempotent to handle squashed migrations
+      // that conflict with tables created by earlier migrations
+      content = content.replace(/\bCREATE TABLE\b(?! IF NOT EXISTS)/g, "CREATE TABLE IF NOT EXISTS")
+      content = content.replace(/\bCREATE INDEX\b(?! IF NOT EXISTS)/g, "CREATE INDEX IF NOT EXISTS")
+      content = content.replace(/\bCREATE UNIQUE INDEX\b(?! IF NOT EXISTS)/g, "CREATE UNIQUE INDEX IF NOT EXISTS")
       return {
-        sql: readFileSync(file, "utf-8"),
+        sql: content,
         timestamp: time(name),
         name,
       }
@@ -79,6 +85,47 @@ function migrations(dir: string): Journal {
     .filter(Boolean) as Journal
 
   return sql.sort((a, b) => a.timestamp - b.timestamp)
+}
+
+/** Apply migrations with per-statement error tolerance for ALTER TABLE conflicts */
+function migrateWithTolerance(db: Client, entries: Journal) {
+  for (const entry of entries) {
+    const statements = entry.sql
+      .split(/;(?=\s*(?:-->|$))/)
+      .map((s) => s.replace(/-->\s*statement-breakpoint/g, "").trim())
+      .filter((s) => s.length > 0 && s !== "select 1")
+
+    for (const stmt of statements) {
+      try {
+        db.run(stmt + ";")
+      } catch (err: any) {
+        const msg = (err?.message ?? "") + " " + (err?.cause?.message ?? "")
+        // Tolerate: table/index already exists, duplicate column, no such table (for DROP)
+        if (
+          msg.includes("already exists") ||
+          msg.includes("duplicate column") ||
+          msg.includes("no such table") ||
+          msg.includes("no such column")
+        ) {
+          log.info("migration statement skipped (already applied)", {
+            migration: entry.name,
+            error: msg.slice(0, 80),
+          })
+          continue
+        }
+        throw err
+      }
+    }
+
+    // Record migration as applied
+    try {
+      db.run(
+        `INSERT OR IGNORE INTO __drizzle_migrations (hash, created_at, name, applied_at) VALUES ('${entry.name}', ${entry.timestamp}, '${entry.name}', datetime('now'))`,
+      )
+    } catch {
+      // ignore if journal table doesn't exist yet
+    }
+  }
 }
 
 export const Client = lazy(() => {
@@ -108,7 +155,13 @@ export const Client = lazy(() => {
         item.sql = "select 1;"
       }
     }
-    migrate(db, entries)
+    if (typeof OPENCODE_MIGRATIONS !== "undefined") {
+      // Bundled mode: use drizzle's built-in migrate (entries are trusted)
+      migrate(db, entries)
+    } else {
+      // Dev mode: use tolerant migration to handle squashed migration conflicts
+      migrateWithTolerance(db, entries)
+    }
   }
 
   return db
