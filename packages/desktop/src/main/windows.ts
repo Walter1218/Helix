@@ -2,6 +2,7 @@ import windowState from "electron-window-state"
 import { app, BrowserWindow, net, nativeImage, nativeTheme, protocol } from "electron"
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs"
 import type { TitlebarTheme } from "../preload/types"
 
 const root = dirname(fileURLToPath(import.meta.url))
@@ -63,7 +64,7 @@ export function setDockIcon() {
   if (!icon.isEmpty()) app.dock?.setIcon(icon)
 }
 
-export function createMainWindow() {
+export function createMainWindow(serverConfig?: { url: string; username?: string; password?: string }) {
   const state = windowState({
     defaultWidth: 1280,
     defaultHeight: 800,
@@ -76,7 +77,7 @@ export function createMainWindow() {
     width: state.width,
     height: state.height,
     show: false,
-    title: "OpenCode",
+    title: "Helix",
     icon: iconPath(),
     backgroundColor,
     ...(process.platform === "darwin"
@@ -114,7 +115,13 @@ export function createMainWindow() {
   })
 
   state.manage(win)
-  loadWindow(win, "index.html")
+
+  if (serverConfig) {
+    loadHelixGui(win, serverConfig)
+  } else {
+    loadWindow(win, "index.html")
+  }
+
   wireZoom(win)
 
   win.once("ready-to-show", () => {
@@ -172,6 +179,47 @@ export function registerRendererProtocol() {
 
     return net.fetch(pathToFileURL(file).toString())
   })
+}
+
+/**
+ * Load the Helix GUI (helix-welcome.html) with server config injected.
+ * This replaces the default @mimo-ai/app renderer with the Helix-customized
+ * interface that includes mode switching, SSE streaming, tool visualization, etc.
+ */
+function loadHelixGui(win: BrowserWindow, serverConfig: { url: string; username?: string; password?: string }) {
+  try {
+    // Resolve helix-welcome.html path (rendererRoot = out/renderer/)
+    const helixHtmlPath = join(rendererRoot, "helix-welcome.html")
+    let html = readFileSync(helixHtmlPath, "utf-8")
+
+    // Extract port from server URL (e.g., "http://127.0.0.1:12345" → 12345)
+    const portMatch = serverConfig.url.match(/:(\d+)/)
+    const port = portMatch ? parseInt(portMatch[1], 10) : 0
+
+    // Build config script that runs BEFORE the bridge script in <head>
+    const configScript = `<script>
+  window.__HELIX_SERVER_PORT__ = ${port};
+  window.__HELIX_SERVER_URL__ = "${serverConfig.url}";
+  window.__HELIX_SERVER_USERNAME__ = "${serverConfig.username || "opencode"}";
+  window.__HELIX_SERVER_PASSWORD__ = "${serverConfig.password || ""}";
+  window.__HELIX_DESKTOP__ = true;
+  window.__HELIX_EXT_VERSION__ = "${app.getVersion()}";
+</script>`
+
+    // Inject config into <head> before any other scripts
+    html = html.replace("<head>", `<head>\n${configScript}`)
+
+    // Write to temp file and load via file:// protocol
+    const tempDir = join(app.getPath("userData"), "temp")
+    mkdirSync(tempDir, { recursive: true })
+    const tempFile = join(tempDir, "helix-gui.html")
+    writeFileSync(tempFile, html, "utf-8")
+    void win.loadURL(pathToFileURL(tempFile).toString())
+  } catch (err) {
+    // Fallback to default renderer if helix-welcome.html is not available
+    console.error("[Helix GUI] Failed to load helix-welcome.html, falling back to default:", err)
+    loadWindow(win, "index.html")
+  }
 }
 
 function loadWindow(win: BrowserWindow, html: string) {

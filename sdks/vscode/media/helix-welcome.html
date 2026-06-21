@@ -3142,6 +3142,12 @@
 
       // Check if we're in online mode (via actual health check)
       async function checkOnlineMode() {
+        // Desktop environment: direct HTTP access, no VSCode bridge needed
+        if (window.__HELIX_DESKTOP__ && window.__HELIX_SERVER_PORT__) {
+          await refreshConnectionStatus();
+          return isOnlineMode;
+        }
+        // VSCode environment: requires bridge
         if (!window.__HELIX_VSCODE__ || !window.__HELIX_SERVER_PORT__) {
           setConnectionState('offline');
           return false;
@@ -3255,11 +3261,30 @@
         }
       }
       
-      // Fetch API wrapper that goes through VS Code extension bridge
+      // Fetch API wrapper — supports both VSCode bridge and Desktop direct HTTP
       async function fetchApi(endpoint, options = {}) {
         const port = window.__HELIX_SERVER_PORT__ || 0;
         if (port === 0) throw new Error('Server not available (offline mode)');
         const url = `http://localhost:${port}${endpoint}`;
+
+        // Desktop environment: direct HTTP fetch (no bridge needed)
+        if (window.__HELIX_DESKTOP__) {
+          const headers = { ...(options.headers || {}) };
+          // Add Basic Auth if server requires it
+          if (window.__HELIX_SERVER_PASSWORD__) {
+            const auth = btoa(`${window.__HELIX_SERVER_USERNAME__ || 'opencode'}:${window.__HELIX_SERVER_PASSWORD__}`);
+            headers['Authorization'] = `Basic ${auth}`;
+          }
+          const res = await fetch(url, { ...options, headers });
+          if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+          // 204 No Content (e.g., prompt_async) has no body
+          if (res.status === 204 || res.headers.get('content-length') === '0') return null;
+          const text = await res.text();
+          if (!text) return null;
+          try { return JSON.parse(text); } catch { return text; }
+        }
+
+        // VSCode environment: go through extension bridge
         const vscode = window.__HELIX_VSCODE_REF__;
         if (!vscode) throw new Error('VS Code API not available');
         return new Promise((resolve, reject) => {
@@ -5233,11 +5258,6 @@
       // Send message to real AI API (SSE streaming via /event + prompt_async)
       async function sendRealMessage(text) {
         try {
-          // SSE is now persistent — only connect if not already active
-          if (!activeSseHandler) {
-            await connectEventStream(currentSessionId, document.getElementById('messages'));
-          }
-
           const responseDiv = addAIResponse('', null, true);
           activeStreamMessageDiv = responseDiv;
           const contentDiv = responseDiv.querySelector('.message-content') || responseDiv;
@@ -5258,7 +5278,6 @@
           streamFinishCallback = () => { finishGeneration(); applyToolVisibility(); };
 
           // Connect SSE BEFORE sending prompt to not miss early events
-          // Now waits for sse-ready confirmation from extension host
           await connectEventStream(currentSessionId, contentDiv);
 
           await fetchApi(`/session/${currentSessionId}/prompt_async`, {
@@ -5290,7 +5309,7 @@
       // Connect to global /event SSE stream and filter for current session
       function connectEventStream(sessionId, contentDiv) {
         const port = window.__HELIX_SERVER_PORT__ || 0;
-        if (port === 0) return;
+        if (port === 0) return Promise.resolve();
         // disconnect any existing stream first
         disconnectEventStream();
         activeStreamSessionId = sessionId;
@@ -5331,7 +5350,57 @@
           }
         };
 
-        // Ask extension host to connect SSE
+        // Desktop environment: direct SSE connection via fetch streaming
+        if (window.__HELIX_DESKTOP__) {
+          const headers = { 'Accept': 'text/event-stream' };
+          if (window.__HELIX_SERVER_PASSWORD__) {
+            const auth = btoa(`${window.__HELIX_SERVER_USERNAME__ || 'opencode'}:${window.__HELIX_SERVER_PASSWORD__}`);
+            headers['Authorization'] = `Basic ${auth}`;
+          }
+          const abortController = new AbortController();
+          currentEventSource = { abort: () => abortController.abort() };
+
+          return fetch(url, { headers, signal: abortController.signal }).then(async (res) => {
+            if (!res.ok || !res.body) throw new Error(`SSE HTTP ${res.status}`);
+            console.log('[HelixGUI] SSE ready, connection established (Desktop direct)');
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            (async () => {
+              try {
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  buffer += decoder.decode(value, { stream: true });
+                  const lines = buffer.split('\n');
+                  buffer = lines.pop() || '';
+                  for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                      resetHeartbeat();
+                      try {
+                        const evt = JSON.parse(line.slice(6));
+                        handleStreamEvent(evt, sessionId, contentDiv);
+                      } catch (e) { /* ignore parse errors */ }
+                    }
+                  }
+                }
+              } catch (err) {
+                if (err.name !== 'AbortError') {
+                  reportError('SSE stream error', err);
+                }
+              }
+            })();
+          }).catch((err) => {
+            if (err.name !== 'AbortError') {
+              reportError('SSE connect error', err);
+            }
+          });
+        }
+
+        // VSCode environment: ask extension host to connect SSE
+        const vscode = window.__HELIX_VSCODE_REF__;
         if (vscode) {
           vscode.postMessage({ type: 'sse-connect', url, _sseId: sseId });
         }

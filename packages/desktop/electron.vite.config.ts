@@ -47,6 +47,23 @@ export default defineConfig({
           }
         },
       },
+      {
+        name: "opencode:copy-helix-gui",
+        async writeBundle() {
+          // Copy helix-welcome.html from VSCode extension media to renderer output
+          // so the Desktop app can load the same Helix-customized GUI
+          const path = await import("node:path")
+          const helixGuiSrc = path.resolve(__dirname, "../../sdks/vscode/media/helix-welcome.html")
+          const helixGuiDst = path.resolve(__dirname, "out/renderer/helix-welcome.html")
+          try {
+            const html = await fs.readFile(helixGuiSrc, "utf-8")
+            await fs.writeFile(helixGuiDst, html)
+            console.log("[opencode:copy-helix-gui] helix-welcome.html copied to renderer")
+          } catch (e) {
+            console.warn("[opencode:copy-helix-gui] helix-welcome.html not found, Desktop will use fallback UI")
+          }
+        },
+      },
     ],
   },
   preload: {

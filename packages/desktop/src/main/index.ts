@@ -210,7 +210,12 @@ async function initialize() {
     await loadingComplete.promise
   }
 
-  mainWindow = createMainWindow()
+  const serverData = await serverReady.promise
+  mainWindow = createMainWindow({
+    url: serverData.url,
+    username: serverData.username ?? undefined,
+    password: serverData.password ?? undefined,
+  })
   wireMenu()
 
   overlay?.close()
