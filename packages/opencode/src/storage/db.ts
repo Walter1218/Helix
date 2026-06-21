@@ -98,6 +98,67 @@ function migrateWithTolerance(db: Client, entries: Journal) {
     for (const stmt of statements) {
       try {
         db.run(stmt + ";")
+
+        // CREATE TABLE IF NOT EXISTS is a no-op when the table already exists.
+        // New columns defined in the statement won't be added. Detect this and
+        // backfill missing columns via ALTER TABLE ADD COLUMN.
+        const createMatch = stmt.match(
+          /CREATE TABLE IF NOT EXISTS [`"]?(\w+)[`"]?\s*\(([\s\S]+)\)\s*;?\s*$/i,
+        )
+        if (createMatch) {
+          const tableName = createMatch[1]
+          const body = createMatch[2]
+          // Parse column names from the CREATE TABLE body
+          const columns = body
+            .split(",")
+            .map((line) => {
+              const trimmed = line.trim()
+              // Skip constraints (PRIMARY KEY, CONSTRAINT, FOREIGN KEY)
+              if (/^(CONSTRAINT|PRIMARY|FOREIGN|UNIQUE|CHECK)\b/i.test(trimmed)) return null
+              const colMatch = trimmed.match(/^[`"]?(\w+)[`"]?\s/)
+              return colMatch ? colMatch[1] : null
+            })
+            .filter(Boolean) as string[]
+
+          // Get existing columns
+          let existingCols: Set<string>
+          try {
+            const rows = db.all(`PRAGMA table_info(${tableName})`) as any[]
+            existingCols = new Set(rows.map((r: any) => r.name))
+          } catch {
+            continue
+          }
+
+          // Add missing columns
+          for (const col of columns) {
+            if (existingCols.has(col)) continue
+            // Try ALTER TABLE ADD COLUMN — if the column type is parseable from the body
+            // Use a simple approach: find the line containing this column name
+            const lines = body.split(",")
+            for (const line of lines) {
+              const trimmed = line.trim()
+              if (!trimmed.includes(col)) continue
+              // Extract everything after the column name (type + constraints)
+              // Skip past the column name and any closing backtick/quote
+              let afterName = trimmed.slice(trimmed.indexOf(col) + col.length)
+              afterName = afterName.replace(/^[`"]?\s+/, "").trim()
+              // Remove trailing comma
+              const colType = afterName.replace(/,\s*$/, "").trim()
+              if (!colType || colType.length > 100) break
+              try {
+                db.run(`ALTER TABLE ${tableName} ADD COLUMN \`${col}\` ${colType}`)
+                log.info("backfilled missing column", { table: tableName, column: col, migration: entry.name })
+              } catch (alterErr: any) {
+                log.info("backfill column skipped", {
+                  table: tableName,
+                  column: col,
+                  error: (alterErr?.message ?? alterErr?.cause?.message ?? "").slice(0, 80),
+                })
+              }
+              break
+            }
+          }
+        }
       } catch (err: any) {
         const msg = (err?.message ?? "") + " " + (err?.cause?.message ?? "")
         // Tolerate: table/index already exists, duplicate column, no such table (for DROP)

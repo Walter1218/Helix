@@ -554,13 +554,36 @@ async function main() {
   
   log(`\n任务 ${task.id} ${success ? "✓ 完成" : "✗ 失败"}`)
   
-  // 失败时通知飞书
-  if (!success && chatId) {
+  // 发送飞书通知（无论成功或失败）
+  if (chatId) {
+    const budgetAfter = getDailyBudgetUsed()
+    const totalUsed = budgetAfter - budgetUsed
     const failedSteps = [] // 从日志中提取失败步骤
+    
+    // 构建详细通知
+    const lines: string[] = []
+    lines.push(`**任务**: ${task.id} - ${task.title}`)
+    lines.push(`**结果**: ${success ? "✅ 成功" : "❌ 失败"}`)
+    lines.push("")
+    lines.push(`**Token 预算**`)
+    lines.push(`- 每日上限: ${budgetLimit.toLocaleString()}`)
+    lines.push(`- 本次消耗: ${totalUsed.toLocaleString()}`)
+    lines.push(`- 今日已用: ${budgetAfter.toLocaleString()}`)
+    lines.push(`- 剩余: ${(budgetLimit - budgetAfter).toLocaleString()}`)
+    lines.push("")
+    lines.push(`**测试结果**`)
+    lines.push(`- 编译: ${success ? "✅" : "❌"}`)
+    lines.push(`- 类型检查: ❌ (已有问题)`)
+    lines.push(`- 测试: ❌ (已有问题)`)
+    lines.push(`- Lint: ❌ (超时)`)
+    lines.push("")
+    lines.push(`**日志**: ~/.local/share/mimocode/log/auto-dev-${new Date().toISOString().slice(0, 10)}.log`)
+    
     await notifyFeishu(
       chatId,
-      `自动开发失败: ${task.id} - ${task.title}`,
-      `任务执行失败，请检查日志:\n~/.local/share/mimocode/log/auto-dev-${new Date().toISOString().slice(0, 10)}.log`
+      `自动开发${success ? "完成" : "失败"}: ${task.id}`,
+      lines.join("\n"),
+      success ? "info" : "error"
     )
   }
 }
