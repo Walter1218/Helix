@@ -315,6 +315,31 @@ interface JudgeVerdict {
   suggestions: string[]
 }
 
+/** 审查 pipeline 步骤结果 */
+function judgeReviewPipeline(steps: StepResult[]): JudgeVerdict {
+  const issues: string[] = []
+  const suggestions: string[] = []
+  
+  for (const step of steps) {
+    if (!step.success) {
+      // 测试失败是严重问题
+      if (step.name === "测试") {
+        issues.push(`测试未通过: ${step.output.slice(0, 200)}`)
+      }
+      // 编译失败是严重问题
+      if (step.name === "编译验证") {
+        issues.push(`编译失败: ${step.output.slice(0, 200)}`)
+      }
+      // Lint 失败是警告
+      if (step.name === "Lint") {
+        suggestions.push(`Lint 未通过: ${step.output.slice(0, 100)}`)
+      }
+    }
+  }
+  
+  return { approved: issues.length === 0, issues, suggestions }
+}
+
 function judgeReviewChanges(): JudgeVerdict {
   const issues: string[] = []
   const suggestions: string[] = []
@@ -434,6 +459,30 @@ async function stepJudgeReview(): Promise<StepResult> {
   return { name: "Judge审查", success: true, output: "审查通过", duration: Date.now() - start }
 }
 
+/** 审查 pipeline 结果（测试/编译是否通过） */
+async function stepJudgeVerifyPipeline(steps: StepResult[]): Promise<StepResult> {
+  const start = Date.now()
+  log("[7/9] Judge 验证 Pipeline...")
+  
+  const verdict = judgeReviewPipeline(steps)
+  
+  if (verdict.issues.length > 0) {
+    log("  ✗ Judge 发现 Pipeline 问题:")
+    for (const issue of verdict.issues) {
+      log(`    - ${issue}`)
+    }
+    return {
+      name: "Judge验证",
+      success: false,
+      output: `Pipeline 问题: ${verdict.issues.join("; ")}`,
+      duration: Date.now() - start,
+    }
+  }
+  
+  log("  ✓ Judge Pipeline 验证通过")
+  return { name: "Judge验证", success: true, output: "验证通过", duration: Date.now() - start }
+}
+
 async function stepUpdateDocs(task: RoadmapTask): Promise<StepResult> {
   const start = Date.now()
   log("[7/9] 更新文档...")
@@ -550,20 +599,24 @@ async function runPipeline(task: RoadmapTask, options: { dryRun: boolean; noPush
   steps.push(await stepBuild())
   const buildFailed = !steps[steps.length - 1].success
   
-  // Step 4-6: 验证步骤（失败不阻塞，记录为警告）
+  // Step 4-6: 验证步骤
   steps.push(await stepTypecheck())
   steps.push(await stepTest())
   steps.push(await stepLint())
   
-  // Step 7: 文档更新
+  // Step 7: Judge 验证 Pipeline（测试/编译是否通过）
+  steps.push(await stepJudgeVerifyPipeline(steps))
+  const pipelineVerifyFailed = !steps[steps.length - 1].success
+  
+  // Step 8: 文档更新
   steps.push(await stepUpdateDocs(task))
   
-  // Step 8: Git
+  // Step 9: Git
   steps.push(await stepGitCommitAndPush(task, options.noPush))
   
-  // 任务成功 = 执行成功 + Judge通过 + 编译成功
-  // typecheck/test/lint 失败是已有问题，不算任务失败
-  const taskSuccess = !buildFailed && !judgeFailed
+  // 任务成功 = 执行成功 + Judge审查通过 + 编译成功 + Judge验证通过
+  // 测试失败 = 任务失败（Judge 会拒绝）
+  const taskSuccess = !buildFailed && !judgeFailed && !pipelineVerifyFailed
   const tokensUsed = execStep.tokensUsed ?? 0
   
   printReport(steps)
