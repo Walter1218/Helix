@@ -218,6 +218,176 @@ function checkTraceCoverage(changedFiles: string[], diff: string): string[] {
 }
 
 /**
+ * 回归风险检查 - 检测公共 API 破坏性变更
+ */
+function checkRegressionRisk(diff: string, changedFiles: string[]): string[] {
+  const issues: string[] = []
+
+  // 检测删除的 export（排除被替换的情况）
+  const removedLines = diff.split("\n").filter(l => l.startsWith("-") && !l.startsWith("---"))
+  const addedLines = diff.split("\n").filter(l => l.startsWith("+") && !l.startsWith("+++"))
+
+  // 提取删除和添加的导出名
+  const removedExports = new Set<string>()
+  const addedExports = new Set<string>()
+
+  for (const line of removedLines) {
+    const match = line.match(/export\s+(?:const|function|class|interface|type|enum)\s+(\w+)/)
+    if (match) removedExports.add(match[1])
+  }
+
+  for (const line of addedLines) {
+    const match = line.match(/export\s+(?:const|function|class|interface|type|enum)\s+(\w+)/)
+    if (match) addedExports.add(match[1])
+  }
+
+  // 只报告真正被删除（没有对应添加）的导出
+  const trulyRemoved = [...removedExports].filter(name => !addedExports.has(name))
+  if (trulyRemoved.length > 0) {
+    issues.push(`检测到删除的导出: ${trulyRemoved.slice(0, 3).join(", ")}${trulyRemoved.length > 3 ? "..." : ""}`)
+  }
+
+  // 检测函数签名变更（参数减少）- 只检查同名函数
+  const removedFunctions = new Map<string, number>()
+  const addedFunctions = new Map<string, number>()
+
+  for (const line of removedLines) {
+    const match = line.match(/function\s+(\w+)\s*\(([^)]*)\)/)
+    if (match) {
+      const paramCount = match[2].split(",").filter(p => p.trim()).length
+      removedFunctions.set(match[1], paramCount)
+    }
+  }
+
+  for (const line of addedLines) {
+    const match = line.match(/function\s+(\w+)\s*\(([^)]*)\)/)
+    if (match) {
+      const paramCount = match[2].split(",").filter(p => p.trim()).length
+      addedFunctions.set(match[1], paramCount)
+    }
+  }
+
+  for (const [funcName, removedCount] of removedFunctions) {
+    const addedCount = addedFunctions.get(funcName)
+    if (addedCount !== undefined && addedCount < removedCount) {
+      issues.push(`函数 ${funcName} 参数数量减少 (${removedCount} → ${addedCount})，可能是破坏性变更`)
+    }
+  }
+
+  // 检测删除的类型/接口字段（只在类型文件中检查）
+  const typeFiles = changedFiles.filter(f =>
+    f.includes("types.ts") || f.includes("interface") || f.includes(".d.ts") || f.includes("schema")
+  )
+
+  if (typeFiles.length > 0) {
+    const removedFields = removedLines.filter(l => /^\s*\w+\s*[:?]?\s*:/.test(l.slice(1)))
+    const addedFields = addedLines.filter(l => /^\s*\w+\s*[:?]?\s*:/.test(l.slice(1)))
+
+    if (removedFields.length > addedFields.length) {
+      const netRemoved = removedFields.length - addedFields.length
+      issues.push(`类型文件中有 ${netRemoved} 个字段被删除，可能导致下游代码编译失败`)
+    }
+  }
+
+  return issues
+}
+
+/**
+ * 一致性检查 - 命名规范和代码风格
+ */
+function checkConsistency(diff: string, changedFiles: string[]): string[] {
+  const issues: string[] = []
+
+  // 检测命名规范问题
+  const lines = diff.split("\n").filter(l => l.startsWith("+") && !l.startsWith("+++"))
+
+  for (const line of lines) {
+    const code = line.slice(1)
+
+    // 检查 camelCase 违规（常量除外）
+    const varDeclarations = code.match(/(?:const|let|var)\s+([a-zA-Z_$][\w$]*)/g)
+    if (varDeclarations) {
+      for (const decl of varDeclarations) {
+        const varName = decl.split(/\s+/).pop()
+        if (!varName) continue
+
+        // 跳过常量（全大写+下划线）
+        if (/^[A-Z][A-Z0-9_]*$/.test(varName)) continue
+
+        // 检查是否使用 snake_case（应该用 camelCase）
+        if (/[a-z]_[a-z]/.test(varName) && !varName.startsWith("_")) {
+          issues.push(`变量 ${varName} 使用了 snake_case，应使用 camelCase`)
+        }
+
+        // 检查单字母变量（除了循环变量 i, j, k）
+        if (/^[a-z]$/.test(varName) && !["i", "j", "k", "x", "y", "z"].includes(varName)) {
+          // 只在函数体内部检查，不在顶层
+          if (code.includes("  ")) {
+            issues.push(`检测到单字母变量 ${varName}，建议使用有意义的名称`)
+          }
+        }
+      }
+    }
+
+    // 检查 any 类型使用
+    if (code.includes(": any") || code.includes("as any")) {
+      // 允许类型断言中的 any
+      if (!code.includes("as any)") && !code.includes("as any;")) {
+        issues.push("检测到 any 类型使用，建议使用更具体的类型")
+      }
+    }
+
+    // 检查 console.log（应该使用 log 函数）
+    if (code.includes("console.log(") || code.includes("console.error(")) {
+      // 允许测试文件中的 console
+      const isTestFile = changedFiles.some(f => f.includes(".test.") || f.includes(".spec."))
+      if (!isTestFile) {
+        issues.push("检测到 console.log/error，建议使用项目统一的 log 函数")
+      }
+    }
+
+    // 检查 magic numbers
+    const magicNumberMatch = code.match(/(?:return|=)\s+(\d{4,})/g)
+    if (magicNumberMatch) {
+      for (const match of magicNumberMatch) {
+        const numMatch = match.match(/(\d{4,})/)
+        if (!numMatch) continue
+        const num = numMatch[1]
+
+        // 跳过常见的常量值
+        if (["1000", "1024", "2048", "4096", "8192", "86400", "3600", "60000"].includes(num)) continue
+
+        // 只检查赋值和返回中的数字
+        if (match.includes("return") || match.includes("=")) {
+          issues.push(`检测到 magic number ${num}，建议定义为命名常量`)
+        }
+      }
+    }
+  }
+
+  // 检查导入规范
+  const imports = diff.match(/^\+import\s+.*from\s+["'].*["']/gm)
+  if (imports) {
+    for (const imp of imports) {
+      // 检查相对路径过深
+      const pathMatch = imp.match(/from\s+["'](\.\.\/){3,}.*["']/)
+      if (pathMatch) {
+        issues.push("检测到过深的相对路径导入，建议使用路径别名")
+      }
+
+      // 检查 node_modules 直接导入（应该使用包名）
+      const directImport = imp.match(/from\s+["']node_modules\/.*["']/)
+      if (directImport) {
+        issues.push("检测到直接从 node_modules 导入，应使用包名")
+      }
+    }
+  }
+
+  // 限制返回的问题数量，避免噪音
+  return issues.slice(0, 5)
+}
+
+/**
  * 增强版 Judge 审查
  */
 export function judgeWithContext(ctx: JudgeContext): JudgeVerdict {
@@ -242,7 +412,15 @@ export function judgeWithContext(ctx: JudgeContext): JudgeVerdict {
     issues.push(...completenessIssues)
   }
 
-  // 5. Trace 覆盖检查
+  // 5. 回归风险检查
+  const regressionIssues = checkRegressionRisk(ctx.diff, ctx.changedFiles)
+  issues.push(...regressionIssues)
+
+  // 6. 一致性检查
+  const consistencyIssues = checkConsistency(ctx.diff, ctx.changedFiles)
+  suggestions.push(...consistencyIssues)
+
+  // 7. Trace 覆盖检查
   const traceIssues = checkTraceCoverage(ctx.changedFiles, ctx.diff)
   suggestions.push(...traceIssues)
 
