@@ -11,12 +11,13 @@ import { join } from "path"
 import { homedir } from "os"
 import { Database } from "bun:sqlite"
 import { execSync } from "child_process"
+import { updateSpecStatus, findSpecForTask } from "./spec-writer"
+import { runEnhancedJudge } from "./judge-enhanced"
 
 const PROJECT_ROOT = join(import.meta.dirname, "../..")
 const ROADMAP_PATH = join(PROJECT_ROOT, ".mimocode/roadmap.json")
 const LOG_DIR = join(homedir(), ".local/share/mimocode/log")
 const LOG_FILE = join(LOG_DIR, `auto-dev-${new Date().toISOString().slice(0, 10)}.log`)
-const OPCODE_PACKAGE = join(PROJECT_ROOT, "packages/opencode")
 
 interface RoadmapTask {
   id: string
@@ -26,6 +27,7 @@ interface RoadmapTask {
   priority: "critical" | "high" | "medium" | "low"
   estimated_tokens: number
   tags: string[]
+  specPath?: string
 }
 
 interface RoadmapMilestone {
@@ -125,7 +127,7 @@ function getDailyBudgetUsed(): number {
   
   try {
     const db = new Database(dbPath)
-    const result = db.query("SELECT used FROM daily_budget WHERE date = ?").get(today) as any
+    const result = db.query("SELECT used FROM daily_budget WHERE date = ?").get(today) as { used: number } | undefined
     db.close()
     return result?.used ?? 0
   } catch {
@@ -139,7 +141,7 @@ function getRecentTokenUsage(sinceTimestamp: number): number {
   
   try {
     const db = new Database(dbPath)
-    const result = db.query("SELECT COALESCE(SUM(total_tokens), 0) as total FROM token_usage WHERE timestamp >= ?").get(sinceTimestamp) as any
+    const result = db.query("SELECT COALESCE(SUM(total_tokens), 0) as total FROM token_usage WHERE timestamp >= ?").get(sinceTimestamp) as { total: number } | undefined
     db.close()
     return result?.total ?? 0
   } catch {
@@ -568,9 +570,9 @@ async function stepJudgeReview(): Promise<StepResult> {
 async function stepJudgeVerifyPipeline(steps: StepResult[]): Promise<StepResult> {
   const start = Date.now()
   log("[7/9] Judge 验证 Pipeline...")
-  
+
   const verdict = judgeReviewPipeline(steps)
-  
+
   if (verdict.issues.length > 0) {
     log("  ✗ Judge 发现 Pipeline 问题:")
     for (const issue of verdict.issues) {
@@ -583,9 +585,81 @@ async function stepJudgeVerifyPipeline(steps: StepResult[]): Promise<StepResult>
       duration: Date.now() - start,
     }
   }
-  
+
   log("  ✓ Judge Pipeline 验证通过")
   return { name: "Judge验证", success: true, output: "验证通过", duration: Date.now() - start }
+}
+
+async function stepEnhancedJudge(task: RoadmapTask): Promise<StepResult> {
+  const start = Date.now()
+  log("[2.5/9] 增强 Judge 审查...")
+
+  const verdict = runEnhancedJudge(task.id, task.title, task.description, task.specPath)
+
+  if (verdict.issues.length > 0) {
+    log("  ✗ 增强 Judge 发现问题:")
+    for (const issue of verdict.issues) {
+      log(`    - ${issue}`)
+    }
+    return {
+      name: "增强Judge",
+      success: false,
+      output: `增强审查问题: ${verdict.issues.join("; ")}`,
+      duration: Date.now() - start,
+    }
+  }
+
+  if (verdict.suggestions.length > 0) {
+    log("  ⚠ 增强 Judge 建议:")
+    for (const s of verdict.suggestions) {
+      log(`    - ${s}`)
+    }
+  }
+
+  log("  ✓ 增强 Judge 审查通过")
+  return { name: "增强Judge", success: true, output: "增强审查通过", duration: Date.now() - start }
+}
+
+async function stepSpecWriteback(task: RoadmapTask, pipelineSuccess: boolean, tokensUsed: number): Promise<StepResult> {
+  const start = Date.now()
+  log("[8.5/9] Spec 回写...")
+
+  const SPECS_DIR = join(PROJECT_ROOT, "openspec/specs")
+  let specPath = task.specPath
+  let requirement: string | undefined
+
+  // 如果没有 specPath，尝试自动查找
+  if (!specPath) {
+    const found = findSpecForTask(task.description, SPECS_DIR)
+    if (found) {
+      specPath = found.specPath
+      requirement = found.requirement
+      log(`  自动匹配到 spec: ${specPath}`)
+    } else {
+      log("  - 未找到关联 spec，跳过")
+      return { name: "Spec回写", success: true, output: "无关联 spec", duration: Date.now() - start }
+    }
+  }
+
+  // 从任务描述中提取需求名称
+  if (!requirement) {
+    const requirementMatch = task.description.match(/需求:\s*(.+)/)
+    requirement = requirementMatch ? requirementMatch[1].trim() : task.title.replace("[Spec] ", "")
+  }
+
+  const success = updateSpecStatus(specPath, requirement, {
+    success: pipelineSuccess,
+    output: pipelineSuccess ? "任务执行成功" : "任务执行失败",
+    tokensUsed,
+  })
+
+  if (success) {
+    log("  ✓ Spec 已更新")
+    return { name: "Spec回写", success: true, output: "Spec 状态已更新", duration: Date.now() - start }
+  }
+
+  log("  ✗ Spec 更新失败")
+  return { name: "Spec回写", success: false, output: "Spec 更新失败", duration: Date.now() - start }
 }
 
 async function stepUpdateDocs(task: RoadmapTask): Promise<StepResult> {
@@ -709,21 +783,33 @@ async function runPipeline(task: RoadmapTask, options: { dryRun: boolean; noPush
   steps.push(await stepTest())
   steps.push(await stepLint())
   
+  // Step 2.5: 增强 Judge 审查（基于 spec）
+  steps.push(await stepEnhancedJudge(task))
+  const enhancedJudgeFailed = !steps[steps.length - 1].success
+  if (enhancedJudgeFailed) {
+    log("\n✗ 增强 Judge 审查失败，终止流程")
+    printReport(steps)
+    return { success: false, tokensUsed: execStep.tokensUsed ?? 0, steps }
+  }
+
   // Step 7: Judge 验证 Pipeline（测试/编译是否通过）
   steps.push(await stepJudgeVerifyPipeline(steps))
   const pipelineVerifyFailed = !steps[steps.length - 1].success
-  
+
   // Step 8: 文档更新
   steps.push(await stepUpdateDocs(task))
-  
+
+  // Step 8.5: Spec 回写
+  const pipelineSuccess = !buildFailed && !judgeFailed && !enhancedJudgeFailed && !pipelineVerifyFailed
+  steps.push(await stepSpecWriteback(task, pipelineSuccess, execStep.tokensUsed ?? 0))
+
   // Step 9: Git
   steps.push(await stepGitCommitAndPush(task, options.noPush))
-  
-  // 任务成功 = 执行成功 + Judge审查通过 + 编译成功 + Judge验证通过
-  // 测试失败 = 任务失败（Judge 会拒绝）
-  const taskSuccess = !buildFailed && !judgeFailed && !pipelineVerifyFailed
+
+  // 任务成功 = 执行成功 + Judge审查通过 + 增强Judge通过 + 编译成功 + Judge验证通过
+  const taskSuccess = !buildFailed && !judgeFailed && !enhancedJudgeFailed && !pipelineVerifyFailed
   const tokensUsed = execStep.tokensUsed ?? 0
-  
+
   printReport(steps)
   return { success: taskSuccess, tokensUsed, steps }
 }
@@ -886,10 +972,13 @@ async function main() {
     lines.push("")
     lines.push(`**Pipeline 结果**`)
     lines.push(`- 执行任务: ${stepStatus("执行任务")}`)
+    lines.push(`- Judge 审查: ${stepStatus("Judge审查")}`)
+    lines.push(`- 增强 Judge: ${stepStatus("增强Judge")}`)
     lines.push(`- 编译: ${stepStatus("编译验证")}`)
     lines.push(`- 类型检查: ${stepStatus("类型检查")} (预存问题)`)
     lines.push(`- 测试: ${stepStatus("测试")} (预存问题)`)
     lines.push(`- Lint: ${stepStatus("Lint")} (预存问题)`)
+    lines.push(`- Spec 回写: ${stepStatus("Spec回写")}`)
     lines.push(`- 文档: ${stepStatus("文档更新")}`)
     lines.push(`- Git: ${stepStatus("Git")} ${hasChanges ? "(已提交)" : ""}`)
     lines.push("")

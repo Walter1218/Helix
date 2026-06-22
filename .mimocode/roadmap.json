@@ -134,7 +134,7 @@
           "id": "M4-T1",
           "title": "启动性能优化",
           "description": "减少冷启动时间到 500ms 以内",
-          "status": "in_progress",
+          "status": "done",
           "priority": "medium",
           "estimated_tokens": 80000,
           "tags": [
@@ -305,6 +305,92 @@
             "safety",
             "p1"
           ]
+        }
+      ]
+    },
+    {
+      "id": "M_SPEC",
+      "name": "OpenSpec 驱动任务",
+      "status": "pending",
+      "priority": "high",
+      "tasks": [
+        {
+          "id": "SPEC-JUDGE_AGENT-CONTEXT-AWARE-REVIEW",
+          "title": "[Spec] Context-aware review",
+          "description": "从 OpenSpec 导入: /Users/onetwo/Documents/trae_projects/Helix/openspec/specs/judge-agent/spec.md\n\n需求: Context-aware review",
+          "status": "pending",
+          "priority": "medium",
+          "estimated_tokens": 31000,
+          "tags": [
+            "openspec",
+            "spec-driven"
+          ],
+          "specPath": "/Users/onetwo/Documents/trae_projects/Helix/openspec/specs/judge-agent/spec.md"
+        },
+        {
+          "id": "SPEC-JUDGE_AGENT-SECURITY-CHECKS",
+          "title": "[Spec] Security checks",
+          "description": "从 OpenSpec 导入: /Users/onetwo/Documents/trae_projects/Helix/openspec/specs/judge-agent/spec.md\n\n需求: Security checks",
+          "status": "pending",
+          "priority": "medium",
+          "estimated_tokens": 31000,
+          "tags": [
+            "openspec",
+            "spec-driven"
+          ],
+          "specPath": "/Users/onetwo/Documents/trae_projects/Helix/openspec/specs/judge-agent/spec.md"
+        },
+        {
+          "id": "SPEC-JUDGE_AGENT-RELEVANCE-CHECKS",
+          "title": "[Spec] Relevance checks",
+          "description": "从 OpenSpec 导入: /Users/onetwo/Documents/trae_projects/Helix/openspec/specs/judge-agent/spec.md\n\n需求: Relevance checks",
+          "status": "pending",
+          "priority": "medium",
+          "estimated_tokens": 31000,
+          "tags": [
+            "openspec",
+            "spec-driven"
+          ],
+          "specPath": "/Users/onetwo/Documents/trae_projects/Helix/openspec/specs/judge-agent/spec.md"
+        },
+        {
+          "id": "SPEC-AUTO_DEV-SPEC-DRIVEN-DEVELOPMENT",
+          "title": "[Spec] Spec-driven development",
+          "description": "从 OpenSpec 导入: /Users/onetwo/Documents/trae_projects/Helix/openspec/specs/auto-dev/spec.md\n\n需求: Spec-driven development",
+          "status": "pending",
+          "priority": "medium",
+          "estimated_tokens": 31000,
+          "tags": [
+            "openspec",
+            "spec-driven"
+          ],
+          "specPath": "/Users/onetwo/Documents/trae_projects/Helix/openspec/specs/auto-dev/spec.md"
+        },
+        {
+          "id": "SPEC-AUTH_SESSION-SESSION-EXPIRATION",
+          "title": "[Spec] Session expiration",
+          "description": "从 OpenSpec 导入: /Users/onetwo/Documents/trae_projects/Helix/openspec/specs/auth-session/spec.md\n\n需求: Session expiration",
+          "status": "pending",
+          "priority": "medium",
+          "estimated_tokens": 31000,
+          "tags": [
+            "openspec",
+            "spec-driven"
+          ],
+          "specPath": "/Users/onetwo/Documents/trae_projects/Helix/openspec/specs/auth-session/spec.md"
+        },
+        {
+          "id": "SPEC-AUTH_SESSION-SESSION-INVALIDATION",
+          "title": "[Spec] Session invalidation",
+          "description": "从 OpenSpec 导入: /Users/onetwo/Documents/trae_projects/Helix/openspec/specs/auth-session/spec.md\n\n需求: Session invalidation",
+          "status": "pending",
+          "priority": "medium",
+          "estimated_tokens": 31000,
+          "tags": [
+            "openspec",
+            "spec-driven"
+          ],
+          "specPath": "/Users/onetwo/Documents/trae_projects/Helix/openspec/specs/auth-session/spec.md"
         }
       ]
     }
