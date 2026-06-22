@@ -600,19 +600,17 @@ async function ensureGateway(): Promise<boolean> {
   } catch {}
 
   log("Gateway 不可达，尝试启动...")
-    try {
-      execSync(`cd ${PROJECT_ROOT}/packages/feishu-gateway && bun run src/index.ts &`, {
-        encoding: "utf-8",
-        timeout: 5000,
-        stdio: "ignore",
-      })
-      // 等几秒让 gateway 起来
-      await new Promise(r => setTimeout(r, 5000))
-      return true
-    } catch (e: any) {
-      log(`Gateway 启动失败: ${e.message}`)
-      return false
-    }
+  try {
+    execSync(`cd ${PROJECT_ROOT}/packages/feishu-gateway && bun run src/index.ts &`, {
+      encoding: "utf-8",
+      timeout: 5000,
+      stdio: "ignore",
+    })
+    await new Promise(r => setTimeout(r, 5000))
+    return true
+  } catch (e: any) {
+    log(`Gateway 启动失败: ${e.message}`)
+    return false
   }
 }
 
