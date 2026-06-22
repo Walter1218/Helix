@@ -245,19 +245,54 @@ async function stepExecuteTask(task: RoadmapTask, dryRun: boolean, chatId?: stri
     return { name: "执行任务", success: true, output: "[dry-run] skipped", duration: 0, tokensUsed: 0 }
   }
   
-  // 如果配置了 chatId，通过 Gateway 执行（支持权限请求转发到飞书）
-  if (chatId) {
-    const result = await executeViaGateway(task, chatId)
-    log(result.success ? "  ✓ 任务执行完成" : `  ✗ 任务执行失败: ${result.output.slice(0, 200)}`)
-    return { name: "执行任务", ...result, duration: Date.now() - start }
+  // Loop mode: 最多重试 3 次
+  const MAX_RETRIES = 3
+  let lastOutput = ""
+  
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 1) {
+      log(`  ↻ 重试 ${attempt}/${MAX_RETRIES}...`)
+    }
+    
+    // 如果配置了 chatId，通过 Gateway 执行（支持权限请求转发到飞书）
+    if (chatId) {
+      const result = await executeViaGateway(task, chatId)
+      lastOutput = result.output
+      
+      if (result.success) {
+        log(`  ✓ 任务执行完成 (attempt ${attempt})`)
+        return { name: "执行任务", ...result, duration: Date.now() - start }
+      }
+      
+      log(`  ✗ 任务执行失败 (attempt ${attempt}): ${result.output.slice(0, 100)}`)
+      
+      // 最后一次失败，返回失败
+      if (attempt === MAX_RETRIES) {
+        return { name: "执行任务", success: false, output: lastOutput, duration: Date.now() - start, tokensUsed: result.tokensUsed }
+      }
+      
+      continue
+    }
+    
+    // 否则通过 CLI 执行
+    const cmd = `bun run --cwd packages/opencode --conditions=browser src/index.ts run "${task.description}"`
+    const result = runCmd(cmd, 30 * 60 * 1000)
+    lastOutput = result.output
+    
+    if (result.success) {
+      log(`  ✓ 任务执行完成 (attempt ${attempt})`)
+      return { name: "执行任务", ...result, duration: Date.now() - start, tokensUsed: 0 }
+    }
+    
+    log(`  ✗ 任务执行失败 (attempt ${attempt}): ${result.output.slice(0, 100)}`)
+    
+    if (attempt === MAX_RETRIES) {
+      return { name: "执行任务", success: false, output: lastOutput, duration: Date.now() - start, tokensUsed: 0 }
+    }
   }
   
-  // 否则通过 CLI 执行
-  const cmd = `bun run --cwd packages/opencode --conditions=browser src/index.ts run "${task.description}"`
-  const result = runCmd(cmd, 30 * 60 * 1000)
-  
-  log(result.success ? "  ✓ 任务执行完成" : `  ✗ 任务执行失败: ${result.output.slice(0, 200)}`)
-  return { name: "执行任务", ...result, duration: Date.now() - start, tokensUsed: 0 }
+  // Should not reach here
+  return { name: "执行任务", success: false, output: lastOutput, duration: Date.now() - start, tokensUsed: 0 }
 }
 
 async function stepBuild(): Promise<StepResult> {
