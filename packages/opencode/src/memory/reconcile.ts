@@ -3,6 +3,7 @@ import path from "path"
 import { Database, eq } from "../storage"
 import { Log } from "../util"
 import { MemoryFtsTable } from "./fts.sql"
+import { MemoryVecTable } from "./vec.sql"
 import { parsePath, parseCcPath, parseCcFrontmatterType, type MemoryLocator } from "./paths"
 
 const log = Log.create({ service: "memory.reconcile" })
@@ -114,6 +115,8 @@ export async function reconcileMemory(
   let pruned = 0
   for (const p of indexed.keys()) {
     if (!diskPaths.has(p)) {
+      // Delete from memory_vec first (FK reference to memory_fts.path)
+      Database.use((db) => db.delete(MemoryVecTable).where(eq(MemoryVecTable.memory_path, p)).run())
       Database.use((db) => db.delete(MemoryFtsTable).where(eq(MemoryFtsTable.path, p)).run())
       pruned++
     }
