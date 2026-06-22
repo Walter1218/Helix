@@ -134,7 +134,7 @@
           "id": "M4-T1",
           "title": "启动性能优化",
           "description": "减少冷启动时间到 500ms 以内",
-          "status": "pending",
+          "status": "in_progress",
           "priority": "medium",
           "estimated_tokens": 80000,
           "tags": [
