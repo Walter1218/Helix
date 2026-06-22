@@ -39,6 +39,9 @@ Helix is **not a fork from scratch**. It inherits the full MiMo-Code engine (Bun
 | **Safety Sandbox** | Basic Shadow Worktree | ✅ + VFS sandbox + AST-level `ToolInterceptor` + `AlignmentGuard` inbox correction |
 | **IM Integration** | ❌ None | ✅ Native Feishu Gateway with fully-autonomous mode, adaptive timeout, real-time progress |
 | **Workflow Engine** | Script-based runtime | ✅ + `vfs-sandbox.ts`, global semaphore concurrency, breakpoint resume |
+| **Auto-Dev Scheduler** | ❌ None | ✅ `launchd`/cron 自动调度 + Roadmap 任务管理 + Pipeline 验证 + 飞书通知 |
+| **OpenSpec Integration** | ❌ None | ✅ 需求规范管理 + Spec→Roadmap 自动转换 + 执行结果回写 + 变更追踪 |
+| **Enhanced Judge** | ❌ None | ✅ 7 项检查：安全性/相关性/过量改动/完整性/回归风险/一致性/Trace覆盖 |
 | **Documentation** | Feature-focused | ✅ Architecture whitepapers, capability roadmap, evolution loop design docs |
 
 ---
@@ -145,6 +148,79 @@ mimo run "Use the workflow tool to run auto-loop with args: 'Your task descripti
 - Iterative: Up to 5 plan-execute-test cycles
 - Persistent: Workflow journal survives interruptions
 
+### 8. Auto-Dev Scheduler (无人值守自动开发)
+
+Helix 支持基于 `launchd`/`cron` 的定时自动开发，从 roadmap.json 自动读取任务并执行完整 Pipeline：
+
+```bash
+# 单次执行（测试用）
+bun run script/auto-dev/scheduler.ts --once --dry-run
+
+# 持续执行（生产用）
+bun run script/auto-dev/scheduler.ts --chat-id <feishu_chat_id>
+```
+
+**Pipeline 流程:**
+```
+任务选择 → 任务执行 → Judge审查 → 增强Judge审查 → 编译验证 → 类型检查
+    → 测试运行 → Lint检查 → Judge验证 → 文档更新 → Spec回写 → Git提交 → 飞书通知
+```
+
+**关键特性:**
+- **自动任务选择**: 基于优先级和里程碑自动选择待办任务
+- **失败重试**: 最多重试 3 次，带重复错误检测
+- **权限请求转发**: 自动将权限问题通知到飞书
+- **预算控制**: 每日 token 消耗上限，防止过度使用
+
+### 9. OpenSpec Integration (需求规范管理)
+
+Helix 集成 OpenSpec 实现需求驱动开发，确保每个代码变更都有对应的需求规范：
+
+```bash
+# 扫描 specs 并更新 roadmap
+bun run script/auto-dev/spec-converter.ts [--dry-run]
+
+# 手动更新 spec 状态
+bun run script/auto-dev/spec-writer.ts <specPath> <requirement> <success>
+```
+
+**集成架构:**
+```
+OpenSpec specs/          roadmap.json         Scheduler Pipeline
+┌──────────────┐        ┌──────────────┐     ┌──────────────┐
+│ auth/spec.md │───────→│ M_SPEC-T1    │────→│ Execute      │
+│ dev/spec.md  │        │ M_SPEC-T2    │     │ Judge Review │
+│ judge/spec.md│        │ M_SPEC-T3    │     │ Spec Write   │
+└──────────────┘        └──────────────┘     └──────────────┘
+       ↑                                         │
+       └───────────── 回写执行结果 ───────────────┘
+```
+
+**关键特性:**
+- **需求可追溯**: 每个代码变更都有对应 spec
+- **自动任务生成**: spec 中的 pending 需求自动转为 roadmap 任务
+- **执行结果回写**: 成功/失败状态自动更新到 spec
+- **智能匹配**: 支持中文关键词匹配普通任务到对应 spec
+
+### 10. Enhanced Judge (7 项代码审查)
+
+Helix 的 Judge 系统提供 7 项自动化代码审查，确保代码质量和安全性：
+
+| 检查项 | 说明 | 触发条件 |
+|--------|------|----------|
+| **安全性检查** | eval/exec/密钥泄露/危险命令 | 所有变更 |
+| **相关性检查** | 变更文件是否在任务范围内 | 所有变更 |
+| **过量改动检测** | 改动文件超出任务复杂度 | 所有变更 |
+| **完整性检查** | 代码是否实现 spec 需求 | 有 spec 时 |
+| **回归风险检查** | 导出删除/参数减少/类型字段删除 | 所有变更 |
+| **一致性检查** | 命名规范/any类型/console.log | 所有变更（建议） |
+| **Trace 覆盖检查** | 新增文件缺少 trace 埋点 | 新增文件（建议） |
+
+```bash
+# 运行 Judge 验收测试
+bun run script/auto-dev/test-judge-acceptance.ts
+```
+
 ---
 
 ## 🚀 Quick Start
@@ -228,6 +304,58 @@ bun run script/dogfooding/export_dpo.ts      # Export DPO dataset
 bash script/dogfooding/setup_local_cron.sh   # Setup cron job
 ```
 
+### Auto-Dev Scheduler (无人值守自动开发)
+
+```bash
+# 1. 初始化 OpenSpec（首次）
+npm install -g @fission-ai/openspec@latest
+cd /path/to/Helix
+
+# 2. 扫描 specs 并生成 roadmap 任务
+bun run script/auto-dev/spec-converter.ts
+
+# 3. 单次执行（测试用）
+bun run script/auto-dev/scheduler.ts --once --dry-run
+
+# 4. 持续执行（生产用，带飞书通知）
+bun run script/auto-dev/scheduler.ts --chat-id <feishu_chat_id>
+
+# 5. 设置 launchd 定时任务（macOS）
+bash script/auto-dev/setup.sh
+```
+
+### OpenSpec 需求管理
+
+```bash
+# 查看当前 specs
+ls openspec/specs/
+
+# 创建新 spec
+openspec create <spec-name>
+
+# 扫描并更新 roadmap
+bun run script/auto-dev/spec-converter.ts
+
+# 手动更新 spec 状态
+bun run script/auto-dev/spec-writer.ts openspec/specs/auth-session/spec.md "Session expiration" true
+
+# 运行集成测试
+bun run script/auto-dev/test-openspec-integration.ts
+bun run script/auto-dev/test-openspec-trigger.ts
+```
+
+### Judge 审查测试
+
+```bash
+# 运行 Judge 验收测试（11 个场景）
+bun run script/auto-dev/test-judge-acceptance.ts
+
+# 查看检查项覆盖
+# ✓ 正常开发场景（应通过）
+# ✗ 安全风险场景（应拦截）：eval/密钥泄露/导出删除/参数减少
+# ⚠ 代码质量场景（提建议）：any类型/console.log/magic number
+```
+
 ### Slack Gateway
 
 ```bash
@@ -270,7 +398,19 @@ Helix/
 │   └── sdk/               # JavaScript SDK
 ├── script/
 │   ├── dogfooding/        # Evolution flywheel tools (14 files)
-│   └── auto-dev/          # Auto-dev scheduler & launchd setup
+│   └── auto-dev/          # Auto-dev scheduler & OpenSpec integration
+│       ├── scheduler.ts      # 主调度器
+│       ├── spec-converter.ts # Spec → Roadmap 转换
+│       ├── spec-writer.ts    # 执行结果 → Spec 回写
+│       ├── judge-enhanced.ts # 增强版 Judge（7 项检查）
+│       ├── setup.sh          # launchd 定时任务配置
+│       └── test-*.ts         # 集成测试
+├── openspec/
+│   └── specs/             # OpenSpec 需求规范
+│       ├── auth-session/     # 认证会话需求
+│       ├── auto-dev/         # 自动开发需求
+│       ├── feishu-gateway/   # 飞书网关需求
+│       └── judge-agent/      # Judge Agent 需求
 ├── .mimocode/
 │   └── roadmap.json       # Mainline task definitions
 ├ docs/                    # Architecture docs & testing suite
@@ -287,6 +427,8 @@ Helix/
 - [Feishu Gateway Design](docs/integration/feishu_gateway_design.md)
 - [Capability Roadmap](docs/architecture/helix_capability_roadmap.md)
 - [Auto-Dev Scheduler](docs/features/auto-dev.md)
+- [OpenSpec Integration](docs/features/openspec-integration.md)
+- [OpenSpec Dev Plan](docs/features/openspec-dev-plan.md)
 - [Usage Guide](docs/USAGE.md)
 
 ---
