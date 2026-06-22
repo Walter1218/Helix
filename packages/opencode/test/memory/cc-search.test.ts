@@ -13,7 +13,10 @@ import { provideTmpdirInstance } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 
 afterEach(async () => {
-  Database.use((db) => db.delete(MemoryFtsTable).run())
+  Database.use((db) => {
+    db.run("DELETE FROM memory_vec")
+    db.run("DELETE FROM memory_fts")
+  })
   await Instance.disposeAll()
 })
 

@@ -245,13 +245,23 @@ async function stepExecuteTask(task: RoadmapTask, dryRun: boolean, chatId?: stri
     return { name: "执行任务", success: true, output: "[dry-run] skipped", duration: 0, tokensUsed: 0 }
   }
   
-  // Loop mode: 最多重试 3 次
+  // Loop mode: 最多重试 3 次，带错误分析
   const MAX_RETRIES = 3
   let lastOutput = ""
+  const errorPatterns: string[] = [] // 跟踪错误模式
   
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     if (attempt > 1) {
       log(`  ↻ 重试 ${attempt}/${MAX_RETRIES}...`)
+      
+      // 错误分析：如果连续 2 次相同错误，跳过重试
+      if (errorPatterns.length >= 2) {
+        const lastTwo = errorPatterns.slice(-2)
+        if (lastTwo[0] === lastTwo[1]) {
+          log(`  ⚠ 检测到重复错误模式，跳过重试`)
+          return { name: "执行任务", success: false, output: lastOutput, duration: Date.now() - start, tokensUsed: 0 }
+        }
+      }
     }
     
     // 如果配置了 chatId，通过 Gateway 执行（支持权限请求转发到飞书）
@@ -263,6 +273,10 @@ async function stepExecuteTask(task: RoadmapTask, dryRun: boolean, chatId?: stri
         log(`  ✓ 任务执行完成 (attempt ${attempt})`)
         return { name: "执行任务", ...result, duration: Date.now() - start }
       }
+      
+      // 提取错误模式
+      const errorPattern = extractErrorPattern(result.output)
+      errorPatterns.push(errorPattern)
       
       log(`  ✗ 任务执行失败 (attempt ${attempt}): ${result.output.slice(0, 100)}`)
       
@@ -284,6 +298,10 @@ async function stepExecuteTask(task: RoadmapTask, dryRun: boolean, chatId?: stri
       return { name: "执行任务", ...result, duration: Date.now() - start, tokensUsed: 0 }
     }
     
+    // 提取错误模式
+    const errorPattern = extractErrorPattern(result.output)
+    errorPatterns.push(errorPattern)
+    
     log(`  ✗ 任务执行失败 (attempt ${attempt}): ${result.output.slice(0, 100)}`)
     
     if (attempt === MAX_RETRIES) {
@@ -293,6 +311,17 @@ async function stepExecuteTask(task: RoadmapTask, dryRun: boolean, chatId?: stri
   
   // Should not reach here
   return { name: "执行任务", success: false, output: lastOutput, duration: Date.now() - start, tokensUsed: 0 }
+}
+
+/** 提取错误模式（用于重复错误检测） */
+function extractErrorPattern(output: string): string {
+  // 提取关键错误特征
+  if (output.includes("FOREIGN KEY")) return "FK_CONSTRAINT"
+  if (output.includes("timeout") || output.includes("超时")) return "TIMEOUT"
+  if (output.includes("permission") || output.includes("权限")) return "PERMISSION"
+  if (output.includes("not found") || output.includes("不存在")) return "NOT_FOUND"
+  if (output.includes("syntax error") || output.includes("语法错误")) return "SYNTAX_ERROR"
+  return "UNKNOWN"
 }
 
 async function stepBuild(): Promise<StepResult> {

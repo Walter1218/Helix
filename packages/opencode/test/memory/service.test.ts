@@ -12,7 +12,11 @@ import { testEffect } from "../lib/effect"
 
 afterEach(async () => {
   // Clear shared in-memory DB rows so tests don't bleed into each other.
-  Database.use((db) => db.delete(MemoryFtsTable).run())
+  // Delete in correct order to avoid FK constraint violations.
+  Database.use((db) => {
+    db.run("DELETE FROM memory_vec")
+    db.run("DELETE FROM memory_fts")
+  })
   await Instance.disposeAll()
 })
 
