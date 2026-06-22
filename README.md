@@ -33,7 +33,7 @@ Helix is **not a fork from scratch**. It inherits the full MiMo-Code engine (Bun
 
 | Layer | MiMo-Code (Original) | Helix (This Repo) |
 |-------|---------------------|-------------------|
-| **Observability** | ❌ None | ✅ `TraceReporter` + `HeuristicFilter` + `AlignmentGuard` |
+| **Observability** | ❌ None | ✅ `TraceReporter` + `HeuristicFilter` + `AlignmentGuard` + 可配置采样 |
 | **Memory Retrieval** | SQLite FTS5 only | ✅ BM25 + Vector RAG (`sqlite-vec` + Embedder) with hybrid scoring |
 | **Evolution Flywheel** | ❌ None | ✅ `script/dogfooding/`—14 tools for automated case generation, DPO export, cron-scheduled evolution loops |
 | **Safety Sandbox** | Basic Shadow Worktree | ✅ + VFS sandbox + AST-level `ToolInterceptor` + `AlignmentGuard` inbox correction |
@@ -42,6 +42,10 @@ Helix is **not a fork from scratch**. It inherits the full MiMo-Code engine (Bun
 | **Auto-Dev Scheduler** | ❌ None | ✅ `launchd`/cron 自动调度 + Roadmap 任务管理 + Pipeline 验证 + 飞书通知 |
 | **OpenSpec Integration** | ❌ None | ✅ 需求规范管理 + Spec→Roadmap 自动转换 + 执行结果回写 + 变更追踪 |
 | **Enhanced Judge** | ❌ None | ✅ 7 项检查：安全性/相关性/过量改动/完整性/回归风险/一致性/Trace覆盖 |
+| **Mode Registry** | ❌ None | ✅ 可插拔模式注册表 + EvolutionConfig 配置 + 模式级别 Judge/Trace 控制 |
+| **Pre-flight** | ❌ None | ✅ 任务执行前准入检查：spec完整性/token预算/依赖/权限 |
+| **Cardinal** | ❌ None | ✅ 运行时动态阻塞降级：block/pause/stop/warn 四级 |
+| **Dynamic Agent** | ❌ None | ✅ 任务分解 + 动态 Persona 生成 + L0/L1/L2 三层成功定义 |
 | **Documentation** | Feature-focused | ✅ Architecture whitepapers, capability roadmap, evolution loop design docs |
 
 ---
@@ -75,14 +79,29 @@ DIRTY_PATTERNS = [/timeout/i, /out of memory/i, /toolinterceptor blocked/i]
 inbox.send({ senderActorID: "alignment-guard", content: "<alignment-guard>..." })
 ```
 
-**Trace 日志覆盖 (85% 覆盖率)**:
+**Trace 日志覆盖 (100% 覆盖率)**:
 - `session` - 会话创建、提示处理、完成状态
 - `server` - HTTP 请求接收和处理
 - `llm` - LLM 流式调用（providerID、modelID、agent、mode）
 - `tool` - 工具初始化、执行开始/完成/失败
 - `provider` - 模型解析、语言模型加载
 - `memory` - 记忆协调、索引、剪枝
-- `agent` - 状态初始化和就绪（部分覆盖）
+- `agent` - 状态初始化和就绪
+- `workflow` - 工作流执行
+- `actor` - Actor 并发
+- `task` - 任务管理
+
+**可配置采样**:
+```json
+{
+  "observability": {
+    "trace": {
+      "sampling": { "enabled": false, "rate": 1.0 },
+      "retention": { "maxSize": "10GB", "autoCleanup": true }
+    }
+  }
+}
+```
 
 **关键路径**: 会话创建 → HTTP 请求 → LLM 调用 → 工具执行 → 会话完成
 
@@ -162,12 +181,14 @@ bun run script/auto-dev/scheduler.ts --chat-id <feishu_chat_id>
 
 **Pipeline 流程:**
 ```
-任务选择 → 任务执行 → Judge审查 → 增强Judge审查 → 编译验证 → 类型检查
-    → 测试运行 → Lint检查 → Judge验证 → 文档更新 → Spec回写 → Git提交 → 飞书通知
+任务选择 → Pre-flight检查 → 任务执行 → Judge审查(可选) → 增强Judge审查(可选) → 编译验证 → 类型检查
+    → 测试运行 → Lint检查 → Judge验证 → 文档更新 → Spec回写 → Trace保存(可选) → DPO导出(可选) → Git提交 → 飞书通知
 ```
 
 **关键特性:**
 - **自动任务选择**: 基于优先级和里程碑自动选择待办任务
+- **模式感知**: 根据任务模式（build/plan/compose等）决定是否启用 Judge、Trace 导出
+- **Pre-flight 检查**: 任务执行前自动检查 spec 完整性、token 预算、依赖、权限
 - **失败重试**: 最多重试 3 次，带重复错误检测
 - **权限请求转发**: 自动将权限问题通知到飞书
 - **预算控制**: 每日 token 消耗上限，防止过度使用
@@ -396,15 +417,26 @@ Helix/
 │   ├── feishu-gateway/    # Feishu IM gateway (WebSocket, fully autonomous)
 │   ├── app/               # Web UI (SolidJS + Tailwind)
 │   └── sdk/               # JavaScript SDK
+├── packages/opencode/src/
+│   ├── session/
+│   │   ├── mode-registry.ts    # 模式注册表（可插拔模式）
+│   │   ├── preflight.ts        # Pre-flight 任务准入检查
+│   │   └── cardinal.ts         # Cardinal 运行时阻塞降级
+│   └── agent/
+│       ├── decomposition-gate.ts # 任务分解
+│       ├── dynamic-agent.ts    # 动态 Persona 生成
+│       └── agent-stats.ts      # L0/L1/L2 三层成功定义
 ├── script/
 │   ├── dogfooding/        # Evolution flywheel tools (14 files)
+│   │   ├── auto-export.ts    # DPO 自动导出（含 Judge 验证门）
+│   │   └── test-w1-acceptance.ts # W1 验收测试
 │   └── auto-dev/          # Auto-dev scheduler & OpenSpec integration
-│       ├── scheduler.ts      # 主调度器
+│       ├── scheduler.ts      # 主调度器（集成 ModeRegistry）
 │       ├── spec-converter.ts # Spec → Roadmap 转换
 │       ├── spec-writer.ts    # 执行结果 → Spec 回写
 │       ├── judge-enhanced.ts # 增强版 Judge（7 项检查）
 │       ├── setup.sh          # launchd 定时任务配置
-│       └── test-*.ts         # 集成测试
+│       └── test-*-acceptance.ts # 各阶段验收测试
 ├── openspec/
 │   └── specs/             # OpenSpec 需求规范
 │       ├── auth-session/     # 认证会话需求
@@ -429,6 +461,7 @@ Helix/
 - [Auto-Dev Scheduler](docs/features/auto-dev.md)
 - [OpenSpec Integration](docs/features/openspec-integration.md)
 - [OpenSpec Dev Plan](docs/features/openspec-dev-plan.md)
+- [Helix Evolution Roadmap](docs/helix-evolution-roadmap.md)
 - [Usage Guide](docs/USAGE.md)
 
 ---

@@ -13,6 +13,27 @@ import { Database } from "bun:sqlite"
 import { execSync } from "child_process"
 import { updateSpecStatus, findSpecForTask } from "./spec-writer"
 import { runEnhancedJudge } from "./judge-enhanced"
+import { exportDPO, shouldExport } from "../dogfooding/auto-export"
+
+// ModeRegistry配置（简化版，避免Effect依赖）
+interface EvolutionConfig {
+  judgeEnabled: boolean
+  traceExportEnabled: boolean
+  evolutionEnabled: boolean
+}
+
+const DEFAULT_EVOLUTION_CONFIG: Record<string, EvolutionConfig> = {
+  ask: { judgeEnabled: false, traceExportEnabled: false, evolutionEnabled: false },
+  build: { judgeEnabled: true, traceExportEnabled: true, evolutionEnabled: true },
+  plan: { judgeEnabled: true, traceExportEnabled: true, evolutionEnabled: true },
+  compose: { judgeEnabled: true, traceExportEnabled: true, evolutionEnabled: true },
+  max: { judgeEnabled: true, traceExportEnabled: true, evolutionEnabled: true },
+  loop: { judgeEnabled: true, traceExportEnabled: true, evolutionEnabled: true },
+}
+
+function getModeEvolutionConfig(modeId: string): EvolutionConfig {
+  return DEFAULT_EVOLUTION_CONFIG[modeId] ?? DEFAULT_EVOLUTION_CONFIG.build!
+}
 
 const PROJECT_ROOT = join(import.meta.dirname, "../..")
 const ROADMAP_PATH = join(PROJECT_ROOT, ".mimocode/roadmap.json")
@@ -28,6 +49,7 @@ interface RoadmapTask {
   estimated_tokens: number
   tags: string[]
   specPath?: string
+  mode?: string  // 任务模式，默认为build
 }
 
 interface RoadmapMilestone {
@@ -750,6 +772,11 @@ interface PipelineResult {
 async function runPipeline(task: RoadmapTask, options: { dryRun: boolean; noPush: boolean; chatId?: string }): Promise<PipelineResult> {
   const steps: StepResult[] = []
   
+  // 获取模式配置
+  const mode = task.mode ?? "build"
+  const evolutionConfig = getModeEvolutionConfig(mode)
+  log(`模式: ${mode} | Judge: ${evolutionConfig.judgeEnabled ? "启用" : "禁用"} | Trace: ${evolutionConfig.traceExportEnabled ? "启用" : "禁用"}`)
+  
   // Step 1: 执行任务
   steps.push(await stepExecuteTask(task, options.dryRun, options.chatId))
   const execStep = steps[steps.length - 1]
@@ -765,13 +792,18 @@ async function runPipeline(task: RoadmapTask, options: { dryRun: boolean; noPush
     return { success: true, tokensUsed: 0, steps }
   }
   
-  // Step 2: Judge 审查（检查代码变更是否有害）
-  steps.push(await stepJudgeReview())
-  const judgeFailed = !steps[steps.length - 1].success
-  if (judgeFailed) {
-    log("\n✗ Judge 审查失败，终止流程")
-    printReport(steps)
-    return { success: false, tokensUsed: execStep.tokensUsed ?? 0, steps }
+  // Step 2: Judge 审查（根据模式配置决定是否启用）
+  let judgeFailed = false
+  if (evolutionConfig.judgeEnabled) {
+    steps.push(await stepJudgeReview())
+    judgeFailed = !steps[steps.length - 1].success
+    if (judgeFailed) {
+      log("\n✗ Judge 审查失败，终止流程")
+      printReport(steps)
+      return { success: false, tokensUsed: execStep.tokensUsed ?? 0, steps }
+    }
+  } else {
+    log("\n[跳过] Judge 审查（模式禁用）")
   }
   
   // Step 3: 编译验证
@@ -783,13 +815,18 @@ async function runPipeline(task: RoadmapTask, options: { dryRun: boolean; noPush
   steps.push(await stepTest())
   steps.push(await stepLint())
   
-  // Step 2.5: 增强 Judge 审查（基于 spec）
-  steps.push(await stepEnhancedJudge(task))
-  const enhancedJudgeFailed = !steps[steps.length - 1].success
-  if (enhancedJudgeFailed) {
-    log("\n✗ 增强 Judge 审查失败，终止流程")
-    printReport(steps)
-    return { success: false, tokensUsed: execStep.tokensUsed ?? 0, steps }
+  // Step 2.5: 增强 Judge 审查（根据模式配置决定是否启用）
+  let enhancedJudgeFailed = false
+  if (evolutionConfig.judgeEnabled) {
+    steps.push(await stepEnhancedJudge(task))
+    enhancedJudgeFailed = !steps[steps.length - 1].success
+    if (enhancedJudgeFailed) {
+      log("\n✗ 增强 Judge 审查失败，终止流程")
+      printReport(steps)
+      return { success: false, tokensUsed: execStep.tokensUsed ?? 0, steps }
+    }
+  } else {
+    log("\n[跳过] 增强 Judge 审查（模式禁用）")
   }
 
   // Step 7: Judge 验证 Pipeline（测试/编译是否通过）
@@ -809,6 +846,9 @@ async function runPipeline(task: RoadmapTask, options: { dryRun: boolean; noPush
   // 任务成功 = 执行成功 + Judge审查通过 + 增强Judge通过 + 编译成功 + Judge验证通过
   const taskSuccess = !buildFailed && !judgeFailed && !enhancedJudgeFailed && !pipelineVerifyFailed
   const tokensUsed = execStep.tokensUsed ?? 0
+
+  // Step 10: 保存Trace到DPO目录
+  await stepSaveTrace(task, taskSuccess, tokensUsed, steps)
 
   printReport(steps)
   return { success: taskSuccess, tokensUsed, steps }
@@ -831,6 +871,87 @@ function printReport(steps: StepResult[]) {
   log(`  总耗时: ${(totalTime / 1000).toFixed(1)}s`)
   log(`  结果: ${steps.every(s => s.success) ? "全部通过" : "有失败项"}`)
   log("=".repeat(50))
+}
+
+// ============ Trace Export ============
+
+const DOFOODING_DIR = join(PROJECT_ROOT, ".dogfooding")
+const SUCCESS_DIR = join(DOFOODING_DIR, "success_traces")
+const FAILED_DIR = join(DOFOODING_DIR, "failed_traces")
+
+/**
+ * 保存任务执行trace到success/failed目录
+ */
+async function stepSaveTrace(task: RoadmapTask, success: boolean, tokensUsed: number, steps: StepResult[]): Promise<void> {
+  // 获取模式配置
+  const mode = task.mode ?? "build"
+  const evolutionConfig = getModeEvolutionConfig(mode)
+
+  // 检查模式是否启用Trace导出
+  if (!evolutionConfig.traceExportEnabled) {
+    log("[跳过] Trace导出（模式禁用）")
+    return
+  }
+
+  try {
+    const targetDir = success ? SUCCESS_DIR : FAILED_DIR
+    if (!existsSync(targetDir)) {
+      mkdirSync(targetDir, { recursive: true })
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
+    const traceFile = join(targetDir, `${task.id}-${timestamp}.json`)
+
+    const trace = {
+      id: `${task.id}-${timestamp}`,
+      taskId: task.id,
+      title: task.title,
+      description: task.description,
+      success,
+      tokensUsed,
+      timestamp: Date.now(),
+      mode,
+      steps: steps.map(s => ({
+        name: s.name,
+        success: s.success,
+        duration: s.duration,
+        output: s.output.slice(0, 500), // 限制输出长度
+      })),
+      diff: getGitDiff(),
+    }
+
+    writeFileSync(traceFile, JSON.stringify(trace, null, 2))
+    log(`✓ Trace 已保存: ${traceFile}`)
+
+    // 检查模式是否启用进化学习
+    if (evolutionConfig.evolutionEnabled) {
+      // 检查是否需要自动导出DPO
+      const shouldExportResult = await shouldExport()
+      if (shouldExportResult) {
+        log("触发 DPO 自动导出...")
+        await exportDPO([], false, false)
+      }
+    } else {
+      log("[跳过] DPO导出（模式禁用进化学习）")
+    }
+  } catch (err: any) {
+    log(`⚠ Trace 保存失败: ${err.message}`)
+  }
+}
+
+/**
+ * 获取git diff
+ */
+function getGitDiff(): string {
+  try {
+    return execSync("git diff HEAD --unified=3", {
+      encoding: "utf-8",
+      cwd: PROJECT_ROOT,
+      timeout: 10000,
+    })
+  } catch {
+    return ""
+  }
 }
 
 // ============ Feishu Notification ============

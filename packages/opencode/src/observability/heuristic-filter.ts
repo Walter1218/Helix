@@ -26,6 +26,7 @@ export class Service extends Context.Service<Service, Interface>()("@opencode/He
 
 // Known dirty error patterns that should not poison the model's memory
 const DIRTY_PATTERNS = [
+  // 基础设施错误
   /timeout/i,
   /killed\s+by\s+signal/i,
   /out\s+of\s+memory/i,
@@ -36,6 +37,28 @@ const DIRTY_PATTERNS = [
   /socket\s+hang\s+up/i,
   /network\s+error/i,
   /toolinterceptor\s+blocked/i, // Don't let it learn about our safety limits
+
+  // API/限流错误
+  /rate\s*limit/i,
+  /quota\s*exceeded/i,
+  /too\s*many\s*requests/i,
+  /429/, // HTTP 429
+
+  // 资源错误
+  /insufficient\s*funds/i,
+  /billing/i,
+  /payment\s*required/i,
+
+  // 模型错误
+  /model\s*overloaded/i,
+  /server\s*overloaded/i,
+  /service\s*unavailable/i,
+  /503/, // HTTP 503
+
+  // 上下文错误
+  /context\s*length\s*exceeded/i,
+  /max\s*tokens\s*exceeded/i,
+  /token\s*limit/i,
 ]
 
 export const layer = Layer.effect(

@@ -74,9 +74,26 @@ import { ActorRegistry } from "@/actor/registry"
 import { Metrics } from "@/metrics"
 import { resolveInvocationStyle, type ToolStyleConfig } from "../tool/invocation-style"
 import { shouldAutoDream, shouldAutoDistill, DREAM_TASK, DISTILL_TASK, AUTO_DREAM_TITLE, AUTO_DISTILL_TITLE } from "./auto-dream"
+import { ModeRegistry } from "./mode-registry"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
+
+/**
+ * 获取模式的EvolutionConfig
+ * 用于判断模式是否启用Judge、Trace导出等
+ */
+export function getModeEvolutionConfig(modeId: string) {
+  const DEFAULT_EVOLUTION_CONFIG: Record<string, { judgeEnabled: boolean; traceExportEnabled: boolean; evolutionEnabled: boolean }> = {
+    ask: { judgeEnabled: false, traceExportEnabled: false, evolutionEnabled: false },
+    build: { judgeEnabled: true, traceExportEnabled: true, evolutionEnabled: true },
+    plan: { judgeEnabled: true, traceExportEnabled: true, evolutionEnabled: true },
+    compose: { judgeEnabled: true, traceExportEnabled: true, evolutionEnabled: true },
+    max: { judgeEnabled: true, traceExportEnabled: true, evolutionEnabled: true },
+    loop: { judgeEnabled: true, traceExportEnabled: true, evolutionEnabled: true },
+  }
+  return DEFAULT_EVOLUTION_CONFIG[modeId] ?? DEFAULT_EVOLUTION_CONFIG.build!
+}
 
 // Recall-reminder hints, rendered in each tool's configured invocation style so
 // shell-mode sessions never see a JSON-shaped example (which primes models to
