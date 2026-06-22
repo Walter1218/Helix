@@ -595,22 +595,11 @@ const GATEWAY_URL = process.env.GATEWAY_API_URL || "http://localhost:3096"
 
 async function ensureGateway(): Promise<boolean> {
   try {
-    const resp = await fetch(`${GATEWAY_URL}/health`, { signal: AbortSignal.timeout(2000) })
+    const resp = await fetch(`${GATEWAY_URL}/api/health`, { signal: AbortSignal.timeout(2000) })
     if (resp.ok) return true
   } catch {}
 
-  // gateway 没有 /health，直接尝试 notify 端点可达性
-  try {
-    const resp = await fetch(`${GATEWAY_URL}/api/notify`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chatId: "ping", message: "ping" }),
-      signal: AbortSignal.timeout(3000),
-    })
-    // 400 也算可达（参数不对但服务在）
-    return resp.status < 500
-  } catch {
-    log("Gateway 不可达，尝试启动...")
+  log("Gateway 不可达，尝试启动...")
     try {
       execSync(`cd ${PROJECT_ROOT}/packages/feishu-gateway && bun run src/index.ts &`, {
         encoding: "utf-8",
@@ -710,7 +699,7 @@ async function main() {
   const pipeline = await runPipeline(task, { dryRun, noPush, chatId })
   
   // 更新状态（dry-run 不标记）
-  if (!options.dryRun) {
+  if (!dryRun) {
     updateTaskStatus(roadmap, task.id, pipeline.success ? "done" : "pending")
   }
   

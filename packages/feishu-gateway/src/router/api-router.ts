@@ -35,6 +35,11 @@ export function createApiRouter(sessions: SessionManager) {
     }
   })
 
+  // 健康检查
+  app.get("/health", async (c) => {
+    return c.json({ status: "ok", timestamp: Date.now() })
+  })
+
   // 通用通知接口（供 scheduler 等外部工具调用）
   app.post("/notify", async (c) => {
     try {
