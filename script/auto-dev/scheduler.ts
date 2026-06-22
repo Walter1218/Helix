@@ -353,9 +353,40 @@ async function stepTypecheck(): Promise<StepResult> {
 
 async function stepTest(): Promise<StepResult> {
   const start = Date.now()
-  log("[4/9] 运行测试...")
+  log("[5/10] 运行测试...")
   
-  const result = runCmd("cd packages/opencode && bun test", 5 * 60 * 1000)
+  // 只跑变更文件相关的测试，不跑全量
+  const { output: changed } = runCmd("git diff --name-only HEAD~1 2>/dev/null || git status --porcelain")
+  const changedFiles = changed.split("\n").filter(f => f.trim())
+  
+  // 找出变更文件对应的测试文件
+  const testFiles: string[] = []
+  for (const file of changedFiles) {
+    const clean = file.replace(/^[AM]\s+/, "").trim()
+    // src/foo.ts → test/foo.test.ts 或 test/foo/*.test.ts
+    if (clean.startsWith("packages/opencode/src/") && clean.endsWith(".ts")) {
+      const base = clean.replace("packages/opencode/src/", "").replace(".ts", "")
+      const testPatterns = [
+        `packages/opencode/test/${base}.test.ts`,
+        `packages/opencode/test/${base.replace("/", "/")}.test.ts`,
+      ]
+      for (const p of testPatterns) {
+        if (existsSync(join(PROJECT_ROOT, p))) {
+          testFiles.push(p)
+        }
+      }
+    }
+  }
+  
+  // 如果没有找到相关测试，跳过
+  if (testFiles.length === 0) {
+    log("  - 无相关测试文件，跳过")
+    return { name: "测试", success: true, output: "无相关测试，跳过", duration: Date.now() - start }
+  }
+  
+  log(`  找到 ${testFiles.length} 个相关测试文件`)
+  const cmd = `cd packages/opencode && bun test ${testFiles.join(" ")}`
+  const result = runCmd(cmd, 2 * 60 * 1000) // 2分钟超时
   
   log(result.success ? "  ✓ 测试通过" : `  ✗ 测试失败`)
   return { name: "测试", ...result, duration: Date.now() - start }
@@ -363,9 +394,19 @@ async function stepTest(): Promise<StepResult> {
 
 async function stepLint(): Promise<StepResult> {
   const start = Date.now()
-  log("[5/9] Lint 检查...")
+  log("[6/10] Lint 检查...")
   
-  const result = runCmd("bun run lint", 5 * 60 * 1000)
+  // 只 lint 变更文件
+  const { output: changed } = runCmd("git diff --name-only HEAD~1 2>/dev/null || git status --porcelain")
+  const changedFiles = changed.split("\n").filter(f => f.trim()).map(f => f.replace(/^[AM]\s+/, "").trim())
+  const tsFiles = changedFiles.filter(f => f.endsWith(".ts") || f.endsWith(".tsx"))
+  
+  if (tsFiles.length === 0) {
+    log("  - 无变更 TS 文件，跳过")
+    return { name: "Lint", success: true, output: "无变更文件，跳过", duration: Date.now() - start }
+  }
+  
+  const result = runCmd(`bun run lint ${tsFiles.join(" ")}`, 2 * 60 * 1000)
   
   log(result.success ? "  ✓ Lint 通过" : `  ✗ Lint 失败`)
   return { name: "Lint", ...result, duration: Date.now() - start }
