@@ -5,7 +5,14 @@
 ### Automatic scheduling
 The system SHALL support cron-based automatic task execution.
 
-**Status**: implemented
+
+
+
+
+
+
+**Status**: ✅ implemented (2026-06-23)
+**Tokens**: 524,949
 
 ### Roadmap integration
 The system SHALL read tasks from roadmap.json and execute them automatically.

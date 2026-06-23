@@ -425,11 +425,11 @@ async function stepTest(): Promise<StepResult> {
     if (clean.startsWith("packages/opencode/src/") && clean.endsWith(".ts")) {
       const base = clean.replace("packages/opencode/src/", "").replace(".ts", "")
       const testPatterns = [
-        `packages/opencode/test/${base}.test.ts`,
-        `packages/opencode/test/${base.replace("/", "/")}.test.ts`,
+        `test/${base}.test.ts`,
+        `test/${base.replace("/", "/")}.test.ts`,
       ]
       for (const p of testPatterns) {
-        if (existsSync(join(PROJECT_ROOT, p))) {
+        if (existsSync(join(PROJECT_ROOT, "packages/opencode", p))) {
           testFiles.push(p)
         }
       }

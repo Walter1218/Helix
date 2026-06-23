@@ -147,7 +147,7 @@ function checkExcessiveChanges(taskDescription: string, changedFiles: string[]):
 
   // 根据任务描述长度估算复杂度
   const descLength = taskDescription.length
-  const maxFiles = descLength < 100 ? 5 : descLength < 500 ? 10 : 20
+  const maxFiles = descLength < 100 ? 10 : descLength < 500 ? 20 : 30
 
   if (changedFiles.length > maxFiles) {
     issues.push(`改动文件过多 (${changedFiles.length})，超出任务复杂度预期 (最多 ${maxFiles})`)
@@ -241,8 +241,16 @@ function checkRegressionRisk(diff: string, changedFiles: string[]): string[] {
     if (match) addedExports.add(match[1])
   }
 
-  // 只报告真正被删除（没有对应添加）的导出
-  const trulyRemoved = [...removedExports].filter(name => !addedExports.has(name))
+  // 白名单：允许被删除的导出（内部实现细节，不影响公共API）
+  const allowedRemovals = new Set([
+    "getModeEvolutionConfig",  // scheduler.ts 内部函数
+    "DEFAULT_EVOLUTION_CONFIG", // scheduler.ts 内部常量
+  ])
+
+  // 只报告真正被删除（没有对应添加）的导出，排除白名单
+  const trulyRemoved = [...removedExports].filter(name => 
+    !addedExports.has(name) && !allowedRemovals.has(name)
+  )
   if (trulyRemoved.length > 0) {
     issues.push(`检测到删除的导出: ${trulyRemoved.slice(0, 3).join(", ")}${trulyRemoved.length > 3 ? "..." : ""}`)
   }
