@@ -2829,11 +2829,36 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                 yield* bus.publish(TuiEvent.InstructionsLoaded, { files }).pipe(Effect.ignore)
               }
             }
+
+            // OpenSpec: 注入规范上下文（规范驱动开发）
+            let specContext: string | undefined
+            const specInjection = yield* modeRegistry.getSpecInjectionStrategy(modeId).pipe(
+              Effect.catch(() => Effect.succeed("on-match" as const)),
+            )
+            if (specInjection !== "manual") {
+              const lastUserText = msgs.findLast((m) => m.info.role === "user")
+                ?.parts.filter((p) => p.type === "text").map((p) => p.text).join("\n") ?? ""
+              const specMatch = yield* openspec.findSpec(lastUserText).pipe(
+                Effect.catch(() => Effect.succeed(undefined)),
+              )
+              if (specMatch) {
+                const specContent = yield* Effect.sync(() => {
+                  const fs = require("fs")
+                  return fs.readFileSync(specMatch.specPath, "utf-8")
+                }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+                if (specContent) {
+                  specContext = specContent
+                  yield* slog.info("openspec.injected", { specPath: specMatch.specPath, requirement: specMatch.requirement })
+                }
+              }
+            }
+
             const additions = [
               ...env,
               ...(skills ? [skills] : []),
               ...instructions.content,
               ...(format.type === "json_schema" ? [STRUCTURED_OUTPUT_SYSTEM_PROMPT] : []),
+              ...(specContext ? [`## 相关规范\n\`\`\`markdown\n${specContext}\n\`\`\``] : []),
             ]
             // Note: `buildLLMRequestPrefix` also returns a `tools` field, but we
             // intentionally don't use it here — the `tools` variable from `resolveTools`
@@ -2932,8 +2957,10 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             if (cardinalEvo.judgeEnabled) {
               const patches = MessageV2.parts(handle.message.id).filter((p) => p.type === "patch") as Array<{ files?: string[] }>
               if (patches.length > 0) {
-                const judge = makeJudgeAgent()
+                const judge = makeJudgeAgent({ specDrivenEnabled: cardinalEvo.specDrivenEnabled })
                 const changedFiles = patches.flatMap((p) => p.files ?? [])
+                const lastUserText = msgs.findLast((m) => m.info.role === "user")
+                  ?.parts.filter((p) => p.type === "text").map((p) => p.text).join("\n") ?? ""
                 const review = judge.quickReview({
                   actorID: agent.name,
                   requestType: "test_modification",
@@ -2941,9 +2968,15 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                   suggestedChange: changedFiles.join("\n"),
                   reason: "automated check after tool execution",
                   context: {},
+                  specContent: specContext,
+                  taskDescription: lastUserText,
                 })
                 if (!review.approved) {
                   yield* slog.warn("judge flagged code change", { rationale: review.rationale, suggestions: review.suggestions, files: changedFiles })
+                }
+                // 如果有建议，记录到日志
+                if (review.suggestions && review.suggestions.length > 0) {
+                  yield* slog.info("judge suggestions", { suggestions: review.suggestions })
                 }
               }
             }

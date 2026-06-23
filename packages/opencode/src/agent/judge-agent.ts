@@ -29,6 +29,12 @@ export interface ReviewRequest {
     readonly codeDiff?: string
     readonly testOutput?: string
   }
+  /** 规范内容（用于规范驱动审查） */
+  readonly specContent?: string
+  /** 规范路径 */
+  readonly specPath?: string
+  /** 任务描述 */
+  readonly taskDescription?: string
 }
 
 /** 审查结果 */
@@ -51,6 +57,8 @@ export interface JudgeAgentConfig {
   readonly maxAssertionReduction: number
   /** 是否允许修改测试结构 */
   readonly allowStructuralChanges: boolean
+  /** 是否启用规范驱动审查 */
+  readonly specDrivenEnabled: boolean
 }
 
 // ── Heuristic Checks ────────────────────────────────────────
@@ -145,6 +153,110 @@ const checkTrivialization = (original: string, suggested: string): { valid: bool
   return { valid: true }
 }
 
+/** 安全检查：检测危险调用和密钥泄露 */
+const checkSecurity = (code: string): { valid: boolean; reason?: string; issues?: string[] } => {
+  const issues: string[] = []
+
+  // 检测危险调用
+  const dangerousPatterns = [
+    { pattern: /\beval\s*\(/g, desc: "eval() 调用" },
+    { pattern: /\bnew\s+Function\s*\(/g, desc: "new Function() 调用" },
+    { pattern: /\bexec\s*\(/g, desc: "exec() 调用" },
+    { pattern: /\bchild_process\b/g, desc: "child_process 引用" },
+  ]
+
+  for (const { pattern, desc } of dangerousPatterns) {
+    if (pattern.test(code)) {
+      issues.push(`检测到 ${desc}`)
+    }
+  }
+
+  // 检测密钥泄露
+  const secretPatterns = [
+    { pattern: /api[_-]?key\s*[:=]\s*["'][^"']+["']/i, desc: "API key 硬编码" },
+    { pattern: /AKIA[A-Z0-9]{16}/, desc: "AWS Access Key" },
+    { pattern: /sk-[a-zA-Z0-9]{48}/, desc: "OpenAI API Key" },
+    { pattern: /ghp_[a-zA-Z0-9]{36}/, desc: "GitHub Personal Access Token" },
+    { pattern: /password\s*[:=]\s*["'][^"']+["']/i, desc: "密码硬编码" },
+  ]
+
+  for (const { pattern, desc } of secretPatterns) {
+    if (pattern.test(code)) {
+      issues.push(`检测到 ${desc}`)
+    }
+  }
+
+  if (issues.length > 0) {
+    return {
+      valid: false,
+      reason: `安全检查失败: ${issues.join("; ")}`,
+      issues,
+    }
+  }
+
+  return { valid: true }
+}
+
+/** 检测规范合规性 */
+const checkSpecCompliance = (
+  specContent: string | undefined,
+  taskDescription: string | undefined,
+  changedFiles: string[],
+): { valid: boolean; reason?: string; suggestions?: string[] } => {
+  if (!specContent) return { valid: true }
+
+  // 从规范中提取需求
+  const requirements = extractRequirements(specContent)
+  if (requirements.length === 0) return { valid: true }
+
+  // 检查是否有pending需求
+  const pendingReqs = requirements.filter((r) => r.status === "pending")
+  if (pendingReqs.length === 0) return { valid: true }
+
+  // 检查变更是否与pending需求相关
+  if (taskDescription) {
+    const taskLower = taskDescription.toLowerCase()
+    const relevantReqs = pendingReqs.filter((r) => {
+      const reqLower = r.name.toLowerCase()
+      return taskLower.includes(reqLower) || reqLower.includes(taskLower.slice(0, 50))
+    })
+
+    if (relevantReqs.length > 0) {
+      return {
+        valid: true,
+        suggestions: [`此变更可能实现规范需求: ${relevantReqs.map((r) => r.name).join(", ")}`],
+      }
+    }
+  }
+
+  return { valid: true }
+}
+
+/** 从规范内容提取需求 */
+const extractRequirements = (specContent: string): Array<{ name: string; status: string }> => {
+  const requirements: Array<{ name: string; status: string }> = []
+  const lines = specContent.split("\n")
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (line.startsWith("### ")) {
+      const name = line.slice(4).trim()
+      // 查找状态行
+      let status = "unknown"
+      for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
+        const statusMatch = lines[j].match(/\*\*Status\*\*:\s*(\w+)/)
+        if (statusMatch) {
+          status = statusMatch[1]
+          break
+        }
+      }
+      requirements.push({ name, status })
+    }
+  }
+
+  return requirements
+}
+
 // ── Judge Agent Factory ─────────────────────────────────────
 
 /**
@@ -157,6 +269,7 @@ export const make = (config: Partial<JudgeAgentConfig> = {}) => {
     strictMode: true,
     maxAssertionReduction: 0.3,
     allowStructuralChanges: false,
+    specDrivenEnabled: true,
     ...config,
   }
 
@@ -189,6 +302,40 @@ export const make = (config: Partial<JudgeAgentConfig> = {}) => {
       }
     }
 
+    // 安全检查
+    const securityCheck = checkSecurity(request.suggestedChange)
+    if (!securityCheck.valid) {
+      return {
+        approved: false,
+        rationale: securityCheck.reason!,
+        suggestions: ["移除危险的代码调用", "使用环境变量存储敏感信息"],
+      }
+    }
+
+    // 规范合规性检查（仅在启用时）
+    if (cfg.specDrivenEnabled && request.specContent) {
+      const specCheck = checkSpecCompliance(
+        request.specContent,
+        request.taskDescription,
+        request.suggestedChange.split("\n").filter((l) => l.trim()),
+      )
+      if (!specCheck.valid) {
+        return {
+          approved: false,
+          rationale: specCheck.reason!,
+          suggestions: specCheck.suggestions ?? ["检查变更是否符合规范要求"],
+        }
+      }
+      // 如果有建议，添加到结果中
+      if (specCheck.suggestions && specCheck.suggestions.length > 0) {
+        return {
+          approved: true,
+          rationale: "启发式检查通过，规范合规性检查有建议",
+          suggestions: specCheck.suggestions,
+        }
+      }
+    }
+
     return {
       approved: true,
       rationale: "启发式检查通过，建议进行 LLM 深度审查以确认修改的必要性",
@@ -217,12 +364,15 @@ ${request.suggestedChange}
 ${request.context.error ? `**错误信息**:\n${request.context.error}` : ""}
 ${request.context.testOutput ? `**测试输出**:\n${request.context.testOutput}` : ""}
 ${request.context.codeDiff ? `**代码变更**:\n${request.context.codeDiff}` : ""}
+${request.specContent ? `## 相关规范\n\`\`\`markdown\n${request.specContent}\n\`\`\`` : ""}
+${request.taskDescription ? `## 任务描述\n${request.taskDescription}` : ""}
 
 ## 审查要求
 
 1. **禁止偷懒行为**：不得删减断言、简化测试、或降低测试覆盖
 2. **保护测试意图**：测试用例的目的是验证代码行为，不是为了通过测试
 3. **只允许必要修改**：只有当测试本身确实有错误时才允许修改
+${request.specContent ? "4. **规范合规性**：检查变更是否符合规范中定义的需求" : ""}
 
 请以 JSON 格式返回审查结果：
 {

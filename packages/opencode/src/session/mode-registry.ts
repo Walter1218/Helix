@@ -28,6 +28,10 @@ export interface EvolutionConfig {
   traceExportEnabled: boolean
   /** 是否触发进化学习 */
   evolutionEnabled: boolean
+  /** 是否启用规范驱动开发 */
+  specDrivenEnabled: boolean
+  /** 规范注入策略：always=始终注入, on-match=匹配到规范时注入, manual=手动 */
+  specInjection?: "always" | "on-match" | "manual"
 }
 
 export interface BuildContext {
@@ -83,33 +87,44 @@ const DEFAULT_EVOLUTION_CONFIG: Record<string, EvolutionConfig> = {
     judgeEnabled: false,
     traceExportEnabled: false,
     evolutionEnabled: false,
+    specDrivenEnabled: false,
   },
   build: {
     judgeEnabled: true,
     traceExportEnabled: true,
     evolutionEnabled: true,
+    specDrivenEnabled: true,
+    specInjection: "on-match",
   },
   plan: {
     judgeEnabled: true,
     judgeChecks: ["security", "relevance"],
     traceExportEnabled: true,
     evolutionEnabled: true,
+    specDrivenEnabled: true,
+    specInjection: "on-match",
   },
   compose: {
     judgeEnabled: true,
     judgeChecks: ["security", "completeness"],
     traceExportEnabled: true,
     evolutionEnabled: true,
+    specDrivenEnabled: true,
+    specInjection: "on-match",
   },
   max: {
     judgeEnabled: true,
     traceExportEnabled: true,
     evolutionEnabled: true,
+    specDrivenEnabled: true,
+    specInjection: "on-match",
   },
   loop: {
     judgeEnabled: true,
     traceExportEnabled: true,
     evolutionEnabled: true,
+    specDrivenEnabled: true,
+    specInjection: "on-match",
   },
 }
 
@@ -135,6 +150,12 @@ export interface Interface {
 
   /** 检查模式是否启用Trace导出 */
   readonly isTraceExportEnabled: (modeId: string) => Effect.Effect<boolean>
+
+  /** 检查模式是否启用规范驱动 */
+  readonly isSpecDrivenEnabled: (modeId: string) => Effect.Effect<boolean>
+
+  /** 获取模式的规范注入策略 */
+  readonly getSpecInjectionStrategy: (modeId: string) => Effect.Effect<"always" | "on-match" | "manual">
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/ModeRegistry") {}
@@ -190,7 +211,17 @@ export const layer = Layer.effect(
       return config.traceExportEnabled
     })
 
-    return { register, get, getAll, getEvolutionConfig, isJudgeEnabled, isTraceExportEnabled }
+    const isSpecDrivenEnabled = Effect.fn("ModeRegistry.isSpecDrivenEnabled")(function* (modeId: string) {
+      const config = yield* getEvolutionConfig(modeId)
+      return config.specDrivenEnabled
+    })
+
+    const getSpecInjectionStrategy = Effect.fn("ModeRegistry.getSpecInjectionStrategy")(function* (modeId: string) {
+      const config = yield* getEvolutionConfig(modeId)
+      return config.specInjection ?? "on-match"
+    })
+
+    return { register, get, getAll, getEvolutionConfig, isJudgeEnabled, isTraceExportEnabled, isSpecDrivenEnabled, getSpecInjectionStrategy }
   })
 )
 

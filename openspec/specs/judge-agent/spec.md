@@ -5,24 +5,28 @@
 ### Assertion protection
 The system SHALL detect and block assertion deletions in test files.
 
-**Status**: implemented
+
+
+**Status**: ✅ implemented (2026-06-23)
+**Tokens**: 295,972
 
 ### Structural change detection
 The system SHALL detect removal of test cases.
 
-**Status**: implemented
+**Status**: ✅ implemented (2026-06-23)
 
 ### Context-aware review
 The system SHALL use spec.md as context for judging code changes.
 
-**Status**: pending
+**Status**: ✅ implemented (2026-06-23)
 
 ### Security checks
 The system SHALL detect eval(), exec(), and secret leaks in code changes.
 
-**Status**: pending
+**Status**: ✅ implemented (2026-06-23)
 
 ### Relevance checks
 The system SHALL verify changes are within the task scope.
 
-**Status**: pending
+**Status**: ✅ implemented (2026-06-23)
+**Notes**: 通过checkSpecCompliance函数实现，检查变更与规范需求的关联性

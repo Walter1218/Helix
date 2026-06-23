@@ -20,4 +20,5 @@ The system SHALL run build, typecheck, test, and lint after each task execution.
 ### Spec-driven development
 The system SHALL integrate OpenSpec for requirement tracking and task generation.
 
-**Status**: pending
+**Status**: ✅ implemented (2026-06-23)
+**Notes**: 规范注入到系统提示，JudgeAgent规范合规性检查，所有mode（除ask）支持
