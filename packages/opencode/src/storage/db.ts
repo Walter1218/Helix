@@ -162,6 +162,7 @@ function migrateWithTolerance(db: Client, entries: Journal) {
       } catch (err: any) {
         const msg = (err?.message ?? "") + " " + (err?.cause?.message ?? "")
         // Tolerate: table/index already exists, duplicate column, no such table (for DROP)
+        // Also tolerate: RENAME TABLE target already exists (Drizzle wraps this differently)
         if (
           msg.includes("already exists") ||
           msg.includes("duplicate column") ||

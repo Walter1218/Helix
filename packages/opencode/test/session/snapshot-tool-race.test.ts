@@ -19,6 +19,14 @@ import path from "path"
 import { Session } from "../../src/session"
 import { LLM } from "../../src/session/llm"
 import { SessionPrompt } from "../../src/session/prompt"
+import { ModeRegistry } from '../../src/session/mode-registry'
+import { PreFlight } from '../../src/session/preflight'
+import { Cardinal } from '../../src/session/cardinal'
+import { AlignmentGuard } from '../../src/observability/alignment-guard'
+import { OpenSpec } from '../../src/session/openspec'
+import { DynamicAgent } from "../../src/agent/dynamic-agent"
+import { DecompositionGate } from "../../src/agent/decomposition-gate"
+import { AgentStats } from "../../src/agent/agent-stats"
 import { SessionRevert } from "../../src/session/revert"
 import { SessionSummary } from "../../src/session/summary"
 import { MessageV2 } from "../../src/session/message-v2"
@@ -186,6 +194,7 @@ function makeHttp() {
     SessionPrompt.layer.pipe(
     Layer.provide(Goal.defaultLayer),
       Layer.provide(TaskGateState.defaultLayer),
+    Layer.provide(Layer.mergeAll(ModeRegistry.defaultLayer, PreFlight.defaultLayer, Cardinal.defaultLayer, AlignmentGuard.defaultLayer, OpenSpec.defaultLayer, DynamicAgent.defaultLayer, DecompositionGate.defaultLayer, AgentStats.defaultLayer)),
       Layer.provide(TaskRegistry.defaultLayer),
       Layer.provide(SessionRevert.defaultLayer),
       Layer.provide(SessionSummary.defaultLayer),
@@ -200,8 +209,7 @@ function makeHttp() {
       Layer.provideMerge(trunc),
       Layer.provide(Instruction.defaultLayer),
       Layer.provide(SystemPrompt.defaultLayer),
-      Layer.provide(Inbox.defaultLayer),
-      Layer.provideMerge(deps),
+      Layer.provideMerge(Layer.mergeAll(Inbox.defaultLayer, deps)),
     ),
   )
 }

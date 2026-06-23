@@ -22,6 +22,14 @@ import { SessionSummary } from "../../src/session/summary"
 import { Instruction } from "../../src/session/instruction"
 import { SessionProcessor } from "../../src/session/processor"
 import { SessionPrompt } from "../../src/session/prompt"
+import { ModeRegistry } from '../../src/session/mode-registry'
+import { PreFlight } from '../../src/session/preflight'
+import { Cardinal } from '../../src/session/cardinal'
+import { AlignmentGuard } from '../../src/observability/alignment-guard'
+import { OpenSpec } from '../../src/session/openspec'
+import { DynamicAgent } from "../../src/agent/dynamic-agent"
+import { DecompositionGate } from "../../src/agent/decomposition-gate"
+import { AgentStats } from "../../src/agent/agent-stats"
 import { SessionRevert } from "../../src/session/revert"
 import { SessionRunState } from "../../src/session/run-state"
 import { SessionStatus } from "../../src/session/status"
@@ -153,6 +161,7 @@ export function makeLayer() {
   const prompt = SessionPrompt.layer.pipe(
     Layer.provide(Goal.defaultLayer),
     Layer.provide(TaskGateState.defaultLayer),
+    Layer.provide(Layer.mergeAll(ModeRegistry.defaultLayer, PreFlight.defaultLayer, Cardinal.defaultLayer, AlignmentGuard.defaultLayer, OpenSpec.defaultLayer, DynamicAgent.defaultLayer, DecompositionGate.defaultLayer, AgentStats.defaultLayer)),
     Layer.provide(SessionRevert.defaultLayer),
     Layer.provide(summary),
     Layer.provide(checkpoint),
@@ -166,8 +175,7 @@ export function makeLayer() {
     Layer.provideMerge(trunc),
     Layer.provide(Instruction.defaultLayer),
     Layer.provide(SystemPrompt.defaultLayer),
-    Layer.provide(Inbox.defaultLayer),
-    Layer.provideMerge(deps),
+    Layer.provideMerge(Layer.mergeAll(Inbox.defaultLayer, deps)),
   )
   const actor = Actor.layer.pipe(
     Layer.provideMerge(prompt),

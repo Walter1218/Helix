@@ -16,6 +16,8 @@ import { runEnhancedJudge } from "./judge-enhanced"
 import { exportDPO, shouldExport } from "../dogfooding/auto-export"
 
 // ModeRegistry配置（简化版，避免Effect依赖）
+// 规范源: packages/opencode/src/session/mode-registry.ts DEFAULT_EVOLUTION_CONFIG
+// 修改时请同步更新 mode-registry.ts
 interface EvolutionConfig {
   judgeEnabled: boolean
   traceExportEnabled: boolean
@@ -105,27 +107,56 @@ function loadRoadmap(): Roadmap | null {
   return JSON.parse(readFileSync(ROADMAP_PATH, "utf-8"))
 }
 
+function estimateTaskTokens(task: RoadmapTask): number {
+  if (task.estimated_tokens > 0) return task.estimated_tokens
+  const descLen = task.description.length
+  if (descLen < 100) return 10000
+  if (descLen < 500) return 30000
+  if (descLen < 1000) return 60000
+  return 100000
+}
+
 function getNextTask(roadmap: Roadmap): RoadmapTask | null {
-  const { focus_milestones, skip_tags } = roadmap.auto_dev_config
-  
+  const { focus_milestones, skip_tags, daily_token_limit } = roadmap.auto_dev_config
+  const budgetUsed = getDailyBudgetUsed()
+  const budgetRemaining = daily_token_limit > 0 ? Math.max(0, daily_token_limit - budgetUsed) : Infinity
+
+  if (budgetRemaining <= 0) {
+    log("预算已耗尽，跳过任务选择")
+    return null
+  }
+
+  const maxTaskTokens = Math.round(budgetRemaining * 0.5)
+
+  const candidates: Array<{ task: RoadmapTask; score: number }> = []
+
   for (const milestoneId of focus_milestones) {
     const milestone = roadmap.milestones.find(m => m.id === milestoneId)
     if (!milestone || milestone.status === "done") continue
-    
-    const pendingTasks = milestone.tasks.filter(t => 
-      t.status === "pending" && 
+
+    const pendingTasks = milestone.tasks.filter(t =>
+      t.status === "pending" &&
       !t.tags.some(tag => skip_tags.includes(tag))
     )
-    
-    if (pendingTasks.length === 0) continue
-    
+
     const priorityWeight = { critical: 4, high: 3, medium: 2, low: 1 }
-    pendingTasks.sort((a, b) => priorityWeight[b.priority] - priorityWeight[a.priority])
-    
-    return pendingTasks[0]
+
+    for (const task of pendingTasks) {
+      const estimated = estimateTaskTokens(task)
+      if (estimated > maxTaskTokens) continue
+
+      const priority = priorityWeight[task.priority] ?? 1
+      const complexityBonus = estimated <= 20000 ? 1.5 : estimated <= 50000 ? 1.0 : 0.5
+      const score = priority * complexityBonus
+
+      candidates.push({ task, score })
+    }
   }
-  
-  return null
+
+  if (candidates.length === 0) return null
+
+  candidates.sort((a, b) => b.score - a.score)
+  return candidates[0].task
 }
 
 function updateTaskStatus(roadmap: Roadmap, taskId: string, status: "pending" | "in_progress" | "done") {
@@ -260,6 +291,9 @@ async function executeViaGateway(task: RoadmapTask, chatId: string): Promise<{ s
 }
 
 // ============ Pipeline Steps ============
+// 注意: 以下 pipeline 步骤与 packages/opencode/src/automation/pipeline-runner.ts 逻辑一致
+// 核心引擎通过 PipelineRunner Effect.Service 调用，scheduler.ts 通过 execSync 直接调用
+// 修改时请同步更新两处
 
 async function stepExecuteTask(task: RoadmapTask, dryRun: boolean, chatId?: string): Promise<StepResult> {
   const start = Date.now()
@@ -312,8 +346,8 @@ async function stepExecuteTask(task: RoadmapTask, dryRun: boolean, chatId?: stri
       continue
     }
     
-    // 否则通过 CLI 执行
-    const cmd = `bun run --cwd packages/opencode --conditions=browser src/index.ts run "${task.description}"`
+    // 否则通过 CLI 执行（跳过迁移，由 mimo serve 守护进程处理）
+    const cmd = `MIMOCODE_SKIP_MIGRATIONS=1 bun run --cwd packages/opencode --conditions=browser src/index.ts run "${task.description}"`
     const result = runCmd(cmd, 30 * 60 * 1000)
     lastOutput = result.output
     

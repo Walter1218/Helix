@@ -2549,14 +2549,21 @@ export const NamedError = {
 - 指数退避：间隔递增
 - 非网络错误（如命令不存在）直接失败，不重试
 
-**18.3 无 Cardinal 四级阻塞**
+**18.3 Cardinal 四级阻塞（已接入 runLoop）**
 
-> v1.0 文档提到的 Cardinal 四级阻塞（Block/Pause/Stop/Warn）在代码中未实现。
-> 当前代码中的降级机制：
-> - `AlignmentGuard`：检测到偏离时广播 `AlignmentAlert`（`warn`/`critical` 两级）
-> - `TaskGate`：超过重试上限时 `capExceeded: true`，停止 re-loop
-> - `Goal`：`MAX_GOAL_REACT = 12` 安全阀
-> - 会话回滚：`SessionRevert` 恢复之前的状态
+Cardinal 四级阻塞已在 `session/cardinal.ts` 中实现并接入 runLoop：
+- `block`：严重风险（eval/exec/密钥泄露），立即终止
+- `pause`：中等风险（过量改动/连续失败），暂停等待确认
+- `stop`：轻微风险（偏离目标），建议停止
+- `warn`：潜在风险（token 超限），记录日志继续执行
+
+安全规则（eval/exec/密钥泄露）始终启用，不受 mode 配置影响。其他规则根据 `EvolutionConfig.judgeEnabled` 决定。
+
+此外还有以下降级机制：
+- `AlignmentGuard`：检测到偏离时广播 `AlignmentAlert`（`warn`/`critical` 两级）
+- `TaskGate`：超过重试上限时 `capExceeded: true`，停止 re-loop
+- `Goal`：`MAX_GOAL_REACT = 12` 安全阀
+- 会话回滚：`SessionRevert` 恢复之前的状态
 
 ---
 

@@ -75,25 +75,18 @@ import { Metrics } from "@/metrics"
 import { resolveInvocationStyle, type ToolStyleConfig } from "../tool/invocation-style"
 import { shouldAutoDream, shouldAutoDistill, DREAM_TASK, DISTILL_TASK, AUTO_DREAM_TITLE, AUTO_DISTILL_TITLE } from "./auto-dream"
 import { ModeRegistry } from "./mode-registry"
+import { PreFlight } from "./preflight"
+import { Cardinal } from "./cardinal"
+import { AlignmentGuard } from "@/observability/alignment-guard"
+import { make as makeFSM } from "@/session/fsm/hybrid-fsm"
+import { OpenSpec } from "./openspec"
+import { DynamicAgent } from "@/agent/dynamic-agent"
+import { DecompositionGate } from "@/agent/decomposition-gate"
+import { AgentStats } from "@/agent/agent-stats"
+import { make as makeJudgeAgent } from "@/agent/judge-agent"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
-
-/**
- * 获取模式的EvolutionConfig
- * 用于判断模式是否启用Judge、Trace导出等
- */
-export function getModeEvolutionConfig(modeId: string) {
-  const DEFAULT_EVOLUTION_CONFIG: Record<string, { judgeEnabled: boolean; traceExportEnabled: boolean; evolutionEnabled: boolean }> = {
-    ask: { judgeEnabled: false, traceExportEnabled: false, evolutionEnabled: false },
-    build: { judgeEnabled: true, traceExportEnabled: true, evolutionEnabled: true },
-    plan: { judgeEnabled: true, traceExportEnabled: true, evolutionEnabled: true },
-    compose: { judgeEnabled: true, traceExportEnabled: true, evolutionEnabled: true },
-    max: { judgeEnabled: true, traceExportEnabled: true, evolutionEnabled: true },
-    loop: { judgeEnabled: true, traceExportEnabled: true, evolutionEnabled: true },
-  }
-  return DEFAULT_EVOLUTION_CONFIG[modeId] ?? DEFAULT_EVOLUTION_CONFIG.build!
-}
 
 // Recall-reminder hints, rendered in each tool's configured invocation style so
 // shell-mode sessions never see a JSON-shaped example (which primes models to
@@ -231,6 +224,14 @@ export const layer = Layer.effect(
     const llm = yield* LLM.Service
     const actorRegistry = yield* ActorRegistry.Service
     const inbox = yield* Inbox.Service
+    const modeRegistry = yield* ModeRegistry.Service
+    const preflight = yield* PreFlight.Service
+    const cardinal = yield* Cardinal.Service
+    const alignmentGuard = yield* AlignmentGuard.Service
+    const openspec = yield* OpenSpec.Service
+    const dynamicAgent = yield* DynamicAgent.Service
+    const decompositionGate = yield* DecompositionGate.Service
+    const agentStats = yield* AgentStats.Service
 
     // Track sessions that have already shown the "loaded instructions" toast so we
     // surface it once per primary session rather than on every run-loop turn.
@@ -1734,6 +1735,11 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         // 新一轮用户 turn 自动归零。
         let structuredRetries = 0
         const agentMetrics = { tokens_in: 0, tokens_out: 0, files_changed: 0 }
+
+        // HybridFSM Phase B: observer mode — tracks state without controlling flow
+        const fsm = yield* makeFSM({ maxHealAttempts: 3, maxReflectionAttempts: 2, suspendable: true })
+        let fsmStarted = false
+        let fsmActivated = false
         const publishAgentRequest = (phase: string, taskType: string) =>
           bus
             .publish(Metrics.AgentRequest, {
@@ -2154,6 +2160,14 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             agentID: agentID ?? "main",
           })
 
+          // HybridFSM: start FSM once msgs are available (first iteration only)
+          if (!fsmStarted) {
+            const goalText = msgs.findLast((m) => m.info.role === "user")
+              ?.parts.filter((p: any) => p.type === "text").map((p: any) => p.text).join("\n").slice(0, 200) ?? ""
+            yield* fsm.send({ type: "START", goal: goalText })
+            fsmStarted = true
+          }
+
           let lastUser: MessageV2.User | undefined
           let lastAssistant: MessageV2.Assistant | undefined
           let lastFinished: MessageV2.Assistant | undefined
@@ -2531,6 +2545,56 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           }
           const maxSteps = agent.steps ?? Infinity
           const isLastStep = step >= maxSteps
+
+          // DynamicAgent: generate persona on first iteration
+          if (step === 1) {
+            const lastUserText = msgs.findLast((m) => m.info.role === "user")
+              ?.parts.filter((p) => p.type === "text").map((p) => p.text).join("\n") ?? ""
+            const persona = yield* dynamicAgent.generate({
+              id: sessionID,
+              title: lastUserText.slice(0, 100),
+              description: lastUserText,
+            }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+            if (persona) {
+              yield* slog.info("dynamic agent persona generated", { personaId: persona.id, name: persona.name })
+            }
+          }
+
+          // DecompositionGate: check if task should be decomposed (first iteration, main agent only)
+          if (step === 1 && (agentID ?? "main") === "main") {
+            const lastUserText = msgs.findLast((m) => m.info.role === "user")
+              ?.parts.filter((p) => p.type === "text").map((p) => p.text).join("\n") ?? ""
+            const decomposeResult = yield* decompositionGate.shouldDecompose({
+              id: sessionID,
+              title: lastUserText.slice(0, 100),
+              description: lastUserText,
+            }).pipe(Effect.catch(() => Effect.succeed({ shouldDecompose: false, reason: "error" })))
+            if (decomposeResult.shouldDecompose) {
+              yield* slog.info("decomposition recommended", { reason: decomposeResult.reason })
+            }
+          }
+
+          // Pre-flight check (mode-aware)
+          const modeId = agent.name
+          const evoConfig = yield* modeRegistry.getEvolutionConfig(modeId)
+          if (evoConfig.judgeEnabled && step === 1) {
+            const lastUserText = msgs.findLast((m) => m.info.role === "user")
+              ?.parts.filter((p) => p.type === "text").map((p) => p.text).join("\n") ?? ""
+            const pfResult = yield* preflight.runAll({
+              id: sessionID,
+              title: lastUserText.slice(0, 100),
+              description: lastUserText,
+            }).pipe(Effect.catch(() => Effect.succeed({ passed: true, blocked: false, paused: false, results: [] as any[], blockReason: undefined as string | undefined, pauseReason: undefined as string | undefined })))
+            if (pfResult.blocked) {
+              yield* slog.warn("preflight blocked", { reason: pfResult.blockReason })
+              yield* bus.publish(Session.Event.Error, { sessionID, error: new NamedError.Unknown({ message: `Pre-flight blocked: ${pfResult.blockReason}` }) })
+              break
+            }
+            if (pfResult.paused) {
+              yield* slog.warn("preflight paused", { reason: pfResult.pauseReason })
+            }
+          }
+
           msgs = yield* insertReminders({ messages: msgs, agent, session })
 
           const msg: MessageV2.Assistant = {
@@ -2827,6 +2891,83 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                 })
               : yield* handle.process(processArgs)
 
+            // Cardinal runtime check — security rules ALWAYS active, others mode-aware
+            const cardinalModeId = agent.name
+            const cardinalEvo = yield* modeRegistry.getEvolutionConfig(cardinalModeId)
+            {
+              const alignmentAlerts = yield* alignmentGuard.getAlerts(sessionID).pipe(Effect.catch(() => Effect.succeed([])))
+              const cardinalDecision = yield* cardinal.evaluate({
+                taskId: sessionID,
+                taskTitle: msgs.findLast((m) => m.info.role === "user")
+                  ?.parts.filter((p) => p.type === "text").map((p) => p.text).join("\n").slice(0, 100) ?? "",
+                tokensUsed: agentMetrics.tokens_in + agentMetrics.tokens_out,
+                totalBudget: 20_000_000,
+                consecutiveFailures: invalidContinuations,
+                alignmentAlerts: alignmentAlerts.length,
+                changedFiles: MessageV2.parts(handle.message.id)
+                  .filter((p) => p.type === "patch").flatMap((p: any) => p.files ?? []),
+              }).pipe(Effect.catch(() => Effect.succeed(null)))
+              if (cardinalDecision) {
+                // security block always enforced; others only when judgeEnabled
+                if (cardinalDecision.level === "block") {
+                  yield* slog.warn("cardinal block", { reason: cardinalDecision.reason })
+                  yield* bus.publish(Session.Event.Error, { sessionID, error: new NamedError.Unknown({ message: `Cardinal block: ${cardinalDecision.reason}` }) })
+                  return "break" as const
+                }
+                if (cardinalEvo.judgeEnabled) {
+                  if (cardinalDecision.level === "pause") {
+                    yield* slog.warn("cardinal pause", { reason: cardinalDecision.reason })
+                  }
+                  if (cardinalDecision.level === "stop") {
+                    yield* slog.warn("cardinal stop", { reason: cardinalDecision.reason })
+                  }
+                  if (cardinalDecision.level === "warn") {
+                    yield* slog.warn("cardinal warn", { reason: cardinalDecision.reason })
+                  }
+                }
+              }
+            }
+
+            // JudgeAgent code quality check — all code changes, not just tests
+            if (cardinalEvo.judgeEnabled) {
+              const patches = MessageV2.parts(handle.message.id).filter((p) => p.type === "patch") as Array<{ files?: string[] }>
+              if (patches.length > 0) {
+                const judge = makeJudgeAgent()
+                const changedFiles = patches.flatMap((p) => p.files ?? [])
+                const review = judge.quickReview({
+                  actorID: agent.name,
+                  requestType: "test_modification",
+                  originalTest: "",
+                  suggestedChange: changedFiles.join("\n"),
+                  reason: "automated check after tool execution",
+                  context: {},
+                })
+                if (!review.approved) {
+                  yield* slog.warn("judge flagged code change", { rationale: review.rationale, suggestions: review.suggestions, files: changedFiles })
+                }
+              }
+            }
+
+            // OpenSpec: update spec when code changes complete
+            {
+              const patches = MessageV2.parts(handle.message.id).filter((p) => p.type === "patch") as Array<{ files?: string[] }>
+              if (patches.length > 0) {
+                const changedFiles = patches.flatMap((p) => p.files ?? [])
+                const lastUserText = msgs.findLast((m) => m.info.role === "user")
+                  ?.parts.filter((p) => p.type === "text").map((p) => p.text).join("\n") ?? ""
+                const specMatch = yield* openspec.findSpec(lastUserText).pipe(Effect.catch(() => Effect.succeed(undefined)))
+                if (specMatch) {
+                  const hasError = !!handle.message.error
+                  yield* openspec.updateSpec(specMatch, {
+                    success: !hasError,
+                    output: hasError ? String(handle.message.error).slice(0, 200) : `Changed ${changedFiles.length} files`,
+                    tokensUsed: agentMetrics.tokens_in + agentMetrics.tokens_out,
+                  }).pipe(Effect.catch(() => Effect.succeed(false)))
+                  yield* slog.info("openspec updated", { specPath: specMatch.specPath, requirement: specMatch.requirement, success: !hasError })
+                }
+              }
+            }
+
             if (
               result === "continue" &&
               (yield* autoContinueOutputLength({ lastUser, assistant: handle.message }))
@@ -2943,6 +3084,62 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             }
             return "continue" as const
           }).pipe(Effect.ensuring(instruction.clear(handle.message.id)))
+
+          // HybridFSM Phase B: map outcome to FSM events (observer mode)
+          if (!fsmActivated) {
+            const fsmState = yield* fsm.getState
+            if (outcome === "break") {
+              const hasError = !!handle.message.error
+              if (hasError) {
+                yield* fsm.send({ type: "CHECK_FAIL", error: String(handle.message.error).slice(0, 200) })
+              } else {
+                yield* fsm.send({ type: "CHECK_PASS" })
+              }
+            } else {
+              yield* fsm.send({ type: "EXECUTE_COMPLETE", result: "continue" })
+            }
+
+            // FSM healing: inject synthetic message to suggest different approach
+            const postState = yield* fsm.getState
+            if (postState === "healing") {
+              const healAttempts = yield* fsm.getHealAttempts
+              yield* slog.info("fsm healing", { attempt: healAttempts, sessionID })
+              const healMsg = yield* sessions.updateMessage({
+                id: MessageID.ascending(),
+                role: "user" as const,
+                sessionID,
+                agentID: lastUser.agentID,
+                agent: lastUser.agent,
+                model: lastUser.model,
+                tools: lastUser.tools,
+                format: lastUser.format,
+                time: { created: Date.now() },
+              })
+              yield* sessions.updatePart({
+                id: PartID.ascending(),
+                messageID: healMsg.id,
+                sessionID,
+                type: "text",
+                synthetic: true,
+                text: [
+                  "<system-reminder>",
+                  "The previous attempt did not succeed. Try a completely different approach.",
+                  `Attempt ${healAttempts} of 3. If this also fails, the task will be marked as failed.`,
+                  "</system-reminder>",
+                ].join("\n"),
+              } satisfies MessageV2.TextPart)
+              yield* fsm.send({ type: "HEAL_COMPLETE", fix: "different approach" })
+              fsmActivated = true
+              continue
+            }
+
+            // FSM failed: allow stop (don't force re-entry via gates)
+            if (postState === "failed") {
+              yield* slog.warn("fsm exhausted healing attempts; allowing stop", { sessionID })
+              break
+            }
+          }
+
           if (outcome === "break") {
             if (yield* taskGate(lastUser)) continue
             if (yield* goalGate(lastUser)) continue
@@ -2974,6 +3171,16 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           finalIsError ? "error" : "completed",
           Option.isSome(lastUserForMetrics) ? lastUserForMetrics.value.info.agent : final.info.agent,
         )
+
+        // AgentStats: record task result (L0 success/failure)
+        yield* agentStats.recordResult({
+          taskId: sessionID,
+          success: !finalIsError,
+          output: finalIsError ? undefined : "completed",
+          error: finalIsError ? String((final.info as any).error ?? "unknown").slice(0, 200) : undefined,
+          timestamp: Date.now(),
+        }).pipe(Effect.catch(() => Effect.void))
+
         return final
       },
     )
@@ -3209,6 +3416,14 @@ export const defaultLayer = Layer.suspend(() =>
         Goal.defaultLayer,
         TaskGateState.defaultLayer,
         TaskRegistry.defaultLayer,
+        ModeRegistry.defaultLayer,
+        PreFlight.defaultLayer,
+        Cardinal.defaultLayer,
+        AlignmentGuard.defaultLayer,
+        OpenSpec.defaultLayer,
+        DynamicAgent.defaultLayer,
+        DecompositionGate.defaultLayer,
+        AgentStats.defaultLayer,
       ),
     ),
   ),

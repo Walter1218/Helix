@@ -40,12 +40,12 @@ Helix is **not a fork from scratch**. It inherits the full MiMo-Code engine (Bun
 | **IM Integration** | ❌ None | ✅ Native Feishu Gateway with fully-autonomous mode, adaptive timeout, real-time progress |
 | **Workflow Engine** | Script-based runtime | ✅ + `vfs-sandbox.ts`, global semaphore concurrency, breakpoint resume |
 | **Auto-Dev Scheduler** | ❌ None | ✅ `launchd`/cron 自动调度 + Roadmap 任务管理 + Pipeline 验证 + 飞书通知 |
-| **OpenSpec Integration** | ❌ None | ✅ 需求规范管理 + Spec→Roadmap 自动转换 + 执行结果回写 + 变更追踪 |
-| **Enhanced Judge** | ❌ None | ✅ 7 项检查：安全性/相关性/过量改动/完整性/回归风险/一致性/Trace覆盖 |
-| **Mode Registry** | ❌ None | ✅ 可插拔模式注册表 + EvolutionConfig 配置 + 模式级别 Judge/Trace 控制 |
-| **Pre-flight** | ❌ None | ✅ 任务执行前准入检查：spec完整性/token预算/依赖/权限 |
-| **Cardinal** | ❌ None | ✅ 运行时动态阻塞降级：block/pause/stop/warn 四级 |
-| **Dynamic Agent** | ❌ None | ✅ 任务分解 + 动态 Persona 生成 + L0/L1/L2 三层成功定义 |
+| **OpenSpec Integration** | ❌ None | ✅ 需求规范管理 + Spec→Roadmap 自动转换 + 执行结果回写 + 变更追踪（**已接入 runLoop**） |
+| **Enhanced Judge** | ❌ None | ✅ 7 项检查：安全性/相关性/过量改动/完整性/回归风险/一致性/Trace覆盖（**已接入 runLoop**） |
+| **Mode Registry** | ❌ None | ✅ 可插拔模式注册表 + EvolutionConfig 配置 + 模式级别 Judge/Trace 控制（**已接入 runLoop**） |
+| **Pre-flight** | ❌ None | ✅ 任务执行前准入检查：spec完整性/token预算/依赖/权限（**已接入 runLoop**） |
+| **Cardinal** | ❌ None | ✅ 运行时动态阻塞降级：block/pause/stop/warn 四级（**已接入 runLoop，安全规则始终启用**） |
+| **Dynamic Agent** | ❌ None | ✅ 任务分解 + 动态 Persona 生成 + L0/L1/L2 三层成功定义（**已接入 runLoop**） |
 | **Documentation** | Feature-focused | ✅ Architecture whitepapers, capability roadmap, evolution loop design docs |
 
 ---
@@ -186,12 +186,12 @@ bun run script/auto-dev/scheduler.ts --chat-id <feishu_chat_id>
 ```
 
 **关键特性:**
-- **自动任务选择**: 基于优先级和里程碑自动选择待办任务
+- **自动任务选择**: 基于优先级、复杂度评估、预算感知的智能调度（非 FIFO）
 - **模式感知**: 根据任务模式（build/plan/compose等）决定是否启用 Judge、Trace 导出
 - **Pre-flight 检查**: 任务执行前自动检查 spec 完整性、token 预算、依赖、权限
 - **失败重试**: 最多重试 3 次，带重复错误检测
 - **权限请求转发**: 自动将权限问题通知到飞书
-- **预算控制**: 每日 token 消耗上限，防止过度使用
+- **预算控制**: 每日 token 消耗上限，单任务不超过剩余预算 50%
 
 ### 9. OpenSpec Integration (需求规范管理)
 
@@ -222,6 +222,7 @@ OpenSpec specs/          roadmap.json         Scheduler Pipeline
 - **自动任务生成**: spec 中的 pending 需求自动转为 roadmap 任务
 - **执行结果回写**: 成功/失败状态自动更新到 spec
 - **智能匹配**: 支持中文关键词匹配普通任务到对应 spec
+- **核心引擎集成**: runLoop 中代码变更后自动查找并更新匹配的 spec
 
 ### 10. Enhanced Judge (7 项代码审查)
 

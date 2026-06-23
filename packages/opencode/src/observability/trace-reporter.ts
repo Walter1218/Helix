@@ -3,6 +3,7 @@ import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import z from "zod"
 import { Log } from "@/util"
+import { HeuristicFilter } from "./heuristic-filter"
 
 const log = Log.create({ service: "trace-reporter" })
 
@@ -51,6 +52,7 @@ export const layer = Layer.effect(
     const bus = yield* Bus.Service
     const traces = yield* Ref.make<TraceEvent[]>([])
     const configRef = yield* Ref.make<TraceConfig>(DEFAULT_CONFIG)
+    const heuristicFilter = yield* HeuristicFilter.Service
 
     // Subscribe to trace node events to build the memory tree.
     yield* bus.subscribeCallback(TraceNodeEvent, (e) => {
@@ -60,6 +62,12 @@ export const layer = Layer.effect(
         name: e.properties.name,
         status: e.properties.status,
       })
+      // HeuristicFilter: skip dirty data (OOM, timeout, infra errors)
+      const decision = Effect.runSync(heuristicFilter.evaluate(e.properties))
+      if (!decision.shouldKeep) {
+        log.debug("trace.filtered", { id: e.properties.id, reason: decision.reason })
+        return
+      }
       Effect.runSync(Ref.update(traces, (list) => {
         const config = Effect.runSync(Ref.get(configRef))
         // 限制最大trace数量
@@ -109,6 +117,6 @@ export const layer = Layer.effect(
   })
 )
 
-export const defaultLayer = layer.pipe(Layer.provide(Bus.defaultLayer))
+export const defaultLayer = layer.pipe(Layer.provide(Bus.defaultLayer), Layer.provide(HeuristicFilter.defaultLayer))
 
 export * as TraceReporter from "./trace-reporter"

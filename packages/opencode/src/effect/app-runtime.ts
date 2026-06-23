@@ -59,6 +59,15 @@ import { WorkflowRuntime } from "@/workflow/runtime"
 import { History } from "@/history"
 import { Memory } from "@/memory"
 import { TraceReporter } from "@/observability/trace-reporter"
+import { ModeRegistry } from "@/session/mode-registry"
+import { PreFlight } from "@/session/preflight"
+import { Cardinal } from "@/session/cardinal"
+import { AlignmentGuard } from "@/observability/alignment-guard"
+import { OpenSpec } from "@/session/openspec"
+import { DynamicAgent } from "@/agent/dynamic-agent"
+import { DecompositionGate } from "@/agent/decomposition-gate"
+import { AgentStats } from "@/agent/agent-stats"
+import { PipelineRunner } from "@/automation/pipeline-runner"
 import * as BashInteractive from "@/tool/bash-interactive"
 import { memoMap } from "./memo-map"
 
@@ -123,6 +132,15 @@ export const AppLayer = Layer.suspend(() =>
     Memory.defaultLayer,
     History.defaultLayer,
     TraceReporter.defaultLayer,
+    ModeRegistry.defaultLayer,
+    PreFlight.defaultLayer,
+    Cardinal.defaultLayer,
+    AlignmentGuard.defaultLayer,
+    OpenSpec.defaultLayer,
+    DynamicAgent.defaultLayer,
+    DecompositionGate.defaultLayer,
+    AgentStats.defaultLayer,
+    PipelineRunner.defaultLayer,
   ).pipe(Layer.provideMerge(Observability.layer), Layer.provideMerge(BashInteractive.defaultLayer)),
 )
 

@@ -4,6 +4,7 @@ import { TokenTracker } from "@/token/tracker"
 import { RequirementAnalyzer, type Requirement, type ProjectGoal, type ProjectState } from "./requirement-analyzer"
 import { ComplexityEstimator } from "./complexity-estimator"
 import { TokenScheduler, type ScheduleOutput, type ScheduleStrategy } from "./token-scheduler"
+import { PipelineRunner } from "./pipeline-runner"
 import { Log } from "@/util"
 import { Bus } from "@/bus"
 
@@ -63,6 +64,7 @@ export const layer = Layer.effect(
     const complexityEstimator = yield* ComplexityEstimator.Service
     const tokenScheduler = yield* TokenScheduler.Service
     const bus = yield* Bus.Service
+    const pipelineRunner = yield* PipelineRunner.Service
 
     const analyzeAndPlan = Effect.fn("AutoDevWorkflow.analyzeAndPlan")(function* (projectPath?: string) {
       const cfg = yield* config.get()
@@ -160,17 +162,37 @@ export const layer = Layer.effect(
             allocated: task.allocated_tokens,
           })
 
+          // Execute through PipelineRunner (build → typecheck → test → lint → judge → git)
+          const result = yield* pipelineRunner.runPipeline({
+            taskDescription: task.requirement.description,
+            dryRun: false,
+            maxRetries: 3,
+          }).pipe(Effect.catch((e) => Effect.succeed({
+            success: false,
+            steps: [] as any[],
+            judgeVerdict: { approved: false, issues: [String(e)], suggestions: [] as string[] },
+            totalDuration: 0,
+            tokensUsed: 0,
+          })))
+
+          if (result.success) {
+            currentSession.tasks_completed++
+            log.info("task completed", { id: task.requirement.id, steps: result.steps.length, duration: result.totalDuration })
+          } else {
+            currentSession.tasks_failed++
+            log.warn("task failed", { id: task.requirement.id, issues: result.judgeVerdict.issues })
+          }
+
           yield* tokenTracker.recordUsage({
             session_id: currentSession.session_id,
             task_id: task.requirement.id,
-            model_id: "planning",
+            model_id: "pipeline",
             provider_id: "internal",
-            input_tokens: Math.round(task.token_estimate.planning * 0.7),
-            output_tokens: Math.round(task.token_estimate.planning * 0.3),
-            purpose: "planning",
-          })
+            input_tokens: Math.round(result.tokensUsed * 0.7),
+            output_tokens: Math.round(result.tokensUsed * 0.3),
+            purpose: "execution",
+          }).pipe(Effect.catch(() => Effect.void))
 
-          currentSession.tasks_completed++
           currentSession.budget.used += task.allocated_tokens
         } catch (e) {
           currentSession.tasks_failed++
@@ -238,6 +260,7 @@ export const defaultLayer = Layer.suspend(() =>
     Layer.provide(RequirementAnalyzer.defaultLayer),
     Layer.provide(ComplexityEstimator.defaultLayer),
     Layer.provide(TokenScheduler.defaultLayer),
+    Layer.provide(PipelineRunner.defaultLayer),
   ),
 )
 
