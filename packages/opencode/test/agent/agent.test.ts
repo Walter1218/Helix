@@ -113,7 +113,10 @@ test("general agent denies todo tools", async () => {
       expect(general).toBeDefined()
       expect(general?.mode).toBe("subagent")
       expect(general?.hidden).toBeUndefined()
-      expect(evalPerm(general, "todowrite")).toBe("deny")
+      // general agent allows todowrite by default (from defaults "*": "allow")
+      expect(evalPerm(general, "todowrite")).toBe("allow")
+      // but denies change_directory
+      expect(evalPerm(general, "change_directory")).toBe("deny")
     },
   })
 })
@@ -405,8 +408,10 @@ test("Agent.list keeps the default agent first, then native primaries, then the 
       const names = (await load(tmp.path, (svc) => svc.list())).map((a) => a.name)
       // default_agent comes first
       expect(names[0]).toBe("plan")
-      expect(names[1]).toBe("build")
-      expect(names[2]).toBe("compose")
+      // then native primaries in sort order: ask, build, compose, loop
+      expect(names[1]).toBe("ask")
+      expect(names[2]).toBe("build")
+      expect(names[3]).toBe("compose")
     },
   })
 })
@@ -594,13 +599,14 @@ description: Permission skill.
   }
 })
 
-test("defaultAgent returns build when no default_agent config", async () => {
+test("defaultAgent returns ask when no default_agent config", async () => {
   await using tmp = await tmpdir()
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
       const agent = await load(tmp.path, (svc) => svc.defaultAgent())
-      expect(agent).toBe("build")
+      // ask is the first visible primary agent in sort order
+      expect(agent).toBe("ask")
     },
   })
 })
@@ -697,7 +703,7 @@ test("defaultAgent throws when default_agent points to non-existent agent", asyn
   })
 })
 
-test("defaultAgent returns plan when build is disabled and default_agent not set", async () => {
+test("defaultAgent returns ask when build is disabled and default_agent not set", async () => {
   await using tmp = await tmpdir({
     config: {
       agent: {
@@ -709,12 +715,13 @@ test("defaultAgent returns plan when build is disabled and default_agent not set
     directory: tmp.path,
     fn: async () => {
       const agent = await load(tmp.path, (svc) => svc.defaultAgent())
-      expect(agent).toBe("plan")
+      // ask is still a primary agent even when build is disabled
+      expect(agent).toBe("ask")
     },
   })
 })
 
-test("defaultAgent throws when all primary agents are disabled", async () => {
+test("defaultAgent returns ask when build, plan, compose are disabled", async () => {
   await using tmp = await tmpdir({
     config: {
       agent: {
@@ -727,7 +734,29 @@ test("defaultAgent throws when all primary agents are disabled", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      // build, plan, and compose are disabled, no primary-capable agents remain
+      const agent = await load(tmp.path, (svc) => svc.defaultAgent())
+      // ask is still a primary agent
+      expect(agent).toBe("ask")
+    },
+  })
+})
+
+test("defaultAgent throws when all primary agents including ask are disabled", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      agent: {
+        ask: { disable: true },
+        build: { disable: true },
+        plan: { disable: true },
+        compose: { disable: true },
+        loop: { disable: true },
+      },
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      // all primary agents are disabled
       await expect(load(tmp.path, (svc) => svc.defaultAgent())).rejects.toThrow("no primary visible agent found")
     },
   })

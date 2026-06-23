@@ -1,4 +1,4 @@
-import { afterEach, describe, expect } from "bun:test"
+import { afterEach, beforeEach, describe, expect } from "bun:test"
 import { Effect, Layer } from "effect"
 import * as fs from "fs/promises"
 import path from "path"
@@ -10,9 +10,26 @@ import { SessionCheckpoint } from "../../src/session/checkpoint"
 import { TaskRegistry } from "../../src/task/registry"
 import { ActorRegistry } from "../../src/actor/registry"
 import { Instance } from "../../src/project/instance"
+import { Database } from "../../src/storage"
+import { Global } from "../../src/global"
 import * as CrossSpawnSpawner from "../../src/effect/cross-spawn-spawner"
 import { provideTmpdirInstance } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
+
+beforeEach(async () => {
+  // Clean up shared in-memory database before each test
+  Database.use((db) => {
+    for (const table of ["session", "message", "part", "task", "task_gate_state"]) {
+      try { db.run(`DELETE FROM ${table}`) } catch {}
+    }
+  })
+  // Clean up shared file system memory before each test
+  const memoryRoot = path.join(Global.Path.data, "memory")
+  try {
+    await fs.rm(memoryRoot, { recursive: true, force: true })
+    await fs.mkdir(memoryRoot, { recursive: true })
+  } catch {}
+})
 
 afterEach(async () => {
   await Instance.disposeAll()

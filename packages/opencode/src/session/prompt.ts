@@ -84,6 +84,7 @@ import { DynamicAgent } from "@/agent/dynamic-agent"
 import { DecompositionGate } from "@/agent/decomposition-gate"
 import { AgentStats } from "@/agent/agent-stats"
 import { make as makeJudgeAgent } from "@/agent/judge-agent"
+import { checkAdherence } from "./instruction-adherence"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -2989,10 +2990,96 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                 taskDescription: lastUserText,
               })
               if (!review.approved) {
-                yield* slog.warn("judge flagged code change", { rationale: review.rationale, suggestions: review.suggestions, files: changedFiles })
+                const judgeAction = cardinalEvo.judgeAction ?? "warn"
+                yield* slog.warn("judge flagged code change", { rationale: review.rationale, suggestions: review.suggestions, files: changedFiles, judgeAction })
+                
+                if (judgeAction === "block") {
+                  yield* bus.publish(Session.Event.Error, { sessionID, error: new NamedError.Unknown({ message: `Judge blocked: ${review.rationale}` }) })
+                  return "break" as const
+                }
+                
+                if (judgeAction === "inject") {
+                  const correctionMsg = yield* sessions.updateMessage({
+                    id: MessageID.ascending(),
+                    role: "user" as const,
+                    sessionID,
+                    agentID: lastUser.agentID,
+                    agent: lastUser.agent,
+                    model: lastUser.model,
+                    tools: lastUser.tools,
+                    format: lastUser.format,
+                    time: { created: Date.now() },
+                  })
+                  yield* sessions.updatePart({
+                    id: PartID.ascending(),
+                    messageID: correctionMsg.id,
+                    sessionID,
+                    type: "text",
+                    synthetic: true,
+                    text: [
+                      "<system-reminder>",
+                      "Judge detected code quality issues after your last tool execution:",
+                      "",
+                      "**Issues found**:",
+                      review.rationale,
+                      "",
+                      ...(review.suggestions && review.suggestions.length > 0 ? [
+                        "**Suggestions**:",
+                        ...review.suggestions.map(s => `- ${s}`),
+                        "",
+                      ] : []),
+                      "**Action required**: Please address these issues before continuing.",
+                      "If you believe the changes are correct, explain why in your response.",
+                      "</system-reminder>",
+                    ].join("\n"),
+                  })
+                }
               }
-              if (review.suggestions && review.suggestions.length > 0) {
-                yield* slog.info("judge suggestions", { suggestions: review.suggestions })
+            }
+
+            // Instruction adherence check — detects deviation from user instructions
+            if (hasFileChanges) {
+              const lastUserText = msgs.findLast((m) => m.info.role === "user")
+                ?.parts.filter((p) => p.type === "text").map((p) => p.text).join("\n") ?? ""
+              const adherence = checkAdherence(lastUserText, changedFiles)
+              if (!adherence.adherent) {
+                const judgeAction = cardinalEvo.judgeAction ?? "warn"
+                yield* slog.warn("instruction adherence deviation", { deviations: adherence.deviations, judgeAction })
+                
+                if (judgeAction === "block") {
+                  yield* bus.publish(Session.Event.Error, { sessionID, error: new NamedError.Unknown({ message: `Instruction violation: ${adherence.deviations.map(d => d.description).join("; ")}` }) })
+                  return "break" as const
+                }
+                
+                if (judgeAction === "inject") {
+                  const correctionMsg = yield* sessions.updateMessage({
+                    id: MessageID.ascending(),
+                    role: "user" as const,
+                    sessionID,
+                    agentID: lastUser.agentID,
+                    agent: lastUser.agent,
+                    model: lastUser.model,
+                    tools: lastUser.tools,
+                    format: lastUser.format,
+                    time: { created: Date.now() },
+                  })
+                  yield* sessions.updatePart({
+                    id: PartID.ascending(),
+                    messageID: correctionMsg.id,
+                    sessionID,
+                    type: "text",
+                    synthetic: true,
+                    text: [
+                      "<system-reminder>",
+                      "**Instruction adherence issue detected**:",
+                      "",
+                      ...adherence.deviations.map(d => `- ${d.description}`),
+                      "",
+                      "Please ensure your changes align with the user's instructions.",
+                      "</system-reminder>",
+                    ].join("\n"),
+                  })
+                }
               }
             }
 

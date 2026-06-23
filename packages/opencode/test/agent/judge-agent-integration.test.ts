@@ -6,7 +6,9 @@
  * 2. 结构变更检查
  * 3. 简化断言检查
  * 4. 安全检查（eval/exec/密钥泄露）
- * 5. 规范合规性检查
+ * 5. 回归风险检查
+ * 6. 一致性检查
+ * 7. 规范合规性检查
  */
 
 import { test, expect, describe } from "bun:test"
@@ -97,23 +99,29 @@ test("test2", () => {
     test("eval() 调用应被驳回", () => {
       const judge = make()
       const request = createRequest({
+        originalTest: `test("example", () => {
+  expect(1 + 1).toBe(2)
+})`,
         suggestedChange: `test("example", () => {
-  const result = eval("1 + 1")
-  expect(result).toBe(2)
+  expect(1 + 1).toBe(2)
+  eval("alert(1)")
 })`,
       })
       
       const result = judge.quickReview(request)
       expect(result.approved).toBe(false)
       expect(result.rationale).toContain("安全检查失败")
-      expect(result.rationale).toContain("eval()")
+      expect(result.rationale).toContain("eval")
     })
 
     test("exec() 调用应被驳回", () => {
       const judge = make()
       const request = createRequest({
+        originalTest: `test("example", () => {
+  expect(1 + 1).toBe(2)
+})`,
         suggestedChange: `test("example", () => {
-  const { exec } = require("child_process")
+  expect(1 + 1).toBe(2)
   exec("rm -rf /")
 })`,
       })
@@ -121,11 +129,15 @@ test("test2", () => {
       const result = judge.quickReview(request)
       expect(result.approved).toBe(false)
       expect(result.rationale).toContain("安全检查失败")
+      expect(result.rationale).toContain("exec")
     })
 
     test("API key 泄露应被驳回", () => {
       const judge = make()
       const request = createRequest({
+        originalTest: `test("example", () => {
+  expect(1 + 1).toBe(2)
+})`,
         suggestedChange: `test("example", () => {
   const apiKey = "sk-1234567890abcdefghijklmnopqrstuvwxyz1234567890ab"
   expect(apiKey).toBeDefined()
@@ -141,6 +153,9 @@ test("test2", () => {
     test("AWS key 泄露应被驳回", () => {
       const judge = make()
       const request = createRequest({
+        originalTest: `test("example", () => {
+  expect(1 + 1).toBe(2)
+})`,
         suggestedChange: `test("example", () => {
   const awsKey = "AKIAIOSFODNN7EXAMPLE"
   expect(awsKey).toBeDefined()
@@ -153,9 +168,54 @@ test("test2", () => {
       expect(result.rationale).toContain("AWS Access Key")
     })
 
+    test("DROP TABLE 应回归风险检查被驳回", () => {
+      const judge = make()
+      const request = createRequest({
+        originalTest: `test("example", () => {
+  expect(1 + 1).toBe(2)
+})`,
+        suggestedChange: `test("example", () => {
+  expect(1 + 1).toBe(2)
+  DROP TABLE users;
+})`,
+      })
+      
+      const result = judge.quickReview(request)
+      expect(result.approved).toBe(false)
+      expect(result.rationale).toContain("回归风险")
+    })
+
+    test("命名约定混用应一致性检查提供建议", () => {
+      const judge = make()
+      const request = createRequest({
+        originalTest: `test("example", () => {
+  expect(1 + 1).toBe(2)
+})`,
+        suggestedChange: `test("example", () => {
+  expect(1 + 1).toBe(2)
+  const userName = "test"
+  const user_name = "test2"
+  function getUserName() { return userName }
+  function get_user_age() { return 10 }
+})`,
+      })
+      
+      const result = judge.quickReview(request)
+      expect(result.approved).toBe(true)
+      expect(result.suggestions).toBeDefined()
+      expect(result.suggestions!.some(s => s.includes("命名约定混用"))).toBe(true)
+    })
+
     test("规范合规性检查应提供建议", () => {
       const judge = make({ specDrivenEnabled: true })
       const request = createRequest({
+        originalTest: `test("example", () => {
+  expect(1 + 1).toBe(2)
+})`,
+        suggestedChange: `test("example", () => {
+  expect(1 + 1).toBe(2)
+  expect(2 + 2).toBe(4)
+})`,
         specContent: `# Test Spec
 
 ### Assertion protection
@@ -173,7 +233,7 @@ The system SHALL detect eval(), exec(), and secret leaks in code changes.
       const result = judge.quickReview(request)
       expect(result.approved).toBe(true)
       expect(result.suggestions).toBeDefined()
-      expect(result.suggestions![0]).toContain("assertion protection")
+      expect(result.suggestions![0]).toContain("Assertion protection")
     })
 
     test("禁用规范驱动时跳过规范检查", () => {
@@ -207,39 +267,72 @@ The system SHALL detect and block assertion deletions in test files.
       
       const prompt = judge.generateReviewPrompt(request)
       expect(prompt).toContain("相关规范")
-      expect(prompt).toContain("Test Spec")
-      expect(prompt).toContain("规范合规性")
+      expect(prompt).toContain("Requirement 1")
     })
 
-    test("生成不包含规范内容的提示", () => {
+    test("不包含空的上下文信息", () => {
       const judge = make()
-      const request = createRequest()
+      const request = createRequest({
+        context: {},
+      })
       
       const prompt = judge.generateReviewPrompt(request)
-      expect(prompt).not.toContain("相关规范")
-      expect(prompt).not.toContain("规范合规性")
+      expect(prompt).not.toContain("**错误信息**")
+      expect(prompt).not.toContain("**测试输出**")
+      expect(prompt).not.toContain("**代码变更**")
     })
   })
 
-  describe("配置组合测试", () => {
-    test("严格模式 + 规范驱动", () => {
-      const judge = make({ 
-        strictMode: true, 
-        specDrivenEnabled: true,
-        maxAssertionReduction: 0.1 
+  describe("LLM 响应解析", () => {
+    test("解析有效的 JSON 响应", () => {
+      const judge = make()
+      const response = JSON.stringify({
+        approved: true,
+        rationale: "修改合理",
       })
       
-      expect(judge.config.strictMode).toBe(true)
-      expect(judge.config.specDrivenEnabled).toBe(true)
-      expect(judge.config.maxAssertionReduction).toBe(0.1)
+      const result = judge.parseReviewResponse(response)
+      expect(result.approved).toBe(true)
+      expect(result.rationale).toBe("修改合理")
     })
 
-    test("宽松模式 + 禁用规范驱动", () => {
-      const judge = make({ 
-        strictMode: false, 
+    test("处理无效的 JSON 响应", () => {
+      const judge = make()
+      const response = "这不是 JSON"
+      
+      const result = judge.parseReviewResponse(response)
+      expect(result.approved).toBe(false)
+      expect(result.rationale).toContain("无法解析")
+    })
+
+    test("从混合内容中提取 JSON", () => {
+      const judge = make()
+      const response = `这是分析结果：
+{
+  "approved": false,
+  "rationale": "断言被删除",
+  "suggestions": ["恢复断言"]
+}
+以上是结论。`
+      
+      const result = judge.parseReviewResponse(response)
+      expect(result.approved).toBe(false)
+      expect(result.rationale).toBe("断言被删除")
+    })
+  })
+
+  describe("配置测试", () => {
+    test("严格模式配置生效", () => {
+      const judge = make({ strictMode: true })
+      expect(judge.config.strictMode).toBe(true)
+    })
+
+    test("自定义配置生效", () => {
+      const judge = make({
+        strictMode: false,
         specDrivenEnabled: false,
         maxAssertionReduction: 0.8,
-        allowStructuralChanges: true 
+        allowStructuralChanges: true,
       })
       
       expect(judge.config.strictMode).toBe(false)

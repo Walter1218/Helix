@@ -238,7 +238,7 @@ const checkConsistency = (code: string): { valid: boolean; reason?: string; issu
 
   const camelCaseDecls = code.match(/(?:const|let|function|class)\s+[a-z][a-zA-Z0-9]*(?:\s|\()/g) ?? []
   const snakeCaseDecls = code.match(/(?:const|let|function|class)\s+[a-z][a-z0-9]*_[a-z]/g) ?? []
-  if (camelCaseDecls.length > 2 && snakeCaseDecls.length > 2) {
+  if (camelCaseDecls.length >= 2 && snakeCaseDecls.length >= 2) {
     issues.push(`命名约定混用: ${camelCaseDecls.length} 个 camelCase + ${snakeCaseDecls.length} 个 snake_case`)
   }
 

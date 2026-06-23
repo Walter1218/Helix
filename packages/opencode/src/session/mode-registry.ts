@@ -24,6 +24,8 @@ export interface EvolutionConfig {
   judgeEnabled: boolean
   /** Judge检查项（为空则使用默认全量） */
   judgeChecks?: string[]
+  /** Judge 发现问题时的行为：warn=只打日志, block=终止执行, inject=注入纠正消息 */
+  judgeAction?: "warn" | "block" | "inject"
   /** 是否记录trace到DPO数据目录 */
   traceExportEnabled: boolean
   /** 是否触发进化学习 */
@@ -91,6 +93,7 @@ const DEFAULT_EVOLUTION_CONFIG: Record<string, EvolutionConfig> = {
   },
   build: {
     judgeEnabled: true,
+    judgeAction: "inject",
     traceExportEnabled: true,
     evolutionEnabled: true,
     specDrivenEnabled: true,
@@ -98,6 +101,7 @@ const DEFAULT_EVOLUTION_CONFIG: Record<string, EvolutionConfig> = {
   },
   plan: {
     judgeEnabled: true,
+    judgeAction: "warn",
     judgeChecks: ["security", "relevance"],
     traceExportEnabled: true,
     evolutionEnabled: true,
@@ -106,6 +110,7 @@ const DEFAULT_EVOLUTION_CONFIG: Record<string, EvolutionConfig> = {
   },
   compose: {
     judgeEnabled: true,
+    judgeAction: "inject",
     judgeChecks: ["security", "completeness"],
     traceExportEnabled: true,
     evolutionEnabled: true,
@@ -114,6 +119,7 @@ const DEFAULT_EVOLUTION_CONFIG: Record<string, EvolutionConfig> = {
   },
   max: {
     judgeEnabled: true,
+    judgeAction: "block",
     traceExportEnabled: true,
     evolutionEnabled: true,
     specDrivenEnabled: true,
@@ -121,6 +127,7 @@ const DEFAULT_EVOLUTION_CONFIG: Record<string, EvolutionConfig> = {
   },
   loop: {
     judgeEnabled: true,
+    judgeAction: "inject",
     traceExportEnabled: true,
     evolutionEnabled: true,
     specDrivenEnabled: true,
