@@ -166,7 +166,7 @@
           "id": "M5-T1",
           "title": "飞书偏离告警推送",
           "description": "AlignmentGuard 偏离事件通过飞书通知用户，如连续失败、目标偏离等",
-          "status": "pending",
+          "status": "in_progress",
           "priority": "high",
           "estimated_tokens": 30000,
           "tags": [
