@@ -396,6 +396,36 @@ const InfoSchema = Schema.Struct({
   ).annotate({
     description: "Token budget management for automated development.",
   }),
+  session: Schema.optional(
+    Schema.Struct({
+      max_goal_react: Schema.optional(PositiveInt).annotate({
+        description: "Maximum goal re-entry count before allowing stop. Default: 12.",
+      }),
+      max_task_gate_main_react: Schema.optional(PositiveInt).annotate({
+        description: "Maximum ReAct re-entries for main agent task gate. Default: 3.",
+      }),
+      max_task_gate_sub_react: Schema.optional(PositiveInt).annotate({
+        description: "Maximum ReAct re-entries for sub-agent task gate. Default: 2.",
+      }),
+      repeated_step_threshold: Schema.optional(PositiveInt).annotate({
+        description: "Number of identical consecutive steps before triggering nudge. Default: 3.",
+      }),
+    }),
+  ).annotate({
+    description: "Session execution limits and thresholds.",
+  }),
+  actor: Schema.optional(
+    Schema.Struct({
+      max_pre_react: Schema.optional(PositiveInt).annotate({
+        description: "Maximum preStop ReAct re-entries per actor spawn. Default: 3.",
+      }),
+      max_post_react: Schema.optional(PositiveInt).annotate({
+        description: "Maximum postStop ReAct re-entries per actor spawn. Default: 3.",
+      }),
+    }),
+  ).annotate({
+    description: "Actor (subagent) execution limits.",
+  }),
   experimental: Schema.optional(
     Schema.Struct({
       disable_paste_summary: Schema.optional(Schema.Boolean),

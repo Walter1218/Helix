@@ -197,6 +197,64 @@ const checkSecurity = (code: string): { valid: boolean; reason?: string; issues?
   return { valid: true }
 }
 
+/** 检测回归风险：public API 签名变更、破坏性 migration */
+const checkRegressionRisk = (code: string): { valid: boolean; reason?: string; issues?: string[] } => {
+  const issues: string[] = []
+
+  const breakingMigrationPatterns = [
+    { pattern: /DROP\s+TABLE/gi, desc: "DROP TABLE — 删除表" },
+    { pattern: /DROP\s+COLUMN/gi, desc: "DROP COLUMN — 删除列" },
+    { pattern: /ALTER\s+TABLE\s+\w+\s+DROP/gi, desc: "ALTER TABLE DROP — 删除表元素" },
+    { pattern: /TRUNCATE\s+TABLE/gi, desc: "TRUNCATE TABLE — 清空表" },
+  ]
+
+  for (const { pattern, desc } of breakingMigrationPatterns) {
+    if (pattern.test(code)) {
+      issues.push(`破坏性迁移: ${desc}`)
+    }
+  }
+
+  const exportRemovalPatterns = [
+    { pattern: /^-\s*export\s+(function|const|class|interface|type)\s+\w+/gm, desc: "移除了导出的 API" },
+  ]
+
+  for (const { pattern, desc } of exportRemovalPatterns) {
+    const matches = code.match(pattern)
+    if (matches && matches.length > 0) {
+      issues.push(`${desc} (${matches.length} 处)`)
+    }
+  }
+
+  if (issues.length > 0) {
+    return { valid: false, reason: `回归风险检查失败: ${issues.join("; ")}`, issues }
+  }
+
+  return { valid: true }
+}
+
+/** 检测代码风格一致性：命名约定、import 风格 */
+const checkConsistency = (code: string): { valid: boolean; reason?: string; issues?: string[] } => {
+  const issues: string[] = []
+
+  const camelCaseDecls = code.match(/(?:const|let|function|class)\s+[a-z][a-zA-Z0-9]*(?:\s|\()/g) ?? []
+  const snakeCaseDecls = code.match(/(?:const|let|function|class)\s+[a-z][a-z0-9]*_[a-z]/g) ?? []
+  if (camelCaseDecls.length > 2 && snakeCaseDecls.length > 2) {
+    issues.push(`命名约定混用: ${camelCaseDecls.length} 个 camelCase + ${snakeCaseDecls.length} 个 snake_case`)
+  }
+
+  const aliasImports = code.match(/^[\+\s]*import\s+.*from\s+["']@\//gm) ?? []
+  const relativeImports = code.match(/^[\+\s]*import\s+.*from\s+["']\.\//gm) ?? []
+  if (aliasImports.length > 0 && relativeImports.length > 2) {
+    issues.push(`import 风格混用: ${aliasImports.length} 个 alias(@/) + ${relativeImports.length} 个 relative(./)`)
+  }
+
+  if (issues.length > 0) {
+    return { valid: true, reason: `一致性检查有建议: ${issues.join("; ")}`, issues }
+  }
+
+  return { valid: true }
+}
+
 /** 检测规范合规性 */
 const checkSpecCompliance = (
   specContent: string | undefined,
@@ -309,6 +367,26 @@ export const make = (config: Partial<JudgeAgentConfig> = {}) => {
         approved: false,
         rationale: securityCheck.reason!,
         suggestions: ["移除危险的代码调用", "使用环境变量存储敏感信息"],
+      }
+    }
+
+    // 回归风险检查
+    const regressionCheck = checkRegressionRisk(request.suggestedChange)
+    if (!regressionCheck.valid) {
+      return {
+        approved: false,
+        rationale: regressionCheck.reason!,
+        suggestions: ["避免破坏性迁移", "保留向后兼容的 API 签名"],
+      }
+    }
+
+    // 一致性检查（仅产生建议，不阻断）
+    const consistencyCheck = checkConsistency(request.suggestedChange)
+    if (consistencyCheck.issues && consistencyCheck.issues.length > 0) {
+      return {
+        approved: true,
+        rationale: consistencyCheck.reason!,
+        suggestions: consistencyCheck.issues,
       }
     }
 

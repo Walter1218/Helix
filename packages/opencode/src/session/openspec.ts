@@ -18,6 +18,7 @@ export interface SpecResult {
 
 export interface Interface {
   readonly findSpec: (description: string) => Effect.Effect<SpecMatch | undefined>
+  readonly findSpecByFiles: (files: string[]) => Effect.Effect<SpecMatch | undefined>
   readonly updateSpec: (match: SpecMatch, result: SpecResult) => Effect.Effect<boolean>
 }
 
@@ -61,6 +62,55 @@ export const layer = Layer.effect(
         const dirWords = dir.toLowerCase().split("-")
         const matchCount = dirWords.filter((w) => taskLower.includes(w)).length
         if (matchCount >= dirWords.length * 0.5) {
+          const specPath = join(specsDir, dir, "spec.md")
+          if (existsSync(specPath)) {
+            const content = readFileSync(specPath, "utf-8")
+            const reqMatch = content.match(/^### (.+)/m)
+            if (reqMatch) return { specPath, requirement: reqMatch[1].trim() }
+          }
+        }
+      }
+
+      return undefined
+    })
+
+    const findSpecByFiles = Effect.fn("OpenSpec.findSpecByFiles")(function* (files: string[]) {
+      if (!existsSync(specsDir) || files.length === 0) return undefined
+
+      const dirs = readdirSync(specsDir, { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => d.name)
+
+      if (dirs.length === 0) return undefined
+
+      // Extract keywords from file paths: split on /, -, . and take meaningful segments
+      const pathKeywords = new Set<string>()
+      for (const f of files) {
+        const segments = f.toLowerCase().split(/[/\-_.]+/).filter((s) => s.length > 2)
+        for (const seg of segments) pathKeywords.add(seg)
+      }
+
+      // Round 1: keyword match against directory name
+      for (const dir of dirs) {
+        const dirLower = dir.toLowerCase()
+        const matchCount = [...pathKeywords].filter((kw) => dirLower.includes(kw)).length
+        if (matchCount >= 1) {
+          const specPath = join(specsDir, dir, "spec.md")
+          if (existsSync(specPath)) {
+            const content = readFileSync(specPath, "utf-8")
+            const pendingMatch = content.match(/^### (.+)\n[^\n]*\n\n\*\*Status\*\*: pending/m)
+            if (pendingMatch) return { specPath, requirement: pendingMatch[1].trim() }
+            const reqMatch = content.match(/^### (.+)/m)
+            if (reqMatch) return { specPath, requirement: reqMatch[1].trim() }
+          }
+        }
+      }
+
+      // Round 2: directory word split match
+      for (const dir of dirs) {
+        const dirWords = dir.toLowerCase().split("-")
+        const matchCount = dirWords.filter((w) => pathKeywords.has(w)).length
+        if (matchCount >= Math.max(1, dirWords.length * 0.5)) {
           const specPath = join(specsDir, dir, "spec.md")
           if (existsSync(specPath)) {
             const content = readFileSync(specPath, "utf-8")
@@ -120,7 +170,7 @@ export const layer = Layer.effect(
       return true
     })
 
-    return { findSpec, updateSpec }
+    return { findSpec, findSpecByFiles, updateSpec }
   }),
 )
 

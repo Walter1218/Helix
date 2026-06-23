@@ -82,4 +82,18 @@
   //     "model": "text-embedding-nomic-embed-text-v1.5"
   //   }
   // }
+
+  // 会话执行限制（可选，不设置则使用默认值）
+  // "session": {
+  //   "max_goal_react": 12,
+  //   "max_task_gate_main_react": 3,
+  //   "max_task_gate_sub_react": 2,
+  //   "repeated_step_threshold": 3
+  // },
+
+  // Actor（子智能体）执行限制（可选）
+  // "actor": {
+  //   "max_pre_react": 3,
+  //   "max_post_react": 3
+  // }
 }

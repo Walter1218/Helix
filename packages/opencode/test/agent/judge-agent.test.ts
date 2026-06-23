@@ -211,4 +211,89 @@ test("subtraction", () => {
       expect(judge.config.allowStructuralChanges).toBe(true)
     })
   })
+
+  describe("回归风险检查", () => {
+    test("驳回包含 DROP TABLE 的变更", () => {
+      const judge = make()
+      const request = createRequest({
+        originalTest: `test("migration", () => { expect(true).toBe(true) })`,
+        suggestedChange: `test("migration", () => { expect(true).toBe(true); DROP TABLE users; })`,
+      })
+      const result = judge.quickReview(request)
+      expect(result.approved).toBe(false)
+      expect(result.rationale).toContain("回归风险")
+    })
+
+    test("驳回包含 DROP COLUMN 的变更", () => {
+      const judge = make()
+      const request = createRequest({
+        originalTest: `test("migration", () => { expect(true).toBe(true) })`,
+        suggestedChange: `test("migration", () => { expect(true).toBe(true); ALTER TABLE users DROP COLUMN email; })`,
+      })
+      const result = judge.quickReview(request)
+      expect(result.approved).toBe(false)
+      expect(result.rationale).toContain("回归风险")
+    })
+
+    test("驳回包含 TRUNCATE 的变更", () => {
+      const judge = make()
+      const request = createRequest({
+        originalTest: `test("migration", () => { expect(true).toBe(true) })`,
+        suggestedChange: `test("migration", () => { expect(true).toBe(true); TRUNCATE TABLE sessions; })`,
+      })
+      const result = judge.quickReview(request)
+      expect(result.approved).toBe(false)
+      expect(result.rationale).toContain("回归风险")
+    })
+
+    test("允许普通的 SQL 操作", () => {
+      const judge = make()
+      const request = createRequest({
+        originalTest: `test("migration", () => { expect(true).toBe(true) })`,
+        suggestedChange: `test("migration", () => { expect(true).toBe(true); INSERT INTO users (name) VALUES ('test'); })`,
+      })
+      const result = judge.quickReview(request)
+      expect(result.approved).toBe(true)
+    })
+  })
+
+  describe("一致性检查", () => {
+    test("检测命名约定混用", () => {
+      const judge = make()
+      const request = createRequest({
+        originalTest: `test("naming", () => { expect(true).toBe(true) })`,
+        suggestedChange: `test("naming", () => {
+  expect(true).toBe(true)
+  const userName = "test"
+  const user_name = "test2"
+  const userAge = 10
+  const user_age = 20
+  function getUserName() { return userName }
+  function get_user_age() { return user_age }
+})`,
+      })
+      const result = judge.quickReview(request)
+      expect(result.approved).toBe(true)
+      expect(result.suggestions).toBeDefined()
+      expect(result.suggestions!.some((s) => s.includes("命名约定混用"))).toBe(true)
+    })
+
+    test("纯 camelCase 代码无建议", () => {
+      const judge = make()
+      const request = createRequest({
+        originalTest: `test("naming", () => { expect(true).toBe(true) })`,
+        suggestedChange: `test("naming", () => {
+  expect(true).toBe(true)
+  const userName = "test"
+  const userAge = 10
+  function getUserName() { return userName }
+})`,
+      })
+      const result = judge.quickReview(request)
+      expect(result.approved).toBe(true)
+      if (result.suggestions) {
+        expect(result.suggestions.some((s) => s.includes("命名约定混用"))).toBe(false)
+      }
+    })
+  })
 })

@@ -104,19 +104,20 @@ export function recallHintLines(toolCfg: ToolStyleConfig | undefined): string[] 
 }
 
 /**
- * Cap on goal-driven main-loop re-entries per turn — the safety valve against
+ * Maximum number of goal re-acts before allowing the agent to stop, avoiding
  * a never-satisfiable condition burning tokens forever. Higher than spawned
  * actors' MAX_PRE_REACT (=3) because main-session goals are usually larger.
- * TODO: lift to mimocode.json config (e.g. session.maxGoalReact).
+ * Configurable via session.max_goal_react in mimocode.json.
  */
-const MAX_GOAL_REACT = 12
+const MAX_GOAL_REACT_DEFAULT = 12
 
 /**
  * Number of consecutive finished assistant steps with an identical action
  * signature that trips the repeated-step nudge. Three in a row is a strong
  * signal the model is stuck repeating itself rather than making progress.
+ * Configurable via session.repeated_step_threshold in mimocode.json.
  */
-const REPEATED_STEP_THRESHOLD = 3
+const REPEATED_STEP_THRESHOLD_DEFAULT = 3
 
 /**
  * Deterministic JSON serialization with sorted object keys, so that two
@@ -1850,7 +1851,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             session_id: sessionID,
             owner: undefined,
             reactCount: count,
-            maxReact: MAX_TASK_GATE_MAIN_REACT,
+            maxReact: (yield* config.get()).session?.max_task_gate_main_react ?? MAX_TASK_GATE_MAIN_REACT,
             mode: "main",
           }).pipe(Effect.provideService(TaskRegistry.Service, taskRegistry))
           if (!decision.needReentry) {
@@ -1946,8 +1947,9 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           }
 
           const count = yield* goal.bumpReact(sessionID)
-          if (count > MAX_GOAL_REACT) {
-            yield* slog.warn("goal hit MAX_GOAL_REACT cap; allowing stop", {
+          const maxGoalReact = (yield* config.get()).session?.max_goal_react ?? MAX_GOAL_REACT_DEFAULT
+          if (count > maxGoalReact) {
+            yield* slog.warn("goal hit max_goal_react cap; allowing stop", {
               sessionID,
               condition: active.condition,
               count,
@@ -2379,14 +2381,15 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             }
           }
 
-          // Repeated-step nudge: if the last REPEATED_STEP_THRESHOLD finished
+          // Repeated-step nudge: if the last repeated_step_threshold finished
           // assistant steps made an identical tool call, the model is likely
           // stuck looping. Inject a reminder on the last user message asking it
           // to change approach. Mirrors the memory-flush nudge above (synthetic
           // text part, deduped per build).
           if (lastFinished) {
+            const repeatedThreshold = (yield* config.get()).session?.repeated_step_threshold ?? REPEATED_STEP_THRESHOLD_DEFAULT
             const recentSignatures: string[] = []
-            for (let i = msgs.length - 1; i >= 0 && recentSignatures.length < REPEATED_STEP_THRESHOLD; i--) {
+            for (let i = msgs.length - 1; i >= 0 && recentSignatures.length < repeatedThreshold; i--) {
               const m = msgs[i]
               if (m.info.role !== "assistant" || !m.info.finish) continue
               const sig = stepSignature(m.parts)
@@ -2394,7 +2397,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               recentSignatures.push(sig)
             }
             const repeating =
-              recentSignatures.length === REPEATED_STEP_THRESHOLD &&
+              recentSignatures.length === repeatedThreshold &&
               recentSignatures.every((sig) => sig === recentSignatures[0])
             if (repeating) {
               const lastUserMsg = msgs.findLast((m) => m.info.role === "user")
@@ -2412,7 +2415,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                   synthetic: true,
                   text: [
                     "<system-reminder>",
-                    `Your last ${REPEATED_STEP_THRESHOLD} steps have been identical — you appear to be`,
+                    `Your last ${repeatedThreshold} steps have been identical — you appear to be`,
                     "repeating the same action without making progress. Stop and reconsider:",
                     "the current approach is not working. Try a different strategy, use a",
                     "different tool, or if you are blocked, explain the blocker to the user",
@@ -2919,6 +2922,24 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             // Cardinal runtime check — security rules ALWAYS active, others mode-aware
             const cardinalModeId = agent.name
             const cardinalEvo = yield* modeRegistry.getEvolutionConfig(cardinalModeId)
+
+            // Detect file changes from BOTH patch parts AND tool calls
+            const fileModifyingTools = new Set(["edit", "write", "multiedit", "apply_patch"])
+            const allParts = MessageV2.parts(handle.message.id)
+            const patchFiles = allParts.filter((p) => p.type === "patch").flatMap((p: any) => p.files ?? [])
+            const toolCallFiles = allParts
+              .filter((p) => p.type === "tool" && fileModifyingTools.has((p as any).tool))
+              .flatMap((p: any) => {
+                const input = p.state?.input
+                if (!input) return []
+                if (input.filePath) return [input.filePath]
+                if (input.path) return [input.path]
+                if (input.files) return input.files
+                return []
+              })
+            const changedFiles = Array.from(new Set([...patchFiles, ...toolCallFiles]))
+            const hasFileChanges = changedFiles.length > 0
+
             {
               const alignmentAlerts = yield* alignmentGuard.getAlerts(sessionID).pipe(Effect.catch(() => Effect.succeed([])))
               const cardinalDecision = yield* cardinal.evaluate({
@@ -2929,8 +2950,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                 totalBudget: 20_000_000,
                 consecutiveFailures: invalidContinuations,
                 alignmentAlerts: alignmentAlerts.length,
-                changedFiles: MessageV2.parts(handle.message.id)
-                  .filter((p) => p.type === "patch").flatMap((p: any) => p.files ?? []),
+                changedFiles,
               }).pipe(Effect.catch(() => Effect.succeed(null)))
               if (cardinalDecision) {
                 // security block always enforced; others only when judgeEnabled
@@ -2953,51 +2973,44 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               }
             }
 
-            // JudgeAgent code quality check — all code changes, not just tests
-            if (cardinalEvo.judgeEnabled) {
-              const patches = MessageV2.parts(handle.message.id).filter((p) => p.type === "patch") as Array<{ files?: string[] }>
-              if (patches.length > 0) {
-                const judge = makeJudgeAgent({ specDrivenEnabled: cardinalEvo.specDrivenEnabled })
-                const changedFiles = patches.flatMap((p) => p.files ?? [])
-                const lastUserText = msgs.findLast((m) => m.info.role === "user")
-                  ?.parts.filter((p) => p.type === "text").map((p) => p.text).join("\n") ?? ""
-                const review = judge.quickReview({
-                  actorID: agent.name,
-                  requestType: "test_modification",
-                  originalTest: "",
-                  suggestedChange: changedFiles.join("\n"),
-                  reason: "automated check after tool execution",
-                  context: {},
-                  specContent: specContext,
-                  taskDescription: lastUserText,
-                })
-                if (!review.approved) {
-                  yield* slog.warn("judge flagged code change", { rationale: review.rationale, suggestions: review.suggestions, files: changedFiles })
-                }
-                // 如果有建议，记录到日志
-                if (review.suggestions && review.suggestions.length > 0) {
-                  yield* slog.info("judge suggestions", { suggestions: review.suggestions })
-                }
+            // JudgeAgent code quality check — triggers on ANY file change
+            if (cardinalEvo.judgeEnabled && hasFileChanges) {
+              const judge = makeJudgeAgent({ specDrivenEnabled: cardinalEvo.specDrivenEnabled })
+              const lastUserText = msgs.findLast((m) => m.info.role === "user")
+                ?.parts.filter((p) => p.type === "text").map((p) => p.text).join("\n") ?? ""
+              const review = judge.quickReview({
+                actorID: agent.name,
+                requestType: "test_modification",
+                originalTest: "",
+                suggestedChange: changedFiles.join("\n"),
+                reason: "automated check after tool execution",
+                context: {},
+                specContent: specContext,
+                taskDescription: lastUserText,
+              })
+              if (!review.approved) {
+                yield* slog.warn("judge flagged code change", { rationale: review.rationale, suggestions: review.suggestions, files: changedFiles })
+              }
+              if (review.suggestions && review.suggestions.length > 0) {
+                yield* slog.info("judge suggestions", { suggestions: review.suggestions })
               }
             }
 
-            // OpenSpec: update spec when code changes complete
-            {
-              const patches = MessageV2.parts(handle.message.id).filter((p) => p.type === "patch") as Array<{ files?: string[] }>
-              if (patches.length > 0) {
-                const changedFiles = patches.flatMap((p) => p.files ?? [])
-                const lastUserText = msgs.findLast((m) => m.info.role === "user")
-                  ?.parts.filter((p) => p.type === "text").map((p) => p.text).join("\n") ?? ""
-                const specMatch = yield* openspec.findSpec(lastUserText).pipe(Effect.catch(() => Effect.succeed(undefined)))
-                if (specMatch) {
-                  const hasError = !!handle.message.error
-                  yield* openspec.updateSpec(specMatch, {
-                    success: !hasError,
-                    output: hasError ? String(handle.message.error).slice(0, 200) : `Changed ${changedFiles.length} files`,
-                    tokensUsed: agentMetrics.tokens_in + agentMetrics.tokens_out,
-                  }).pipe(Effect.catch(() => Effect.succeed(false)))
-                  yield* slog.info("openspec updated", { specPath: specMatch.specPath, requirement: specMatch.requirement, success: !hasError })
-                }
+            // OpenSpec: update spec when code changes — match by user text OR changed file paths
+            if (hasFileChanges) {
+              const lastUserText = msgs.findLast((m) => m.info.role === "user")
+                ?.parts.filter((p) => p.type === "text").map((p) => p.text).join("\n") ?? ""
+              const textMatch = yield* openspec.findSpec(lastUserText).pipe(Effect.catch(() => Effect.succeed(undefined)))
+              const fileMatch = yield* openspec.findSpecByFiles(changedFiles).pipe(Effect.catch(() => Effect.succeed(undefined)))
+              const specMatch = textMatch ?? fileMatch
+              if (specMatch) {
+                const hasError = !!handle.message.error
+                yield* openspec.updateSpec(specMatch, {
+                  success: !hasError,
+                  output: hasError ? String(handle.message.error).slice(0, 200) : `Changed ${changedFiles.length} files`,
+                  tokensUsed: agentMetrics.tokens_in + agentMetrics.tokens_out,
+                }).pipe(Effect.catch(() => Effect.succeed(false)))
+                yield* slog.info("openspec updated", { specPath: specMatch.specPath, requirement: specMatch.requirement, success: !hasError })
               }
             }
 

@@ -20,18 +20,17 @@ import { renderActorNotification } from "@/inbox/render"
 import { Plugin, HookEvent } from "@/plugin"
 import { parseReturnHeader, type ReturnStatus } from "./return-header"
 import { Log } from "@/util"
+import { Config } from "@/config"
 
 const log = Log.create({ service: "actor.spawn" })
 
 /**
  * Cap on preStop ReAct re-entries per spawn — prevents infinite loops.
- * TODO: lift to mimocode.json config (e.g. actor.maxPreReact) and add per-hook
- * `maxContinue` clamp at registration. Plan: platform cap = hard ceiling, hook
- * cap may only narrow, never widen. See spec Future work.
+ * Configurable via actor.max_pre_react in mimocode.json.
  */
-export const MAX_PRE_REACT = 3
-/** Cap on postStop ReAct re-entries per spawn. See MAX_PRE_REACT TODO. */
-export const MAX_POST_REACT = 3
+const MAX_PRE_REACT_DEFAULT = 3
+/** Cap on postStop ReAct re-entries per spawn. Configurable via actor.max_post_react. */
+const MAX_POST_REACT_DEFAULT = 3
 const RETURN_FORMAT_INSTRUCTION = `
 
 ---
@@ -186,6 +185,7 @@ export const layer = Layer.effect(
     const bus = yield* Bus.Service
     const taskRegistry = yield* TaskRegistry.Service
     const scope = yield* Scope.Scope
+    const config = yield* Config.Service
 
     // ForkContext snapshot per actor, captured at spawn for fork agents
     // (contextMode = "full"). Read by fork's runLoop (see prompt.ts) and
@@ -341,7 +341,8 @@ export const layer = Layer.effect(
             structured = turn.structured
 
             iteration++
-            if (iteration > MAX_PRE_REACT) {
+            const maxPreReact = (yield* config.get()).actor?.max_pre_react ?? MAX_PRE_REACT_DEFAULT
+            if (iteration > maxPreReact) {
               yield* bus.publish(HookEvent.ReActMaxReached, {
                 phase: "pre",
                 actorID: input.actorID,
@@ -406,7 +407,7 @@ export const layer = Layer.effect(
                       session_id: input.parentSessionID,
                       owner: input.actorID,
                       reactCount: gateIter,
-                      maxReact: MAX_TASK_GATE_SUBAGENT_REACT,
+                      maxReact: (yield* config.get()).session?.max_task_gate_sub_react ?? MAX_TASK_GATE_SUBAGENT_REACT,
                       mode: "subagent",
                     }).pipe(Effect.provideService(TaskRegistry.Service, taskRegistry))
                     if (!decision.needReentry) break
@@ -505,13 +506,14 @@ export const layer = Layer.effect(
 
                   if (!decision.continue) break
                   if (!decision.reason) break // defense-in-depth
-                  if (postIter >= MAX_POST_REACT) {
+                  const maxPostReact = (yield* config.get()).actor?.max_post_react ?? MAX_POST_REACT_DEFAULT
+                  if (postIter >= maxPostReact) {
                     yield* bus.publish(HookEvent.ReActMaxReached, {
                       phase: "post",
                       actorID: input.actorID,
                       agentType: input.agentType,
                     })
-                    log.warn("actor.postStop hit MAX_POST_REACT cap; skipping further hook checks", {
+                    log.warn("actor.postStop hit max_post_react cap; skipping further hook checks", {
                       actorID: input.actorID,
                       totalTurns: postIter + 1,
                     })
@@ -735,6 +737,7 @@ export const defaultLayer = Layer.suspend(() =>
     Layer.provide(Plugin.defaultLayer),
     Layer.provide(Bus.layer),
     Layer.provide(TaskRegistry.defaultLayer),
+    Layer.provide(Config.defaultLayer),
   ),
 )
 
