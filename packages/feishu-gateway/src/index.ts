@@ -72,12 +72,14 @@ async function main() {
 
   // 优雅退出
   process.on("SIGINT", () => {
+    router.sessions.stop()
     console.log("\n🛑 正在关闭 Gateway...")
     client.close()
     process.exit(0)
   })
 
   process.on("SIGTERM", () => {
+    router.sessions.stop()
     client.close()
     process.exit(0)
   })

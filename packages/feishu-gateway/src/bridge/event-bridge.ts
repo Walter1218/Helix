@@ -1,4 +1,5 @@
 import { config } from "../config"
+import { CardBuilder } from "../cards/card-builder"
 import { Logger } from "../logger"
 
 const log = Logger.create("events")
@@ -11,6 +12,7 @@ type OnCard = (card: unknown) => void
  */
 export class EventBridge {
   private controllers = new Map<string, AbortController>()
+  private cards = new CardBuilder()
 
   /**
    * 订阅指定 session 的 Helix 事件流。
@@ -44,7 +46,16 @@ export class EventBridge {
             try {
               const event = JSON.parse(match[1])
               if (event.type === "observability.alignment_alert") {
-                onMsg(`⚠️ Agent 偏离告警: ${event.properties?.reason ?? "未知"}`)
+                const props = event.properties ?? {}
+                const card = this.cards.buildAlignmentAlertCard({
+                  level: props.level ?? "warn",
+                  reason: props.reason ?? "未知偏离",
+                  suggestion: props.suggestion ?? "请检查 Agent 执行状态",
+                  sessionID: props.sessionID ?? sessionID,
+                  files: props.files,
+                })
+                log.info("发送偏离告警卡片到飞书", { level: props.level, reason: props.reason?.slice(0, 60) })
+                onCard({ type: "alignment_alert", card, chatId })
               }
               if (event.type === "session.status") {
                 const status = event.properties?.status
@@ -56,7 +67,7 @@ export class EventBridge {
               // 权限请求事件
               if (event.type === "permission.asked") {
                 log.info("收到权限请求", { event: event.properties })
-                onCard(event.properties)  // 通过回调传递给 SessionManager 处理
+                onCard(event.properties)
               }
             } catch {
               // ignore parse errors

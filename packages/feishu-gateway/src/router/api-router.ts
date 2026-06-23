@@ -149,5 +149,45 @@ export function createApiRouter(sessions: SessionManager) {
     return c.json({ success, continued: false })
   })
 
+  // 飞书卡片交互回调（偏离告警的暂停/忽略按钮）
+  app.post("/card/action", async (c) => {
+    try {
+      const body = await c.req.json()
+
+      // 飞书验证请求（challenge）
+      if (body.challenge) {
+        return c.json({ challenge: body.challenge })
+      }
+
+      const action = body.action?.value
+      if (!action) {
+        return c.json({ ok: true })
+      }
+
+      const { action: actionType, sessionID } = action
+
+      if (actionType === "suspend" && sessionID) {
+        log.info("用户点击暂停任务", { sessionID })
+        // 取消该 session 对应的任务
+        const sessionMap = (sessions as any).sessions as Map<string, string>
+        const chatId = Array.from(sessionMap.entries())
+          .find(([_, sid]: [string, any]) => sid === sessionID)?.[0]
+        if (chatId) {
+          sessions.cancel(chatId)
+          await sessions.sendText(chatId, "⏸ 任务已暂停。发送新消息可重新开始。")
+        }
+      }
+
+      if (actionType === "ignore") {
+        log.info("用户忽略偏离告警", { sessionID })
+      }
+
+      return c.json({ ok: true })
+    } catch (err: any) {
+      log.error("卡片交互回调处理失败", { error: err.message })
+      return c.json({ ok: true })
+    }
+  })
+
   return app
 }

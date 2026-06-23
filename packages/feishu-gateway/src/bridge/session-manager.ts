@@ -3,6 +3,7 @@ import { createOpencodeClient, type OpencodeClient } from "@mimo-ai/sdk/v2"
 import { config } from "../config"
 import { Logger } from "../logger"
 import { EventBridge } from "./event-bridge"
+import { AlignmentNotifier } from "./alignment-notifier"
 
 const log = Logger.create("session")
 
@@ -17,6 +18,7 @@ export class SessionManager {
   public readonly larkClient: lark.Client
   private sdk: OpencodeClient
   private eventBridge: EventBridge
+  private alignmentNotifier: AlignmentNotifier
 
   constructor() {
     this.larkClient = new lark.Client({
@@ -37,6 +39,12 @@ export class SessionManager {
       directory: config.helix.workDir,
       headers,
     })
+
+    // 初始化全局偏离告警通知器
+    this.alignmentNotifier = new AlignmentNotifier(
+      (chatId, card) => this.sendCard(chatId, card),
+    )
+    this.alignmentNotifier.start()
 
     // 初始化事件桥接器
     this.eventBridge = new EventBridge()
@@ -90,6 +98,9 @@ export class SessionManager {
 
       log.info("发送消息到 Helix", { chatId, sessionID, text: text.slice(0, 80) })
 
+      // 注册到全局偏离告警通知器
+      this.alignmentNotifier.registerChat(sessionID, chatId)
+
       // 订阅事件流，监听权限请求
       this.eventBridge.subscribe(
         sessionID,
@@ -98,14 +109,21 @@ export class SessionManager {
         (msg) => {
           log.info("收到事件消息", { msg })
         },
-        // onCard: 权限请求回调
-        async (permissionData: any) => {
-          log.info("收到权限请求，转发到飞书", { permissionData })
+        // onCard: 卡片回调（权限请求 + 偏离告警）
+        async (cardData: any) => {
+          // 偏离告警卡片（由 EventBridge 构建）
+          if (cardData?.type === "alignment_alert") {
+            log.info("收到偏离告警，发送卡片到飞书")
+            await this.sendCard(chatId, cardData.card)
+            return
+          }
+
+          // 权限请求回调
+          log.info("收到权限请求，转发到飞书", { permissionData: cardData })
           
-          // 构建权限请求卡片消息
-          const permission = permissionData?.permission || "unknown"
-          const patterns = permissionData?.patterns || []
-          const metadata = permissionData?.metadata || {}
+          const permission = cardData?.permission || "unknown"
+          const patterns = cardData?.patterns || []
+          const metadata = cardData?.metadata || {}
           
           const cardMessage = `🔐 **权限请求**\n\n` +
             `**权限类型**: ${permission}\n` +
@@ -115,16 +133,14 @@ export class SessionManager {
             `- \`允许\` 或 \`yes\` - 批准本次操作\n` +
             `- \`拒绝\` 或 \`no\` - 拒绝本次操作`
           
-          // 发送权限请求到飞书
           await this.sendText(chatId, cardMessage)
           
-          // 存储待处理的权限请求
-          const requestId = permissionData?.id
+          const requestId = cardData?.id
           if (requestId) {
             this.pendingPermissions.set(requestId, {
               sessionID,
               chatId,
-              permissionData,
+              permissionData: cardData,
               timestamp: Date.now()
             })
           }
@@ -155,6 +171,7 @@ export class SessionManager {
       // 取消事件订阅
       const sessionID = this.sessions.get(chatId)
       if (sessionID) {
+        this.alignmentNotifier.unregisterChat(sessionID)
         this.eventBridge.unsubscribe(sessionID)
       }
     }
@@ -517,6 +534,11 @@ export class SessionManager {
       return true
     }
     return false
+  }
+
+  /** 停止全局通知器 */
+  stop() {
+    this.alignmentNotifier.stop()
   }
 
   isRunning(chatId: string): boolean {
