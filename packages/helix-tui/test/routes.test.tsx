@@ -154,13 +154,16 @@ describe("App navigation", () => {
     const { SDKProvider } = await import("../src/context/sdk")
     const { ThemeProvider } = await import("../src/context/theme")
     const { RouteProvider } = await import("../src/context/route")
+    const { DialogProvider } = await import("../src/ui/dialog")
 
     const result = await testRender(() => (
       <SDKProvider url="http://localhost:9999">
         <ThemeProvider>
-          <RouteProvider>
-            <App />
-          </RouteProvider>
+          <DialogProvider>
+            <RouteProvider>
+              <App />
+            </RouteProvider>
+          </DialogProvider>
         </ThemeProvider>
       </SDKProvider>
     ), { width: 100, height: 30 })

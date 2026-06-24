@@ -10,6 +10,8 @@ export type TraceEventType =
   | "user.abort"
   | "session.create"
   | "session.created"
+  | "session.delete"
+  | "session.rename"
   | "session.prompt"
   | "session.prompt_response"
   | "session.error"

@@ -4,6 +4,7 @@ import { App } from "./app"
 import { RouteProvider } from "./context/route"
 import { ThemeProvider } from "./context/theme"
 import { SDKProvider } from "./context/sdk"
+import { DialogProvider } from "./ui/dialog"
 import * as trace from "./trace"
 
 export async function bootstrap(config?: {
@@ -45,9 +46,11 @@ export async function bootstrap(config?: {
     () => (
       <SDKProvider url={url} directory={config?.directory} headers={authHeader}>
         <ThemeProvider>
-          <RouteProvider>
-            <App />
-          </RouteProvider>
+          <DialogProvider>
+            <RouteProvider>
+              <App />
+            </RouteProvider>
+          </DialogProvider>
         </ThemeProvider>
       </SDKProvider>
     ),

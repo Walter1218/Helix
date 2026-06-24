@@ -29,18 +29,58 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
       return () => listeners.delete(handler)
     }
 
+    // 16ms batch event processing
+    let pendingEvents: GlobalEvent[] = []
+    let lastFlush = 0
+    let flushTimeout: ReturnType<typeof setTimeout> | null = null
+
+    function flushEvents() {
+      if (flushTimeout) {
+        clearTimeout(flushTimeout)
+        flushTimeout = null
+      }
+      const events = pendingEvents
+      pendingEvents = []
+      lastFlush = Date.now()
+      if (events.length > 0) {
+        batch(() => {
+          for (const event of events) {
+            for (const l of listeners) l(event)
+          }
+        })
+      }
+    }
+
+    function queueEvent(event: GlobalEvent) {
+      pendingEvents.push(event)
+      const now = Date.now()
+      if (now - lastFlush > 16) {
+        flushEvents()
+      } else if (!flushTimeout) {
+        flushTimeout = setTimeout(flushEvents, 16)
+      }
+    }
+
     async function startEvents() {
-      try {
-        const result = await client.event.subscribe()
-        setConnected(true)
-        for await (const event of result.stream) {
-          if (abort.signal.aborted) break
-          batch(() => {
-            listeners.forEach((l) => l(event as unknown as GlobalEvent))
-          })
+      let attempt = 0
+      while (!abort.signal.aborted) {
+        try {
+          const result = await client.event.subscribe()
+          setConnected(true)
+          attempt = 0
+          for await (const event of result.stream) {
+            if (abort.signal.aborted) break
+            queueEvent(event as unknown as GlobalEvent)
+          }
+        } catch {
+          // Connection lost
         }
-      } catch {
         setConnected(false)
+        if (abort.signal.aborted) break
+        // Exponential backoff: 1s, 2s, 4s, 8s, ... up to 30s
+        attempt++
+        const delay = Math.min(1000 * 2 ** (attempt - 1), 30000)
+        await new Promise((r) => setTimeout(r, delay))
       }
     }
 
@@ -48,6 +88,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
 
     onCleanup(() => {
       abort.abort()
+      if (flushTimeout) clearTimeout(flushTimeout)
     })
 
     return {

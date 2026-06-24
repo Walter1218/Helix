@@ -1,7 +1,13 @@
-import { createSignal, For, Show, onMount, onCleanup, batch } from "solid-js"
-import { useKeyboard } from "@opentui/solid"
+import { createSignal, For, Show, onMount, onCleanup, batch, createMemo } from "solid-js"
+import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
 import { useTheme } from "../context/theme"
 import { useSDK } from "../context/sdk"
+import { useDialog } from "../ui/dialog"
+import { DialogConfirm } from "../ui/dialog-confirm"
+import { DialogPrompt } from "../ui/dialog-prompt"
+import { DialogSelect } from "../ui/dialog-select"
+import { DialogAlert } from "../ui/dialog-alert"
+import { SessionInfoPanel } from "../component/session-info-panel"
 import * as trace from "../trace"
 
 type Mode = {
@@ -28,7 +34,7 @@ type ToolCall = {
   status: "running" | "done" | "error"
 }
 
-type DisplayMessage = {
+export type DisplayMessage = {
   id: string
   role: "user" | "assistant" | "system"
   content: string
@@ -62,6 +68,10 @@ type QuestionRequest = {
 export function Chat() {
   const theme = useTheme()
   const sdk = useSDK()
+  const dialog = useDialog()
+  const dimensions = useTerminalDimensions()
+
+  const wide = createMemo(() => dimensions().width > 120)
 
   // Session state
   const [sessionID, setSessionID] = createSignal<string | null>(null)
@@ -82,6 +92,11 @@ export function Chat() {
   // Model state
   const [currentModel, setCurrentModel] = createSignal<string>("mimo-v2.5-pro")
   const MODELS = ["mimo-v2.5-pro", "mimo-v2-flash", "gpt-4o", "claude-sonnet-4"]
+
+  // Input history
+  const [inputHistory, setInputHistory] = createSignal<string[]>([])
+  const [historyIndex, setHistoryIndex] = createSignal(-1)
+  const [draftInput, setDraftInput] = createSignal("")
 
   function cycleModel() {
     const idx = MODELS.indexOf(currentModel())
@@ -117,18 +132,19 @@ export function Chat() {
     setPermission(null)
     setQuestion(null)
 
-    // Find title from session list
     const session = sessions().find((s) => s.id === sid)
     if (session) setSessionTitle(session.title)
 
-    // Load messages from server
     await loadMessages(sid)
     setShowSessionList(false)
+
+    // Persist last session ID
+    try { localStorage.setItem("helix-tui:lastSessionID", sid) } catch {}
 
     trace.emit("user.navigate", "info", "Switched session", { sessionID: sid })
   }
 
-  // Create a new session
+  // Create a new unnamed session
   async function newSession() {
     setSessionID(null)
     setSessionTitle("New Chat")
@@ -138,7 +154,91 @@ export function Chat() {
     setQuestion(null)
     setShowSessionList(false)
 
+    try { localStorage.removeItem("helix-tui:lastSessionID") } catch {}
+
     trace.emit("user.navigate", "info", "New session")
+  }
+
+  // Create a new named session via dialog
+  async function newNamedSession() {
+    const title = await DialogPrompt.show(dialog, "New Session", {
+      placeholder: "Enter session title...",
+      value: `${mode().label} Chat`,
+    })
+    if (title == null) return
+
+    trace.emit("session.create", "info", "Creating named session", { title })
+    const { data, error: err } = await sdk.client.session.create({ title })
+    if (err || !data) {
+      trace.emit("session.error", "error", "Failed to create named session", { error: err ? JSON.stringify(err) : "no data" })
+      DialogAlert.show(dialog, "Error", "Failed to create session. Please try again.")
+      return
+    }
+
+    setSessionID(data.id)
+    setSessionTitle(data.title)
+    setMessages([])
+    setError(null)
+    setPermission(null)
+    setQuestion(null)
+    setShowSessionList(false)
+
+    try { localStorage.setItem("helix-tui:lastSessionID", data.id) } catch {}
+
+    loadSessions()
+    trace.emit("session.created", "info", "Named session created", { sessionID: data.id, title: data.title })
+  }
+
+  // Delete current session
+  async function handleDeleteSession() {
+    const sid = sessionID()
+    if (!sid) return
+    const title = sessionTitle()
+    const confirmed = await DialogConfirm.show(dialog, "Delete Session", `Delete "${title}"?`)
+    if (confirmed !== true) return
+
+    trace.emit("session.delete", "info", "Deleting session", { sessionID: sid })
+    try {
+      await sdk.client.session.delete({ sessionID: sid })
+      DialogAlert.show(dialog, "Deleted", `Session "${title}" deleted.`)
+      newSession()
+      loadSessions()
+    } catch {
+      DialogAlert.show(dialog, "Error", "Failed to delete session.")
+    }
+  }
+
+  // Rename current session
+  async function renameSession() {
+    const sid = sessionID()
+    if (!sid) return
+    const newTitle = await DialogPrompt.show(dialog, "Rename Session", {
+      placeholder: "Enter new title...",
+      value: sessionTitle(),
+    })
+    if (newTitle == null) return
+
+    trace.emit("session.rename", "info", "Renaming session", { sessionID: sid, newTitle })
+    try {
+      await sdk.client.session.update({ sessionID: sid, title: newTitle })
+      setSessionTitle(newTitle)
+      loadSessions()
+    } catch {
+      DialogAlert.show(dialog, "Error", "Failed to rename session.")
+    }
+  }
+
+  // Open session dialog for switching
+  async function openSessionDialog() {
+    const opts = sessions().map((s) => ({
+      title: s.title,
+      value: s.id,
+      description: s.createdAt ? new Date(s.createdAt).toLocaleDateString() : undefined,
+    }))
+    const selected = await DialogSelect.show(dialog, "Switch Session", opts, sessionID() ?? undefined)
+    if (selected) {
+      await switchSession(selected.value)
+    }
   }
 
   const addMessage = (role: DisplayMessage["role"], content: string, status?: DisplayMessage["status"]) => {
@@ -181,8 +281,8 @@ export function Chat() {
         setSessionID(data.id)
         setSessionTitle(data.title)
         trace.emit("session.created", "info", "Session created", { sessionID: data.id, title: data.title, attempt })
-        // Refresh session list
         loadSessions()
+        try { localStorage.setItem("helix-tui:lastSessionID", data.id) } catch {}
         return data.id
       }
       lastError = err
@@ -254,6 +354,15 @@ export function Chat() {
 
     if (textarea) textarea.clear()
 
+    // Save to input history (deduplicated, max 50)
+    setInputHistory((prev) => {
+      const filtered = prev.filter((h) => h !== text)
+      const next = [text, ...filtered].slice(0, 50)
+      return next
+    })
+    setHistoryIndex(-1)
+    setDraftInput("")
+
     try {
       const sid = await ensureSession()
       trace.emit("session.prompt", "info", "Sending prompt to server", { sessionID: sid, length: text.length, mode: mode().id }, sid)
@@ -285,6 +394,31 @@ export function Chat() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  async function retryMessage(msg: DisplayMessage) {
+    // Find the last user message before this assistant message
+    const msgs = messages()
+    const idx = msgs.findIndex((m) => m.id === msg.id)
+    if (idx < 0) return
+
+    let userText = ""
+    for (let i = idx - 1; i >= 0; i--) {
+      if (msgs[i]!.role === "user") {
+        userText = msgs[i]!.content
+        break
+      }
+    }
+    if (!userText) return
+
+    // Remove the failed assistant message and re-send
+    setMessages((prev) => prev.filter((m) => m.id !== msg.id))
+    setError(null)
+
+    if (textarea) {
+      textarea.setPlainText(userText)
+    }
+    await handleSend()
   }
 
   async function handleAbort() {
@@ -435,17 +569,14 @@ export function Chat() {
 
   // Keyboard shortcuts
   useKeyboard((evt) => {
-    // F2: cycle model
     if (evt.name === "f2") {
       cycleModel()
     }
-    // Tab: cycle mode forward
     if (evt.name === "tab" && !evt.shift) {
       const idx = MODES.findIndex((m) => m.id === mode().id)
       setMode(MODES[(idx + 1) % MODES.length]!)
       trace.emit("user.navigate", "info", `Mode changed: ${mode().id}`, { mode: mode().id })
     }
-    // Shift+Tab: cycle mode backward
     if (evt.name === "tab" && evt.shift) {
       const idx = MODES.findIndex((m) => m.id === mode().id)
       setMode(MODES[(idx - 1 + MODES.length) % MODES.length]!)
@@ -453,9 +584,22 @@ export function Chat() {
     }
   })
 
-  // Load sessions on mount
+  // Load sessions on mount + auto-recovery
   onMount(() => {
-    loadSessions()
+    loadSessions().then(() => {
+      // Auto-recovery: try to restore last session
+      try {
+        const lastID = localStorage.getItem("helix-tui:lastSessionID")
+        if (lastID) {
+          const exists = sessions().find((s) => s.id === lastID)
+          if (exists) {
+            switchSession(lastID)
+          } else {
+            localStorage.removeItem("helix-tui:lastSessionID")
+          }
+        }
+      } catch {}
+    })
   })
 
   const formatTime = (ts: number) => {
@@ -511,6 +655,9 @@ export function Chat() {
             {" "}{sdk.connected() ? "●" : "○"}
           </text>
           <box flexGrow={1} />
+          <text fg={theme.getColor("textMuted")} onMouseDown={newNamedSession}>[+New]</text>
+          <text fg={theme.getColor("textMuted")} onMouseDown={renameSession}>[Rename]</text>
+          <text fg={theme.getColor("textMuted")} onMouseDown={handleDeleteSession}>[Delete]</text>
           <text fg={theme.getColor("textMuted")} onMouseDown={cycleModel}>
             [F2: {currentModel()}]
           </text>
@@ -617,6 +764,9 @@ export function Chat() {
                     <Show when={msg.status === "error"}>
                       <text fg={theme.getColor("error")}> {" "}error</text>
                     </Show>
+                    <Show when={msg.status === "error"}>
+                      <text fg={theme.getColor("warning")} onMouseDown={() => retryMessage(msg)}> [Retry]</text>
+                    </Show>
                   </box>
 
                   {/* Text content */}
@@ -694,7 +844,7 @@ export function Chat() {
             flexGrow={1}
             minHeight={1}
             maxHeight={1}
-            placeholder={`${mode().label} | ${currentModel()} | Enter to send, Tab=mode, F2=model`}
+            placeholder={`${mode().label} | ${currentModel()} | Enter=send, Tab=mode, F2=model, Up=history`}
             placeholderColor={theme.getColor("textMuted")}
             textColor={theme.getColor("text")}
             focusedTextColor={theme.getColor("text")}
@@ -711,6 +861,39 @@ export function Chat() {
             onKeyDown={(e: any) => {
               if (e.name === "escape") {
                 handleAbort()
+                return
+              }
+              if (e.name === "up") {
+                const hist = inputHistory()
+                if (hist.length === 0) return
+                const idx = historyIndex()
+                if (idx < 0) {
+                  // Save current draft
+                  setDraftInput(textarea?.plainText ?? "")
+                }
+                const newIdx = Math.min(idx + 1, hist.length - 1)
+                if (newIdx !== idx) {
+                  setHistoryIndex(newIdx)
+                  if (textarea) textarea.setPlainText(hist[newIdx]!)
+                }
+                e.preventDefault()
+                e.stopPropagation()
+                return
+              }
+              if (e.name === "down") {
+                const idx = historyIndex()
+                if (idx < 0) return
+                const newIdx = idx - 1
+                if (newIdx >= 0) {
+                  setHistoryIndex(newIdx)
+                  if (textarea) textarea.setPlainText(inputHistory()[newIdx]!)
+                } else {
+                  setHistoryIndex(-1)
+                  if (textarea) textarea.setPlainText(draftInput())
+                }
+                e.preventDefault()
+                e.stopPropagation()
+                return
               }
             }}
             onMouseDown={(e: any) => e.target?.focus()}
@@ -722,6 +905,17 @@ export function Chat() {
           </Show>
         </box>
       </box>
+
+      {/* Right info panel */}
+      <SessionInfoPanel
+        sessionID={sessionID()}
+        sessionTitle={sessionTitle()}
+        connected={sdk.connected()}
+        messages={messages()}
+        mode={mode().label}
+        model={currentModel()}
+        wide={wide()}
+      />
     </box>
   )
 }

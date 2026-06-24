@@ -276,15 +276,18 @@ describe("Mode selector", () => {
     const { ThemeProvider } = await import("../src/context/theme")
     const { RouteProvider } = await import("../src/context/route")
     const { SDKProvider } = await import("../src/context/sdk")
+    const { DialogProvider } = await import("../src/ui/dialog")
 
     const result = await testRender(() => (
       <SDKProvider url="http://localhost:9999">
         <ThemeProvider>
-          <RouteProvider>
-            <box width={100} height={30}>
-              <Chat />
-            </box>
-          </RouteProvider>
+          <DialogProvider>
+            <RouteProvider>
+              <box width={100} height={30}>
+                <Chat />
+              </box>
+            </RouteProvider>
+          </DialogProvider>
         </ThemeProvider>
       </SDKProvider>
     ), { width: 120, height: 35 })

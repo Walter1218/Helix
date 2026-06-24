@@ -3,6 +3,7 @@ import { useKeyboard } from "@opentui/solid"
 import { useRoute } from "./context/route"
 import { Sidebar } from "./component/sidebar"
 import { useTheme } from "./context/theme"
+import { useDialog } from "./ui/dialog"
 import { Home } from "./routes/home"
 import { Chat } from "./routes/chat"
 import { Project } from "./routes/project"
@@ -13,6 +14,7 @@ import * as trace from "./trace"
 export function App() {
   const route = useRoute()
   const theme = useTheme()
+  const dialog = useDialog()
 
   // 使用 useKeyboard 处理全局键盘事件
   useKeyboard((evt) => {
