@@ -2,7 +2,7 @@
 
 import { bootstrap } from "./bootstrap"
 
-const url = process.env["HELIX_URL"] ?? "http://localhost:3000"
+const url = process.env["HELIX_URL"] ?? "http://localhost:3095"
 const directory = process.cwd()
 
 console.log("Starting Helix TUI...")

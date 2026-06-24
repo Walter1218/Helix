@@ -359,8 +359,266 @@ The system SHALL detect and block assertion deletions in test files.
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 **Status**: ✅ implemented (2026-06-24)
-**Tokens**: 5,779,497
+**Tokens**: 390,839
 
 ### Structural change detection
 The system SHALL detect removal of test cases.
@@ -382,3 +640,31 @@ The system SHALL verify changes are within the task scope.
 
 **Status**: ✅ implemented (2026-06-23)
 **Notes**: 通过checkSpecCompliance函数实现，检查变更与规范需求的关联性
+
+### Claim gate
+The system SHALL reject unverified claims of completion. When an agent message contains completion indicators ("已修复", "已实现", "fixed", "implemented", "done", "完成", "resolved") for source code changes, the system SHALL require verification evidence. A claim without a preceding test execution or functional verification in the same turn SHALL be flagged.
+
+**Status**: 📋 proposed (2026-06-24)
+**Motivation**: Agent claimed "chat textarea fixed" after only verifying build succeeds, without testing actual keyboard input behavior. Build pass ≠ functional correctness.
+
+### Test quality check
+The system SHALL evaluate whether test files contain functional assertions. When source code files are changed, the system SHALL locate corresponding test files and classify them:
+- **Structural test**: only checks file existence (`existsSync`, `isFile`, `isDirectory`) without behavioral assertions → SHALL flag as insufficient
+- **Functional test**: contains behavioral assertions (`toBe`, `toEqual`, `toContain`, `toHaveBeenCalled`) that verify input→output behavior → passes
+
+When a source file has only structural tests or no tests, the system SHALL warn that the change is unverified.
+
+**Status**: 📋 proposed (2026-06-24)
+**Motivation**: `test/index.test.ts` only checked `fs.existsSync(path.join(srcPath, "routes", "chat.tsx"))` — passed but verified nothing about chat behavior. This hid the broken Enter key handling.
+
+### Verification level
+The system SHALL distinguish verification levels and enforce minimum levels for completion claims:
+- **L0 (compile)**: code compiles without errors — insufficient for "fixed" claims
+- **L1 (typecheck)**: static type checking passes — insufficient for "fixed" claims
+- **L2 (regression)**: existing tests pass — insufficient when tests are structural-only
+- **L3 (functional)**: behavioral tests verify input→output — required for "fixed"/"implemented" claims
+
+When an agent claims completion at L0 or L1 without L3 evidence, the system SHALL downgrade the claim to "pending verification".
+
+**Status**: 📋 proposed (2026-06-24)
+**Motivation**: Agent ran `bun run build` (L0) + `bun typecheck` (L1) and declared "修复完成". Neither level tests actual behavior.

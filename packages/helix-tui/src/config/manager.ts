@@ -39,7 +39,7 @@ const DEFAULT_CONFIG: HelixConfig = {
   communication: {
     default: "http",
     adapters: {
-      http: { endpoint: "http://localhost:3000" },
+      http: { endpoint: "http://localhost:3095" },
     },
   },
   plugins: {

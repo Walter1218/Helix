@@ -178,7 +178,7 @@
           "id": "M5-T2",
           "title": "每日执行报告",
           "description": "每天自动发送执行报告到飞书：任务数、成功率、token消耗、异常摘要",
-          "status": "in_progress",
+          "status": "done",
           "priority": "high",
           "estimated_tokens": 25000,
           "tags": [

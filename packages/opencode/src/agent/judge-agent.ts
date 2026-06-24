@@ -35,6 +35,12 @@ export interface ReviewRequest {
   readonly specPath?: string
   /** 任务描述 */
   readonly taskDescription?: string
+  /** 智能体消息文本（用于 Claim Gate 检测） */
+  readonly agentMessage?: string
+  /** 变更文件对应的测试文件内容（用于测试质量检查） */
+  readonly testFileContents?: readonly { readonly path: string; readonly content: string }[]
+  /** 已达到的验证级别 */
+  readonly verificationLevel?: "compile" | "typecheck" | "regression" | "functional"
 }
 
 /** 审查结果 */
@@ -315,6 +321,92 @@ const extractRequirements = (specContent: string): Array<{ name: string; status:
   return requirements
 }
 
+/** 检测未验证的完成声明 */
+const checkClaimGate = (
+  agentMessage: string | undefined,
+  verificationLevel: string | undefined,
+  testQuality: "none" | "structural" | "functional",
+): { valid: boolean; reason?: string } => {
+  if (!agentMessage) return { valid: true }
+
+  const completionPatterns = [
+    /已修复/i, /已实现/i, /修复完成/i, /实现完成/i,
+    /fixed/i, /implemented/i, /done/i, /resolved/i,
+    /completed/i, /修复好了/i, /搞定了/i,
+  ]
+
+  const hasClaim = completionPatterns.some((p) => p.test(agentMessage))
+  if (!hasClaim) return { valid: true }
+
+  if (verificationLevel === "functional") return { valid: true }
+
+  if (verificationLevel === "regression" && testQuality === "functional") return { valid: true }
+
+  return {
+    valid: false,
+    reason: `智能体声称已完成，但验证级别仅为 ${verificationLevel ?? "无"}（测试质量: ${testQuality}）。需要功能验证（L3）或 L2 + 功能性测试才能确认"已修复"声明。`,
+  }
+}
+
+/** 检测测试文件质量：结构性测试 vs 功能性测试 */
+const checkTestQuality = (
+  changedSourceFiles: string[],
+  testFileContents: readonly { readonly path: string; readonly content: string }[] | undefined,
+): { valid: boolean; reason?: string; suggestions?: string[] } => {
+  if (!testFileContents || testFileContents.length === 0) return { valid: true }
+
+  const structuralAssertionPattern = /expect\(.*(?:existsSync|isFile|isDirectory|exists)\(/
+  const hasFunctional = testFileContents.some((f) =>
+    /expect\(.*\)\.(toBe|toEqual|toContain|toHaveBeenCalled|toHaveBeenCalledWith|toMatch|toThrow)\(/.test(f.content) &&
+    !structuralAssertionPattern.test(f.content),
+  )
+  const hasStructuralOnly = testFileContents.some((f) => structuralAssertionPattern.test(f.content)) && !hasFunctional
+
+  if (hasStructuralOnly) {
+    return {
+      valid: false,
+      reason: `测试质量不足: 仅包含结构性检查（文件存在），无功能性断言`,
+      suggestions: ["补充功能性断言（验证输入→输出行为）", "使用 testRender 做 headless 渲染测试"],
+    }
+  }
+
+  return { valid: true }
+}
+
+/** 检测验证级别是否足够 */
+const checkVerificationLevel = (
+  agentMessage: string | undefined,
+  verificationLevel: string | undefined,
+  testQuality: "none" | "structural" | "functional",
+): { valid: boolean; reason?: string } => {
+  if (!agentMessage) return { valid: true }
+
+  const completionPatterns = [
+    /已修复/i, /已实现/i, /修复完成/i, /fixed/i, /implemented/i, /done/i, /resolved/i,
+  ]
+  const hasClaim = completionPatterns.some((p) => p.test(agentMessage))
+  if (!hasClaim) return { valid: true }
+
+  const level = verificationLevel ?? "none"
+  const levelNum = level === "functional" ? 3 : level === "regression" ? 2 : level === "typecheck" ? 1 : level === "compile" ? 0 : -1
+
+  if (levelNum < 2) {
+    return {
+      valid: false,
+      reason: `验证级别不足: ${level} (L${levelNum})。声称"已修复"至少需要 L2（回归测试），推荐 L3（功能测试）。`,
+    }
+  }
+
+  if (levelNum === 2 && testQuality === "structural") {
+    return {
+      valid: false,
+      reason: `验证级别 L2（回归测试）但测试仅为结构性检查。需要包含功能性断言的测试才能确认修复。`,
+    }
+  }
+
+  return { valid: true }
+}
+
 // ── Judge Agent Factory ─────────────────────────────────────
 
 /**
@@ -411,6 +503,44 @@ export const make = (config: Partial<JudgeAgentConfig> = {}) => {
           rationale: "启发式检查通过，规范合规性检查有建议",
           suggestions: specCheck.suggestions,
         }
+      }
+    }
+
+    // 测试质量检查：检测结构性测试（先于 Claim Gate，因为 Claim Gate 依赖测试质量）
+    const testQualityCheck = checkTestQuality(
+      request.suggestedChange.split("\n").filter((l) => l.trim()),
+      request.testFileContents,
+    )
+    if (!testQualityCheck.valid) {
+      return {
+        approved: false,
+        rationale: testQualityCheck.reason!,
+        suggestions: testQualityCheck.suggestions ?? ["补充功能性断言"],
+      }
+    }
+
+    // 计算测试质量级别
+    const testQuality = request.testFileContents?.some((f) =>
+      /expect\(.*\)\.(toBe|toEqual|toContain|toHaveBeenCalled)/.test(f.content),
+    ) ? "functional" as const : request.testFileContents?.some((f) => /expect\(/.test(f.content)) ? "structural" as const : "none" as const
+
+    // Claim Gate：检测未验证的完成声明
+    const claimCheck = checkClaimGate(request.agentMessage, request.verificationLevel, testQuality)
+    if (!claimCheck.valid) {
+      return {
+        approved: false,
+        rationale: claimCheck.reason!,
+        suggestions: ["运行功能测试验证修复", "使用 testRender 做 headless 渲染测试", "将验证级别提升到 L3（功能测试）"],
+      }
+    }
+
+    // 验证级别检查
+    const verificationCheck = checkVerificationLevel(request.agentMessage, request.verificationLevel, testQuality)
+    if (!verificationCheck.valid) {
+      return {
+        approved: false,
+        rationale: verificationCheck.reason!,
+        suggestions: ["运行 bun test 验证回归", "补充功能性测试用例"],
       }
     }
 

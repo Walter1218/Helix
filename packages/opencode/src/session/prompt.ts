@@ -2979,6 +2979,39 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               const judge = makeJudgeAgent({ specDrivenEnabled: cardinalEvo.specDrivenEnabled })
               const lastUserText = msgs.findLast((m) => m.info.role === "user")
                 ?.parts.filter((p) => p.type === "text").map((p) => p.text).join("\n") ?? ""
+
+              // 收集变更源码文件对应的测试文件内容
+              const testFileContents: { path: string; content: string }[] = []
+              for (const file of changedFiles) {
+                if (file.includes("/src/") && (file.endsWith(".ts") || file.endsWith(".tsx"))) {
+                  const testCandidates = [
+                    file.replace("/src/", "/test/").replace(/\.tsx?$/, ".test.ts"),
+                    file.replace("/src/", "/test/").replace(/\.tsx?$/, ".test.tsx"),
+                    file.replace("/src/", "/test/").replace(/\.tsx?$/, ".spec.ts"),
+                  ]
+                  for (const testPath of testCandidates) {
+                    const content = yield* fsys.readFile(testPath).pipe(Effect.catch(() => Effect.succeed(null)))
+                    if (content) {
+                      testFileContents.push({ path: testPath, content: Buffer.from(content).toString() })
+                      break
+                    }
+                  }
+                }
+              }
+
+              // 检测智能体消息中是否包含完成声明
+              const lastAgentMsg = msgs.findLast((m) => m.info.role === "assistant")
+                ?.parts.filter((p) => p.type === "text").map((p) => p.text).join("\n") ?? ""
+
+              // 检测验证级别
+              let verificationLevel: "compile" | "typecheck" | "regression" | "functional" = "compile"
+              if (lastAgentMsg.includes("bun test") || lastAgentMsg.includes("test pass")) {
+                verificationLevel = testFileContents.length > 0 ? "regression" : "typecheck"
+              }
+              if (lastAgentMsg.includes("testRender") || lastAgentMsg.includes("mockInput")) {
+                verificationLevel = "functional"
+              }
+
               const review = judge.quickReview({
                 actorID: agent.name,
                 requestType: "test_modification",
@@ -2988,6 +3021,9 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                 context: {},
                 specContent: specContext,
                 taskDescription: lastUserText,
+                agentMessage: lastAgentMsg,
+                testFileContents,
+                verificationLevel,
               })
               if (!review.approved) {
                 const judgeAction = cardinalEvo.judgeAction ?? "warn"

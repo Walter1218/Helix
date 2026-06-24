@@ -1,0 +1,103 @@
+import { appendFileSync, mkdirSync } from "fs"
+import { join } from "path"
+import { tmpdir } from "os"
+
+export type TraceEventType =
+  | "user.send"
+  | "user.navigate"
+  | "user.permission_reply"
+  | "user.question_reply"
+  | "user.abort"
+  | "session.create"
+  | "session.created"
+  | "session.prompt"
+  | "session.prompt_response"
+  | "session.error"
+  | "session.idle"
+  | "event.delta"
+  | "event.permission_asked"
+  | "event.question_asked"
+  | "ui.render"
+  | "ui.focus"
+  | "ui.error"
+
+export type TraceLevel = "debug" | "info" | "warn" | "error"
+
+export interface TraceEvent {
+  id: string
+  type: TraceEventType
+  level: TraceLevel
+  message: string
+  data?: Record<string, unknown>
+  timestamp: number
+  sessionId?: string
+}
+
+const MAX_TRACES = 10000
+const traces: TraceEvent[] = []
+let logFile: string | null = null
+let enabled = true
+let fileLogging = true
+
+function getLogFile(): string {
+  if (!logFile) {
+    const dir = join(tmpdir(), "helix-tui")
+    try { mkdirSync(dir, { recursive: true }) } catch {}
+    logFile = join(dir, `trace-${new Date().toISOString().slice(0, 10)}.log`)
+  }
+  return logFile
+}
+
+export function emit(
+  type: TraceEventType,
+  level: TraceLevel,
+  message: string,
+  data?: Record<string, unknown>,
+  sessionId?: string,
+) {
+  if (!enabled) return
+
+  const event: TraceEvent = {
+    id: Math.random().toString(36).slice(2, 8),
+    type,
+    level,
+    message,
+    data,
+    timestamp: Date.now(),
+    sessionId,
+  }
+
+  traces.push(event)
+  if (traces.length > MAX_TRACES) traces.splice(0, traces.length - MAX_TRACES)
+
+  if (fileLogging && level !== "debug") {
+    const line = `[${new Date(event.timestamp).toISOString()}] [${level.toUpperCase().padEnd(5)}] [${type.padEnd(24)}] ${message}${data ? " " + JSON.stringify(data) : ""}\n`
+    try {
+      appendFileSync(getLogFile(), line)
+    } catch {}
+  }
+}
+
+export function getTraces(filter?: { type?: TraceEventType; sessionId?: string; level?: TraceLevel }): TraceEvent[] {
+  let result = traces
+  if (filter?.type) result = result.filter((t) => t.type === filter.type)
+  if (filter?.sessionId) result = result.filter((t) => t.sessionId === filter.sessionId)
+  if (filter?.level) result = result.filter((t) => t.level === filter.level)
+  return result
+}
+
+export function getTraceLog(): string {
+  return getLogFile()
+}
+
+export function setEnabled(v: boolean) {
+  enabled = v
+}
+
+export function setFileLogging(v: boolean) {
+  fileLogging = v
+}
+
+export function clear() {
+  traces.length = 0
+}

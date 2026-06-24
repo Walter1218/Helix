@@ -1,6 +1,7 @@
 import { createSignal, For, onMount, onCleanup } from "solid-js"
 import { useRoute, type Route } from "../context/route"
 import { useTheme } from "../context/theme"
+import * as trace from "../trace"
 
 type NavItem = {
   id: string
@@ -25,6 +26,7 @@ export function Sidebar() {
   const isActive = (item: NavItem) => route.data.type === item.route.type
 
   const navigate = (item: NavItem) => {
+    trace.emit("user.navigate", "info", `Navigate via sidebar: ${item.label}`, { route: item.route.type })
     route.navigate(item.route)
   }
 

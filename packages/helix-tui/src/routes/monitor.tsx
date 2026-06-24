@@ -38,7 +38,7 @@ export function Monitor() {
   }
 
   const bar = (value: number, width: number = 25) => {
-    const filled = Math.round((value / 100) * width)
+    const filled = Math.max(0, Math.min(width, Math.round((value / 100) * width)))
     return "█".repeat(filled) + "░".repeat(width - filled)
   }
 

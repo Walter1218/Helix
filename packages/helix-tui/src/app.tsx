@@ -8,6 +8,7 @@ import { Chat } from "./routes/chat"
 import { Project } from "./routes/project"
 import { Monitor } from "./routes/monitor"
 import { Settings } from "./routes/settings"
+import * as trace from "./trace"
 
 export function App() {
   const route = useRoute()
@@ -15,12 +16,12 @@ export function App() {
 
   // 使用 useKeyboard 处理全局键盘事件
   useKeyboard((evt) => {
-    // 数字键 1-5 切换页面
-    if (evt.key >= "1" && evt.key <= "5" && !evt.ctrl && !evt.alt && !evt.meta) {
+    if (evt.name >= "1" && evt.name <= "5" && !evt.ctrl && !evt.meta) {
       const routes = ["home", "chat", "project", "monitor", "settings"] as const
-      const index = parseInt(evt.key) - 1
-      if (index >= 0 && index < routes.length) {
-        route.navigate({ type: routes[index] })
+      const target = routes[parseInt(evt.name) - 1]
+      if (target) {
+        trace.emit("user.navigate", "info", `Navigate via key: ${target}`, { route: target, key: evt.name })
+        route.navigate({ type: target })
       }
     }
   })
