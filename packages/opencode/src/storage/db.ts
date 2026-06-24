@@ -167,7 +167,8 @@ function migrateWithTolerance(db: Client, entries: Journal) {
           msg.includes("already exists") ||
           msg.includes("duplicate column") ||
           msg.includes("no such table") ||
-          msg.includes("no such column")
+          msg.includes("no such column") ||
+          (msg.includes("Failed to run the query") && msg.includes("RENAME TO"))
         ) {
           log.info("migration statement skipped (already applied)", {
             migration: entry.name,

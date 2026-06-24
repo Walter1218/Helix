@@ -34,7 +34,7 @@ function buildRequest(extra?: Partial<Parameters<Permission.Interface["ask"]>[0]
 
 describe("Permission.ask interactive flag", () => {
   it.live(
-    "interactive:false denies immediately and publishes no Asked event",
+    "interactive:false auto-approves for autonomous mode",
     provideTmpdirInstance(() =>
       Effect.gen(function* () {
         const perm = yield* Permission.Service
@@ -44,9 +44,8 @@ describe("Permission.ask interactive flag", () => {
         })
         const result = yield* perm.ask(buildRequest({ interactive: false })).pipe(Effect.exit)
         unsub()
-        expect(result._tag).toBe("Failure")
+        expect(result._tag).toBe("Success")
         expect(asked).toBe(0)
-        // pending must be empty — nothing left awaiting a reply
         const pending = yield* perm.list()
         expect(pending.length).toBe(0)
       }),

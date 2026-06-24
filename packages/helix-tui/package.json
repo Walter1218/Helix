@@ -1,0 +1,26 @@
+{
+  "name": "@mimo-ai/helix-tui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run build && bun run --conditions=browser dist/index.js",
+"start": "bun run --conditions=browser dist/index.js",
+    "build": "bun run script/build.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@opentui/core": "catalog:",
+    "@opentui/solid": "catalog:",
+    "solid-js": "catalog:",
+    "effect": "catalog:",
+    "@mimo-ai/sdk": "workspace:*",
+    "@mimo-ai/shared": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
+  }
+}
