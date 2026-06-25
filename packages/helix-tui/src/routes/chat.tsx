@@ -90,8 +90,8 @@ export function Chat() {
   const [mode, setMode] = createSignal<Mode>(MODES[1]!) // default: build
 
   // Model state
-  const [currentModel, setCurrentModel] = createSignal<string>("mimo-v2.5-pro")
-  const MODELS = ["mimo-v2.5-pro", "mimo-v2-flash", "gpt-4o", "claude-sonnet-4"]
+  const [currentModel, setCurrentModel] = createSignal<string>("standard")
+  const MODELS = ["standard", "ultra", "lite"]
 
   // Input history
   const [inputHistory, setInputHistory] = createSignal<string[]>([])

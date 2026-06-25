@@ -24,7 +24,7 @@ export function SessionInfoPanel(props: {
 
   const contextPercent = () => {
     const t = totalTokens()
-    const max = 8192
+    const max = 1_000_000 // Default context window: 1M tokens (matches backend DEFAULT_CONTEXT_WINDOW)
     return Math.min(100, Math.round((t / max) * 100))
   }
 
@@ -67,10 +67,10 @@ export function SessionInfoPanel(props: {
 
         {/* Context Info */}
         <box flexDirection="column" gap={1} paddingTop={1}>
-          <text fg={theme.getColor("accent")} attributes={1}>Context</text>
+            <text fg={theme.getColor("accent")} attributes={1}>Context</text>
           <box height={1} flexDirection="row">
             <text fg={theme.getColor("textMuted")}>Tokens: </text>
-            <text fg={theme.getColor("text")}>{totalTokens().toLocaleString()} / 8,192 ({contextPercent()}%)</text>
+            <text fg={theme.getColor("text")}>{totalTokens().toLocaleString()} / 1,000,000 ({contextPercent()}%)</text>
           </box>
           <box height={1} flexDirection="row">
             <text fg={theme.getColor("textMuted")}>Messages: </text>

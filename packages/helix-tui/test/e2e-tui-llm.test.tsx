@@ -334,7 +334,7 @@ describe("E2E TUI: Real LLM Blackbox", () => {
     await initTUI(result)
 
     const frame0 = result.captureCharFrame()
-    expect(frame0).toContain("F2: mimo-v2.5-pro")
+    expect(frame0).toContain("F2: standard")
 
     // Press F2 to switch to next model
     result.mockInput.pressKey("F2")
@@ -343,7 +343,7 @@ describe("E2E TUI: Real LLM Blackbox", () => {
     await result.renderOnce()
 
     const frame1 = result.captureCharFrame()
-    expect(frame1).toContain("F2: mimo-v2-flash")
+    expect(frame1).toContain("F2: ultra")
 
     // Press F2 again to cycle back through
     result.mockInput.pressKey("F2")
@@ -352,7 +352,7 @@ describe("E2E TUI: Real LLM Blackbox", () => {
     await result.renderOnce()
 
     const frame2 = result.captureCharFrame()
-    const hasModel = frame2.includes("F2: gpt-4o") || frame2.includes("F2: mimo-v2-flash")
+    const hasModel = frame2.includes("F2: lite") || frame2.includes("F2: ultra")
     console.log(`Test 6 (F2 model): ${hasModel ? "PASS" : "FAIL"}`)
     expect(hasModel).toBe(true)
   }, 10000)
@@ -523,7 +523,7 @@ describe("E2E TUI: Real LLM Blackbox", () => {
       const response = await fetch(input, init)
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
       const method = init?.method ?? (input instanceof Request ? input.method : "GET")
-      if (url.includes("/prompt") && method === "POST") {
+      if (url.includes("/session/") && url.includes("/message") && method === "POST") {
         return new Response(JSON.stringify({
           data: { id: "test-id" },
           error: null,
