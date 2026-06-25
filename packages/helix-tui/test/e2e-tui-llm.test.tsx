@@ -478,7 +478,41 @@ describe("E2E TUI: Real LLM Blackbox", () => {
     expect(found).toBe(true)
   }, 70000)
 
-  // ── Test 10: Boundary — missing parts in prompt response ──
+  // ── Test 13: Backend error response — catch branch returns { error } ──
+  testFn("backend catch writes error to response body", async () => {
+    const faultyFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const response = await fetch(input, init)
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      const method = init?.method ?? (input instanceof Request ? input.method : "GET")
+      if (url.includes("/prompt") && method === "POST") {
+        return new Response(JSON.stringify({ error: "LLM provider timeout" }), {
+          status: 200,
+          statusText: "OK",
+          headers: { "content-type": "application/json" },
+        })
+      }
+      return response
+    }
+
+    const result = await renderAppChat({ fetch: faultyFetch })
+    await initTUI(result)
+
+    await sendMessage(result, "test backend error")
+
+    // Should show "LLM provider timeout" instead of "Invalid response format"
+    const { found, frame } = await waitForFrame(
+      result,
+      (f) => f.includes("LLM provider timeout") || f.includes("Invalid response format"),
+      30000,
+    )
+
+    if (!found) {
+      console.log("Test 13 final frame:", frame.slice(0, 500))
+    }
+    expect(found).toBe(true)
+    expect(frame).toContain("LLM provider timeout")
+    expect(frame).not.toContain("Invalid response format")
+  }, 70000)
   // Purpose: When the backend returns a response with data but no parts field,
   // handleSend must not crash. It should set an error state and show a retry button.
   // This tests the defensive check added after the real-world crash:

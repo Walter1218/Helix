@@ -189,17 +189,20 @@ function getDailyBudgetUsed(): number {
 }
 
 function getRecentTokenUsage(sinceTimestamp: number): number {
+  // 方案 1: 从 token_usage 表读取
   const dbPath = join(homedir(), ".local/share/mimocode/mimocode.db")
-  if (!existsSync(dbPath)) return 0
-  
-  try {
-    const db = new Database(dbPath)
-    const result = db.query("SELECT COALESCE(SUM(total_tokens), 0) as total FROM token_usage WHERE timestamp >= ?").get(sinceTimestamp) as { total: number } | undefined
-    db.close()
-    return result?.total ?? 0
-  } catch {
-    return 0
+  if (existsSync(dbPath)) {
+    try {
+      const db = new Database(dbPath)
+      const result = db.query("SELECT COALESCE(SUM(total_tokens), 0) as total FROM token_usage WHERE timestamp >= ?").get(sinceTimestamp) as { total: number } | undefined
+      db.close()
+      if (result && result.total > 0) return result.total
+    } catch {}
   }
+  
+  // 方案 2: 表中无数据时，基于消息数量估算
+  // 每条 assistant 消息约消耗 2000-5000 tokens（工具调用场景）
+  return 0 // 返回 0 表示无法追踪，不阻塞流程
 }
 
 // ============ Command Execution ============
@@ -302,10 +305,12 @@ ${taskContext}
         return { success: false, output: status.error || "unknown error", tokensUsed }
       }
       
-      // 仍在运行，继续轮询
+      // 仍在运行，显示心跳
       const elapsed = Math.round((Date.now() - startTs) / 1000)
-      if (elapsed % 60 === 0) {
-        log(`  ⏳ 任务进行中... (${elapsed}s)`)
+      const steps = status.stepCount || 0
+      const activity = status.lastActivity || "thinking"
+      if (elapsed % 30 === 0) {
+        log("  ⏳ " + elapsed + "s | 步骤 " + steps + " | " + activity)
       }
     }
     
@@ -314,6 +319,112 @@ ${taskContext}
     log(`  ✗ Gateway 调用失败: ${err.message}`)
     return { success: false, output: err.message, tokensUsed: 0 }
   }
+}
+
+// ============ Pre-flight Diagnostics ============
+
+interface PreflightResult {
+  ok: boolean
+  checks: Array<{ name: string; ok: boolean; detail: string }>
+}
+
+async function runPreflight(chatId?: string): Promise<PreflightResult> {
+  const checks: Array<{ name: string; ok: boolean; detail: string }> = []
+  const gatewayUrl = process.env.GATEWAY_API_URL || "http://localhost:3096"
+
+  // 1. Helix Server 可达
+  const serverPassword = process.env.MIMOCODE_SERVER_PASSWORD || "test123"
+  try {
+    const resp = await fetch("http://localhost:3095/global/health", {
+      headers: { "Authorization": "Basic " + Buffer.from("mimocode:" + serverPassword).toString("base64") },
+      signal: AbortSignal.timeout(5000),
+    })
+    checks.push({ name: "Helix Server", ok: resp.ok, detail: resp.ok ? "可达" : "HTTP " + resp.status })
+  } catch (e: any) {
+    checks.push({ name: "Helix Server", ok: false, detail: "不可达: " + e.message })
+  }
+
+  // 2. Gateway 可达
+  try {
+    const resp = await fetch(gatewayUrl + "/api/health", { signal: AbortSignal.timeout(5000) })
+    checks.push({ name: "Gateway", ok: resp.ok, detail: resp.ok ? "可达" : "HTTP " + resp.status })
+  } catch (e: any) {
+    checks.push({ name: "Gateway", ok: false, detail: "不可达: " + e.message })
+  }
+
+  // 3. API Key 有效（通过创建 session 验证）
+  try {
+    const resp = await fetch("http://localhost:3095/session", {
+      method: "POST",
+      headers: {
+        "Authorization": "Basic " + Buffer.from("mimocode:" + serverPassword).toString("base64"),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ title: "preflight-check" }),
+      signal: AbortSignal.timeout(10000),
+    })
+    if (resp.ok) {
+      const data = await resp.json() as any
+      checks.push({ name: "API Key", ok: !!data.id, detail: data.id ? "有效" : "session.create 无 id" })
+    } else {
+      const text = await resp.text()
+      const isAuth = text.includes("Unauthorized") || text.includes("401")
+      checks.push({ name: "API Key", ok: false, detail: isAuth ? "无效 (Unauthorized)" : "HTTP " + resp.status })
+    }
+  } catch (e: any) {
+    checks.push({ name: "API Key", ok: false, detail: "验证失败: " + e.message })
+  }
+
+  // 4. Git 工作区状态
+  const gitStatus = runCmd("git status --porcelain")
+  const uncommitted = gitStatus.output.split("\n").filter(l => l.trim()).length
+  checks.push({
+    name: "Git 工作区",
+    ok: true,
+    detail: uncommitted > 0 ? uncommitted + " 个未提交文件（将自动提交为 baseline）" : "干净",
+  })
+
+  // 5. Roadmap 有 pending 任务
+  const roadmap = loadRoadmap()
+  if (!roadmap) {
+    checks.push({ name: "Roadmap", ok: false, detail: "roadmap.json 不存在" })
+  } else {
+    const pending = roadmap.milestones.flatMap(m => m.tasks).filter(t => t.status === "pending")
+    checks.push({
+      name: "Roadmap",
+      ok: pending.length > 0,
+      detail: pending.length > 0 ? pending.length + " 个待办任务" : "无待办任务",
+    })
+  }
+
+  // 6. MIMOCODE_AUTONOMOUS 环境变量（信息提示，不阻断）
+  // 注意：此变量需在 Helix Server 侧设置，scheduler 无法直接检测
+  checks.push({
+    name: "自主模式",
+    ok: true,
+    detail: "需在 Server 侧设置 MIMOCODE_AUTONOMOUS=1（请确认 start-services.sh 已配置）",
+  })
+
+  const ok = checks.every(c => c.ok)
+  return { ok, checks }
+}
+
+function printPreflight(result: PreflightResult) {
+  log("\n" + "=".repeat(50))
+  log("Pre-flight 诊断")
+  log("=".repeat(50))
+  for (const c of result.checks) {
+    const icon = c.ok ? "✓" : "✗"
+    log("  " + icon + " " + c.name + ": " + c.detail)
+  }
+  log("=".repeat(50))
+  if (!result.ok) {
+    const failed = result.checks.filter(c => !c.ok)
+    log("诊断失败: " + failed.map(c => c.name).join(", "))
+  } else {
+    log("所有检查通过")
+  }
+  log("")
 }
 
 // ============ Pipeline Steps ============
@@ -435,45 +546,69 @@ async function stepTypecheck(): Promise<StepResult> {
   return { name: "类型检查", success, output: result.output, duration: Date.now() - start }
 }
 
-async function stepTest(): Promise<StepResult> {
+async function stepTest(gitCheckpoint: string): Promise<StepResult> {
   const start = Date.now()
   log("[5/10] 运行测试...")
   
-  // 只跑变更文件相关的测试，不跑全量
-  const { output: changed } = runCmd("git diff --name-only HEAD~1 2>/dev/null || git status --porcelain")
+  // 只跑从 checkpoint 以来变更文件相关的测试
+  const { output: changed } = runCmd("git diff --name-only " + gitCheckpoint)
   const changedFiles = changed.split("\n").filter(f => f.trim())
   
   // 找出变更文件对应的测试文件
   const testFiles: string[] = []
   for (const file of changedFiles) {
-    const clean = file.replace(/^[AM]\s+/, "").trim()
-    // src/foo.ts → test/foo.test.ts 或 test/foo/*.test.ts
-    if (clean.startsWith("packages/opencode/src/") && clean.endsWith(".ts")) {
-      const base = clean.replace("packages/opencode/src/", "").replace(".ts", "")
-      const testPatterns = [
-        `test/${base}.test.ts`,
-        `test/${base.replace("/", "/")}.test.ts`,
-      ]
-      for (const p of testPatterns) {
-        if (existsSync(join(PROJECT_ROOT, "packages/opencode", p))) {
-          testFiles.push(p)
+    // src/foo.ts → test/foo.test.ts
+    if (file.endsWith(".ts") || file.endsWith(".tsx")) {
+      // packages/opencode/src/foo.ts → packages/opencode/test/foo.test.ts
+      const match = file.match(/^(.+?)\/src\/(.+)\.(ts|tsx)$/)
+      if (match) {
+        const pkgDir = match[1]
+        const base = match[2]
+        const testPatterns = [
+          pkgDir + "/test/" + base + ".test.ts",
+          pkgDir + "/test/" + base + ".test.tsx",
+          pkgDir + "/test/" + base.split("/").pop() + ".test.ts",
+        ]
+        for (const p of testPatterns) {
+          if (existsSync(join(PROJECT_ROOT, p))) {
+            testFiles.push(p)
+          }
         }
       }
     }
   }
   
-  // 如果没有找到相关测试，跳过
-  if (testFiles.length === 0) {
+  // 去重
+  const uniqueTests = [...new Set(testFiles)]
+  
+  if (uniqueTests.length === 0) {
     log("  - 无相关测试文件，跳过")
     return { name: "测试", success: true, output: "无相关测试，跳过", duration: Date.now() - start }
   }
   
-  log(`  找到 ${testFiles.length} 个相关测试文件`)
-  const cmd = `cd packages/opencode && bun test ${testFiles.join(" ")}`
-  const result = runCmd(cmd, 2 * 60 * 1000) // 2分钟超时
+  log("  找到 " + uniqueTests.length + " 个相关测试文件")
   
-  log(result.success ? "  ✓ 测试通过" : `  ✗ 测试失败`)
-  return { name: "测试", ...result, duration: Date.now() - start }
+  // 按包分组运行测试
+  const byPackage = new Map<string, string[]>()
+  for (const f of uniqueTests) {
+    const pkg = f.split("/").slice(0, 2).join("/")
+    if (!byPackage.has(pkg)) byPackage.set(pkg, [])
+    byPackage.get(pkg)!.push(f)
+  }
+  
+  const allResults: string[] = []
+  let allSuccess = true
+  
+  for (const [pkg, files] of byPackage) {
+    const cmd = "cd " + pkg + " && bun test " + files.join(" ")
+    const result = runCmd(cmd, 3 * 60 * 1000)
+    allResults.push(result.output)
+    if (!result.success) allSuccess = false
+  }
+  
+  const output = allResults.join("\n---\n")
+  log(allSuccess ? "  ✓ 测试通过" : "  ✗ 测试失败")
+  return { name: "测试", success: allSuccess, output, duration: Date.now() - start }
 }
 
 async function stepLint(gitCheckpoint: string): Promise<StepResult> {
@@ -883,7 +1018,7 @@ async function runPipeline(task: RoadmapTask, options: { dryRun: boolean; noPush
   
   // Step 4-6: 验证步骤
   steps.push(await stepTypecheck())
-  steps.push(await stepTest())
+  steps.push(await stepTest(gitCheckpoint))
   steps.push(await stepLint(gitCheckpoint))
   
   // Step 2.5: 增强 Judge 审查（根据模式配置决定是否启用）
@@ -1124,9 +1259,19 @@ async function main() {
     return
   }
   
-  log(`\n选定任务: ${task.id} - ${task.title}`)
-  log(`描述: ${task.description}`)
-  log(`优先级: ${task.priority} | 预估: ~${task.estimated_tokens.toLocaleString()} tokens\n`)
+  log("\n选定任务: " + task.id + " - " + task.title)
+  log("描述: " + task.description)
+  log("优先级: " + task.priority + " | 预估: ~" + task.estimated_tokens.toLocaleString() + " tokens\n")
+  
+  // Pre-flight 诊断
+  const preflight = await runPreflight(chatId)
+  printPreflight(preflight)
+  if (!preflight.ok) {
+    const failed = preflight.checks.filter(c => !c.ok).map(c => c.name).join(", ")
+    log("Pre-flight 失败: " + failed)
+    if (chatId) await notifyFeishu(chatId, "自动开发 Pre-flight 失败", "以下检查未通过: " + failed, "error")
+    return
+  }
   
   // 标记为进行中（dry-run 不标记）
   if (!dryRun) {

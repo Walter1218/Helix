@@ -190,7 +190,7 @@
           "id": "M5-T3",
           "title": "执行树可视化",
           "description": "在飞书或VS Code中展示Agent执行树：每步操作、耗时、结果",
-          "status": "in_progress",
+          "status": "done",
           "priority": "medium",
           "estimated_tokens": 50000,
           "tags": [
@@ -236,7 +236,7 @@
           "id": "M6-T2a",
           "title": "e2e 测试 - 扩展激活与守护进程",
           "description": "测试扩展激活、守护进程启动、前端渲染",
-          "status": "pending",
+          "status": "in_progress",
           "priority": "medium",
           "estimated_tokens": 50000,
           "tags": [

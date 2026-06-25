@@ -13,6 +13,8 @@ interface AsyncTask {
   error?: string
   startedAt: number
   completedAt?: number
+  lastActivity?: string
+  stepCount?: number
 }
 
 export function createApiRouter(sessions: SessionManager) {
@@ -70,13 +72,41 @@ export function createApiRouter(sessions: SessionManager) {
     }
   })
 
-  // 查询异步任务状态
-  app.get("/task/:taskId", (c) => {
+  // 查询异步任务状态（含心跳）
+  app.get("/task/:taskId", async (c) => {
     const taskId = c.req.param("taskId")
     const task = asyncTasks.get(taskId)
     if (!task) {
       return c.json({ error: "Task not found" }, 404)
     }
+
+    // 如果任务仍在运行，获取最新活动
+    let liveActivity: string | undefined
+    if (task.status === "running") {
+      try {
+        const sessionMap = (sessions as any).sessions as Map<string, string>
+        const sessionID = sessionMap.get(task.chatId)
+        if (sessionID) {
+          const url = `${(sessions as any).sdk?.baseUrl || "http://localhost:3095"}/session/${sessionID}/message`
+          const headers: Record<string, string> = {}
+          const password = (sessions as any).sdk?.headers?.Authorization
+          if (password) headers["Authorization"] = password
+          const resp = await fetch(url, { headers, signal: AbortSignal.timeout(3000) })
+          if (resp.ok) {
+            const msgs = await resp.json() as any[]
+            const assistantCount = msgs.filter((m: any) => m.info?.role === "assistant").length
+            const lastAssistant = msgs.filter((m: any) => m.info?.role === "assistant").pop()
+            const lastTools = (lastAssistant?.parts ?? [])
+              .filter((p: any) => p.type === "tool")
+              .map((p: any) => p.tool + "[" + (p.state?.status || "?") + "]")
+              .join(", ")
+            task.stepCount = assistantCount
+            task.lastActivity = lastTools || "thinking"
+          }
+        }
+      } catch {}
+    }
+
     return c.json({
       taskId: task.id,
       status: task.status,
@@ -85,6 +115,8 @@ export function createApiRouter(sessions: SessionManager) {
       startedAt: task.startedAt,
       completedAt: task.completedAt,
       duration: task.completedAt ? task.completedAt - task.startedAt : Date.now() - task.startedAt,
+      stepCount: task.stepCount,
+      lastActivity: task.lastActivity,
     })
   })
 

@@ -242,6 +242,18 @@ export class SessionManager {
     )
     const hasRecentToolCalls = recentToolCalls.length > 0
 
+    // 死循环检测：最近 3 条消息的工具调用签名完全相同
+    if (assistantMessages.length >= 3) {
+      const last3 = assistantMessages.slice(-3)
+      const signatures = last3.map((m: any) => {
+        const tools = (m.parts ?? []).filter((p: any) => p.type === "tool")
+        return tools.map((p: any) => p.tool + ":" + JSON.stringify(p.state?.input || {}).slice(0, 100)).join("|")
+      })
+      if (signatures[0] && signatures[0] === signatures[1] && signatures[1] === signatures[2]) {
+        return { shouldExtend: false, reason: "死循环: 最近 3 步工具调用完全相同" }
+      }
+    }
+
     // 检查最近的 tool 调用
     const recentParts = lastAssistant.parts ?? []
     const toolCalls = recentParts.filter((p: any) => p.type === "tool")
@@ -405,9 +417,9 @@ export class SessionManager {
           }
         }
 
-        // 接近超时时进行偏离检测
+        // 接近超时时进行偏离检测（更频繁检查）
         const timeToDeadline = currentDeadline - Date.now()
-        if (timeToDeadline < 30000 && Date.now() - lastDeviationCheck > 60000) {
+        if (timeToDeadline < 60000 && Date.now() - lastDeviationCheck > 15000) {
           lastDeviationCheck = Date.now()
           const { shouldExtend, reason } = this.evaluateDeviation(newMessages)
           const totalElapsed = Date.now() - startTime
