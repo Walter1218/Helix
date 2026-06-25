@@ -3054,25 +3054,28 @@
         });
 
         // Update input placeholder
-        document.getElementById('input').placeholder = config.placeholder;
+        const input = document.getElementById('input');
+        if (input) input.placeholder = config.placeholder;
 
         // Update mode color bar
         const bar = document.getElementById('mode-color-bar');
-        bar.className = 'mode-color-bar ' + mode;
+        if (bar) bar.className = 'mode-color-bar ' + mode;
 
         // Update status bar
-        document.getElementById('status-mode-dot').style.background = config.color;
-        document.getElementById('status-mode-name').textContent = config.name;
+        const modeDot = document.getElementById('status-mode-dot');
+        const modeName = document.getElementById('status-mode-name');
+        if (modeDot) modeDot.style.background = config.color;
+        if (modeName) modeName.textContent = config.name;
 
         // Hide welcome on first mode switch (but allow switching back to show it)
-        if (document.getElementById('welcome-screen')) {
-          document.getElementById('welcome-screen').style.display = 'none';
-        }
+        const welcome = document.getElementById('welcome-screen');
+        if (welcome) welcome.style.display = 'none';
         const backBtn = document.getElementById('back-to-welcome');
         if (backBtn) backBtn.classList.add('visible');
 
         // Add system message
-        if (document.getElementById('messages').children.length <= 1) {
+        const messages = document.getElementById('messages');
+        if (messages && messages.children.length <= 1) {
           addSystemMessage(`Switched to ${config.name} mode. ${config.placeholder.replace('...', '')}`);
         }
       }
@@ -3303,17 +3306,19 @@
         });
       }
 
-      async function newChat() {
+      async       function newChat() {
         const messages = document.getElementById('messages');
-        // Actually remove messages for new chat
-        while (messages.children.length > 1) {
-          messages.removeChild(messages.lastChild);
+        if (messages) {
+          while (messages.children.length > 1) {
+            messages.removeChild(messages.lastChild);
+          }
         }
         const welcome = document.getElementById('welcome-screen');
         if (welcome) welcome.style.display = 'block';
-        document.getElementById('back-to-welcome').classList.remove('visible');
-        document.getElementById('input').value = '';
-        document.getElementById('input').focus();
+        const backBtn = document.getElementById('back-to-welcome');
+        if (backBtn) backBtn.classList.remove('visible');
+        const input = document.getElementById('input');
+        if (input) { input.value = ''; input.focus(); }
         
         // Create new session if online
         if (isOnlineMode) {
@@ -4495,6 +4500,7 @@
 
       function renderCardinal() {
         const panel = document.getElementById('cardinal-panel');
+        if (!panel) return;
         if (mockCardinals.length === 0) {
           panel.innerHTML = '<div style="padding: 20px; text-align: center; color: #8b949e; font-size: 12px;">No active interventions</div>';
           return;
@@ -5187,19 +5193,21 @@
       // ============================================================
 
       const textarea = document.getElementById('input');
-      textarea.addEventListener('input', () => {
-        textarea.style.height = 'auto';
-        textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
-      });
-      textarea.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          sendMessage();
-        }
-      });
+      if (textarea) {
+        textarea.addEventListener('input', () => {
+          textarea.style.height = 'auto';
+          textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+        });
+        textarea.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+          }
+        });
+      }
 
       function sendMessage() {
-        const text = textarea.value.trim();
+        const text = textarea ? textarea.value.trim() : '';
         if (!text) return;
         if (isGenerating) return;
 
@@ -5212,18 +5220,21 @@
         if (backBtn) backBtn.classList.add('visible');
         // Re-show any previously hidden messages
         const messages = document.getElementById('messages');
-        for (let i = 1; i < messages.children.length; i++) {
-          messages.children[i].style.display = '';
+        if (messages) {
+          for (let i = 1; i < messages.children.length; i++) {
+            messages.children[i].style.display = '';
+          }
         }
 
         addUserMessage(text);
-        textarea.value = '';
-        textarea.style.height = 'auto';
+        if (textarea) { textarea.value = ''; textarea.style.height = 'auto'; }
 
         // Show stop button, hide send button
         isGenerating = true;
-        document.getElementById('send-btn').classList.add('hidden');
-        document.getElementById('stop-btn').classList.remove('hidden');
+        const sendBtn = document.getElementById('send-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        if (sendBtn) sendBtn.classList.add('hidden');
+        if (stopBtn) stopBtn.classList.remove('hidden');
 
         // Check if online mode is available
         if (isOnlineMode && currentSessionId) {
@@ -5900,7 +5911,7 @@
         if (!isGenerating) return;
 
         // Cancel SSE stream if exists
-        if (currentEventSource) { currentEventSource.abort(); currentEventSource = null; }
+        disconnectEventStream();
 
         // Cancel mock response if exists
         if (window._currentResponseTimeout) {
@@ -5927,8 +5938,10 @@
 
       function finishGeneration() {
         isGenerating = false;
-        document.getElementById('send-btn').classList.remove('hidden');
-        document.getElementById('stop-btn').classList.add('hidden');
+        const sendBtn = document.getElementById('send-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        if (sendBtn) sendBtn.classList.remove('hidden');
+        if (stopBtn) stopBtn.classList.add('hidden');
       }
 
       function openSettings() {

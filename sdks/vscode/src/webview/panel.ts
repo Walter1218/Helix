@@ -83,19 +83,29 @@ export class HelixWebviewPanel {
     return `
 <script>
 (function() {
-  const vscode = acquireVsCodeApi()
+  // acquireVsCodeApi() can only be called once per webview lifetime.
+  // After a reload the global may already be set by a prior bridge injection.
+  const vscode = window.__HELIX_VSCODE_REF__ || acquireVsCodeApi()
   window.__HELIX_VSCODE__ = true
   window.__HELIX_VSCODE_REF__ = vscode
   window.__HELIX_SERVER_PORT__ = ${this._serverPort}
   window.__HELIX_EXT_VERSION__ = "${version}"
 
-  // 版本检查：扩展更新后自动刷新 webview
+  // 版本检查：扩展更新后自动刷新 webview（带防循环保护）
+  const RELOAD_GUARD_KEY = '__helix_reload_guard__'
   const storedVersion = localStorage.getItem('__helix_ext_version__')
   if (storedVersion && storedVersion !== "${version}") {
-    localStorage.setItem('__helix_ext_version__', "${version}")
-    console.log('[HelixGUI] Extension updated from', storedVersion, 'to', "${version}", '— reloading webview...')
-    location.reload()
-    return
+    const guard = sessionStorage.getItem(RELOAD_GUARD_KEY)
+    if (guard === "${version}") {
+      // Already reloaded for this version — skip to avoid infinite loop
+      console.warn('[HelixGUI] Reload guard triggered for version ${version}, skipping reload')
+    } else {
+      localStorage.setItem('__helix_ext_version__', "${version}")
+      sessionStorage.setItem(RELOAD_GUARD_KEY, "${version}")
+      console.log('[HelixGUI] Extension updated from', storedVersion, 'to', "${version}", '— reloading webview...')
+      location.reload()
+      return
+    }
   }
   localStorage.setItem('__helix_ext_version__', "${version}")
 
