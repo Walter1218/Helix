@@ -1,6 +1,7 @@
 import { createOpencodeClient, type GlobalEvent } from "@mimo-ai/sdk/v2"
 import { createSimpleContext } from "./helper"
 import { batch, onCleanup, createSignal } from "solid-js"
+import * as trace from "../trace"
 
 export type EventHandler = (event: GlobalEvent) => void
 
@@ -68,6 +69,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
           const result = await client.event.subscribe()
           setConnected(true)
           attempt = 0
+          trace.emit("sdk.connected", "info", "SSE connection established")
           for await (const event of result.stream) {
             if (abort.signal.aborted) break
             queueEvent(event as unknown as GlobalEvent)
@@ -80,6 +82,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
         // Exponential backoff: 1s, 2s, 4s, 8s, ... up to 30s
         attempt++
         const delay = Math.min(1000 * 2 ** (attempt - 1), 30000)
+        trace.emit("sdk.disconnected", "warn", `SSE connection lost, reconnecting in ${delay}ms`, { attempt, delay })
         await new Promise((r) => setTimeout(r, delay))
       }
     }

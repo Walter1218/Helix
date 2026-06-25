@@ -118,8 +118,13 @@ export function Chat() {
           createdAt: s.time?.created,
         }))
         setSessions(list)
+        trace.emit("session.list.loaded", "info", `Loaded ${list.length} sessions`, { count: list.length })
+      } else {
+        trace.emit("session.list.error", "warn", "Failed to load sessions", { error: err ? JSON.stringify(err) : "no data" })
       }
-    } catch {}
+    } catch (e: any) {
+      trace.emit("session.list.error", "error", "Exception loading sessions", { error: e.message })
+    }
   }
 
   // Switch to a specific session
@@ -200,10 +205,12 @@ export function Chat() {
     trace.emit("session.delete", "info", "Deleting session", { sessionID: sid })
     try {
       await sdk.client.session.delete({ sessionID: sid })
+      trace.emit("session.deleted", "info", "Session deleted", { sessionID: sid, title })
       DialogAlert.show(dialog, "Deleted", `Session "${title}" deleted.`)
       newSession()
       loadSessions()
-    } catch {
+    } catch (e: any) {
+      trace.emit("session.delete.error", "error", "Failed to delete session", { sessionID: sid, error: e.message })
       DialogAlert.show(dialog, "Error", "Failed to delete session.")
     }
   }
@@ -223,13 +230,16 @@ export function Chat() {
       await sdk.client.session.update({ sessionID: sid, title: newTitle })
       setSessionTitle(newTitle)
       loadSessions()
-    } catch {
+      trace.emit("session.renamed", "info", "Session renamed", { sessionID: sid, newTitle })
+    } catch (e: any) {
+      trace.emit("session.rename.error", "error", "Failed to rename session", { sessionID: sid, error: e.message })
       DialogAlert.show(dialog, "Error", "Failed to rename session.")
     }
   }
 
   // Open session dialog for switching
   async function openSessionDialog() {
+    trace.emit("session.dialog.open", "info", "Opening session switch dialog", { count: sessions().length })
     const opts = sessions().map((s) => ({
       title: s.title,
       value: s.id,
@@ -300,8 +310,12 @@ export function Chat() {
   }
 
   async function loadMessages(sid: string) {
+    trace.emit("session.messages.load", "info", "Loading messages", { sessionID: sid }, sid)
     const { data, error: err } = await sdk.client.session.messages({ sessionID: sid, limit: 100 })
-    if (err || !data) return
+    if (err || !data) {
+      trace.emit("session.messages.error", "warn", "Failed to load messages", { error: err ? JSON.stringify(err) : "no data" }, sid)
+      return
+    }
 
     const display: DisplayMessage[] = []
     for (const msg of data) {
@@ -332,6 +346,7 @@ export function Chat() {
       })
     }
     setMessages(display)
+    trace.emit("session.messages.loaded", "info", `Loaded ${display.length} messages`, { sessionID: sid, count: display.length }, sid)
   }
 
   async function handleSend() {
@@ -415,6 +430,8 @@ export function Chat() {
     }
     if (!userText) return
 
+    trace.emit("user.retry", "info", "User retrying message", { userTextLength: userText.length }, sessionID() ?? undefined)
+
     // Remove the failed assistant message and re-send
     setMessages((prev) => prev.filter((m) => m.id !== msg.id))
     setError(null)
@@ -482,6 +499,7 @@ export function Chat() {
       const toolId = props.id || props.toolID || Math.random().toString(36).slice(2)
       const toolName = props.name || props.toolName || "tool"
       const toolInput = props.input || props.args || ""
+      trace.emit("event.tool.call", "info", `Tool call started: ${toolName}`, { toolId, toolName, inputLength: typeof toolInput === "string" ? toolInput.length : JSON.stringify(toolInput).length }, sid ?? undefined)
       setMessages((prev) => {
         const next: DisplayMessage[] = prev.map((m) => ({ ...m }))
         for (let i = next.length - 1; i >= 0; i--) {
@@ -507,6 +525,7 @@ export function Chat() {
       const toolId = props.id || props.toolID
       const toolOutput = props.output || props.result || ""
       const toolError = props.error
+      trace.emit("event.tool.call", "info", `Tool call ended`, { toolId, hasError: !!toolError, outputLength: typeof toolOutput === "string" ? toolOutput.length : JSON.stringify(toolOutput).length }, sid ?? undefined)
       setMessages((prev) => {
         const next: DisplayMessage[] = prev.map((m) => ({ ...m }))
         for (let i = next.length - 1; i >= 0; i--) {
@@ -590,6 +609,7 @@ export function Chat() {
 
   // Load sessions on mount + auto-recovery
   onMount(() => {
+    trace.emit("ui.init", "info", "Helix TUI mounted")
     loadSessions().then(() => {
       // Auto-recovery: try to restore last session
       try {
@@ -597,8 +617,10 @@ export function Chat() {
         if (lastID) {
           const exists = sessions().find((s) => s.id === lastID)
           if (exists) {
+            trace.emit("session.auto_recovery", "info", "Auto-recovering last session", { sessionID: lastID })
             switchSession(lastID)
           } else {
+            trace.emit("session.auto_recovery", "warn", "Last session not found, clearing", { sessionID: lastID })
             localStorage.removeItem("helix-tui:lastSessionID")
           }
         }
@@ -881,6 +903,7 @@ export function Chat() {
                   if (textarea) {
                     try { textarea.setPlainText(hist[newIdx]!) } catch {}
                   }
+                  trace.emit("user.input_history", "debug", "Navigated up in input history", { index: newIdx, total: hist.length })
                 }
                 e.preventDefault()
                 e.stopPropagation()
@@ -895,11 +918,13 @@ export function Chat() {
                   if (textarea) {
                     try { textarea.setPlainText(inputHistory()[newIdx]!) } catch {}
                   }
+                  trace.emit("user.input_history", "debug", "Navigated down in input history", { index: newIdx, total: inputHistory().length })
                 } else {
                   setHistoryIndex(-1)
                   if (textarea) {
                     try { textarea.setPlainText(draftInput()) } catch {}
                   }
+                  trace.emit("user.input_history", "debug", "Restored draft input")
                 }
                 e.preventDefault()
                 e.stopPropagation()
