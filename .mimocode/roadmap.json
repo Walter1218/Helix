@@ -223,7 +223,7 @@
           "id": "M6-T1b",
           "title": "VS Code 前端稳定性 - DOM 操作修复",
           "description": "修复 DOM 操作错误和事件绑定问题，确保 Reload 后面板正常显示",
-          "status": "in_progress",
+          "status": "done",
           "priority": "medium",
           "estimated_tokens": 50000,
           "tags": [
