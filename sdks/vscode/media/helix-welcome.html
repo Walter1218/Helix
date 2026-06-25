@@ -3609,6 +3609,7 @@
         // #8: use real tasks when available (online mode)
         if (isOnlineMode && window._realTaskGroups) {
           renderRealTaskGroups(window._realTaskGroups);
+          renderCollapsible('tasks');
           return;
         }
         const container = document.getElementById('task-list-container');
@@ -5233,6 +5234,15 @@
         }
       }
       
+      function toggleShowDetails() {
+        showDetailsMode = !showDetailsMode;
+        document.querySelectorAll('.tool-call-details, .part-reasoning-body').forEach(el => {
+          el.classList.toggle('expanded', showDetailsMode);
+        });
+        const toggle = document.querySelector('.show-details-toggle');
+        if (toggle) toggle.textContent = showDetailsMode ? 'Hide Details' : 'Show Details';
+      }
+
       // === Streaming state ===
       let currentEventSource = null;
       let showDetailsMode = false;
@@ -5817,7 +5827,7 @@
 
       // #8: Render real task groups (called by renderTaskList when online)
       function renderRealTaskGroups(groups) {
-        const container = document.getElementById('collapsible-tasks');
+        const container = document.getElementById('task-list-container');
         if (!container) return;
         if (!groups || !groups.length) {
           container.innerHTML = '<div style="padding:8px;color:#6e7681;font-size:11px">No tasks yet</div>';

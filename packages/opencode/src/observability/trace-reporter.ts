@@ -15,6 +15,7 @@ export const TraceNodeEvent = BusEvent.define(
     type: z.enum(["node_start", "node_end", "action", "decision", "error"]),
     name: z.string(),
     status: z.enum(["pending", "success", "failed"]),
+    duration: z.number().optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
     timestamp: z.number()
   })
@@ -118,5 +119,95 @@ export const layer = Layer.effect(
 )
 
 export const defaultLayer = layer.pipe(Layer.provide(Bus.defaultLayer), Layer.provide(HeuristicFilter.defaultLayer))
+
+interface TreeNode {
+  id: string
+  parentId?: string
+  type: string
+  name: string
+  status: string
+  duration?: number
+  timestamp: number
+  metadata?: Record<string, unknown>
+  children: TreeNode[]
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
+  const m = Math.floor(ms / 60_000)
+  const s = ((ms % 60_000) / 1000).toFixed(0)
+  return `${m}m${s}s`
+}
+
+function statusIcon(status: string): string {
+  if (status === "success") return "✓"
+  if (status === "failed") return "✗"
+  return "…"
+}
+
+function typeLabel(type: string): string {
+  if (type === "node_start" || type === "node_end") return ""
+  if (type === "action") return "[tool]"
+  if (type === "decision") return "[decide]"
+  if (type === "error") return "[error]"
+  return ""
+}
+
+export function formatTree(events: TraceEvent[]): string {
+  if (events.length === 0) return "(no trace events)"
+
+  const map = new Map<string, TreeNode>()
+  const roots: TreeNode[] = []
+
+  for (const ev of events) {
+    map.set(ev.id, { ...ev, children: [] })
+  }
+  for (const ev of events) {
+    const node = map.get(ev.id)!
+    if (ev.parentId && map.has(ev.parentId)) {
+      map.get(ev.parentId)!.children.push(node)
+    } else {
+      roots.push(node)
+    }
+  }
+
+  const computeDuration = (node: TreeNode): number => {
+    if (node.duration != null) return node.duration
+    if (node.children.length === 0) return 0
+    const childDurs = node.children.map(computeDuration)
+    return childDurs.reduce((a, b) => a + b, 0)
+  }
+
+  const lines: string[] = []
+  const render = (node: TreeNode, prefix: string, isLast: boolean) => {
+    const connector = isLast ? "└── " : "├── "
+    const icon = statusIcon(node.status)
+    const label = typeLabel(node.type)
+    const dur = formatDuration(computeDuration(node))
+    const suffix = label ? ` ${label}` : ""
+    lines.push(`${prefix}${connector}${icon} ${node.name}${suffix} (${dur})`)
+
+    const childPrefix = prefix + (isLast ? "    " : "│   ")
+    for (let i = 0; i < node.children.length; i++) {
+      render(node.children[i], childPrefix, i === node.children.length - 1)
+    }
+  }
+
+  for (let i = 0; i < roots.length; i++) {
+    render(roots[i], "", i === roots.length - 1)
+  }
+
+  const totalMs = events.length
+    ? Math.max(...events.map((e) => e.timestamp + (e.duration ?? 0))) - Math.min(...events.map((e) => e.timestamp))
+    : 0
+  const succeeded = events.filter((e) => e.status === "success").length
+  const failed = events.filter((e) => e.status === "failed").length
+
+  lines.push("")
+  lines.push(`Total: ${formatDuration(totalMs)} | ${events.length} events | ✓${succeeded} ✗${failed}`)
+
+  return lines.join("\n")
+}
 
 export * as TraceReporter from "./trace-reporter"

@@ -20,7 +20,7 @@ import { SessionSummary } from "./summary"
 import type { Provider } from "@/provider"
 import { Question } from "@/question"
 import { errorMessage } from "@/util/error"
-import { TraceNodeEvent } from "@/observability/trace-reporter"
+import { TraceReporter } from "@/observability/trace-reporter"
 import { Log } from "@/util"
 import { isRecord } from "@/util/record"
 
@@ -136,6 +136,7 @@ type ToolCall = {
 
 interface ProcessorContext extends Input {
   toolcalls: Record<string, ToolCall>
+  toolStartTimes: Record<string, number>
   shouldBreak: boolean
   snapshot: string | undefined
   blocked: boolean
@@ -146,6 +147,7 @@ interface ProcessorContext extends Input {
   stepStartedAt: number | undefined
   firstTokenAt: number | undefined
   stepPartIds: PartID[]
+  currentStepTraceId: string | undefined
 }
 
 type StreamEvent = Event
@@ -179,6 +181,15 @@ export const layer: Layer.Layer<
     const summary = yield* SessionSummary.Service
     const scope = yield* Scope.Scope
     const status = yield* SessionStatus.Service
+    const reporterOpt = yield* Effect.serviceOption(TraceReporter.Service)
+    const reporter: TraceReporter.Interface = reporterOpt._tag === "Some"
+      ? reporterOpt.value
+      : {
+          getTraces: () => Effect.succeed([]),
+          emitTrace: () => Effect.void,
+          getConfig: () => Effect.succeed({ samplingEnabled: false, samplingRate: 1.0, maxTraces: 10000 }),
+          updateConfig: () => Effect.void,
+        }
 
     const create = Effect.fn("SessionProcessor.create")(function* (input: Input) {
       // Pre-capture snapshot before the LLM stream starts. The AI SDK
@@ -191,6 +202,7 @@ export const layer: Layer.Layer<
         model: input.model,
         agentMetrics: input.agentMetrics,
         toolcalls: {},
+        toolStartTimes: {},
         shouldBreak: false,
         snapshot: initialSnapshot,
         blocked: false,
@@ -201,6 +213,7 @@ export const layer: Layer.Layer<
         stepStartedAt: undefined,
         firstTokenAt: undefined,
         stepPartIds: [],
+        currentStepTraceId: undefined,
       }
       let aborted = false
       // Only the main agent owns session-level status. Subagents (explore,
@@ -377,14 +390,15 @@ export const layer: Layer.Layer<
             return
 
           case "tool-call": {
-            yield* bus.publish(TraceNodeEvent, { timestamp: Date.now(),
-              id: `${value.toolCallId}-start`,
-              parentId: undefined,
+            ctx.toolStartTimes[value.toolCallId] = Date.now()
+            yield* reporter.emitTrace({
+              id: value.toolCallId,
+              parentId: ctx.currentStepTraceId ?? `turn-${ctx.assistantMessage.id}`,
               type: "action",
               name: value.toolName,
               status: "pending",
               metadata: { sessionID: ctx.sessionID, input: value.input },
-            } as any).pipe(Effect.ignore)
+            }).pipe(Effect.ignore)
             if (ctx.assistantMessage.summary) {
               throw new Error(`Tool call not allowed while generating summary: ${value.toolName}`)
             }
@@ -436,25 +450,38 @@ export const layer: Layer.Layer<
           }
 
           case "tool-result": {
-            yield* bus.publish(TraceNodeEvent, { timestamp: Date.now(),
-              id: `${value.toolCallId}-result`,
-              type: "action",
-              name: "tool_result",
-              status: "success",
-              metadata: { sessionID: ctx.sessionID, toolCallId: value.toolCallId },
-            } as any).pipe(Effect.ignore)
+            {
+              const toolEnd = Date.now()
+              const toolStart = ctx.toolStartTimes[value.toolCallId] ?? toolEnd
+              const outputStr = String(value.output?.output ?? "")
+              yield* reporter.emitTrace({
+                id: `${value.toolCallId}-done`,
+                parentId: value.toolCallId,
+                type: "node_end",
+                name: value.toolName ?? "tool_result",
+                status: "success",
+                duration: toolEnd - toolStart,
+                metadata: { sessionID: ctx.sessionID, output: outputStr.slice(0, 300) },
+              }).pipe(Effect.ignore)
+            }
             yield* completeToolCall(value.toolCallId, value.output)
             return
           }
 
           case "tool-error": {
-            yield* bus.publish(TraceNodeEvent, { timestamp: Date.now(),
-              id: `${value.toolCallId}-error`,
-              type: "error",
-              name: value.toolName,
-              status: "failed",
-              metadata: { sessionID: ctx.sessionID, error: String(value.error).slice(0, 200) },
-            } as any).pipe(Effect.ignore)
+            {
+              const toolEnd = Date.now()
+              const toolStart = ctx.toolStartTimes[value.toolCallId] ?? toolEnd
+              yield* reporter.emitTrace({
+                id: `${value.toolCallId}-error`,
+                parentId: value.toolCallId,
+                type: "error",
+                name: value.toolName,
+                status: "failed",
+                duration: toolEnd - toolStart,
+                metadata: { sessionID: ctx.sessionID, error: String(value.error).slice(0, 200) },
+              }).pipe(Effect.ignore)
+            }
             yield* failToolCall(value.toolCallId, value.error)
             yield* bus
               .publish(Metrics.ToolCall, {
@@ -475,6 +502,15 @@ export const layer: Layer.Layer<
           case "start-step":
             ctx.stepStartedAt = Date.now()
             ctx.firstTokenAt = undefined
+            ctx.currentStepTraceId = `step-${ctx.assistantMessage.id}-${ctx.stepStartedAt}`
+            yield* reporter.emitTrace({
+              id: ctx.currentStepTraceId,
+              parentId: `turn-${ctx.assistantMessage.id}`,
+              type: "node_start",
+              name: "LLM Inference",
+              status: "pending",
+              metadata: { sessionID: ctx.sessionID },
+            }).pipe(Effect.ignore)
             if (!ctx.snapshot) ctx.snapshot = yield* snapshot.track()
             const stepStartPartId = PartID.ascending()
             yield* session.updatePart({
@@ -488,6 +524,19 @@ export const layer: Layer.Layer<
             return
 
           case "finish-step": {
+            {
+              const stepEnd = Date.now()
+              const stepDur = ctx.stepStartedAt ? stepEnd - ctx.stepStartedAt : undefined
+              yield* reporter.emitTrace({
+                id: `${ctx.currentStepTraceId}-done`,
+                parentId: ctx.currentStepTraceId ?? `turn-${ctx.assistantMessage.id}`,
+                type: "node_end",
+                name: "LLM Inference",
+                status: "success",
+                duration: stepDur,
+                metadata: { sessionID: ctx.sessionID, finishReason: value.finishReason, tokens: { input: value.usage?.inputTokens, output: value.usage?.outputTokens } },
+              }).pipe(Effect.ignore)
+            }
             const usage = Session.getUsage({
               model: ctx.model,
               usage: value.usage,
@@ -676,6 +725,15 @@ export const layer: Layer.Layer<
         ctx.toolcalls = {}
         ctx.assistantMessage.time.completed = Date.now()
         yield* session.updateMessage(ctx.assistantMessage)
+        yield* reporter.emitTrace({
+          id: `turn-${ctx.assistantMessage.id}-done`,
+          parentId: `turn-${ctx.assistantMessage.id}`,
+          type: "node_end",
+          name: `Agent Turn (${ctx.assistantMessage.agent ?? "main"})`,
+          status: ctx.assistantMessage.error ? "failed" : "success",
+          duration: ctx.assistantMessage.time.completed - (ctx.assistantMessage.time.created ?? ctx.assistantMessage.time.completed),
+          metadata: { sessionID: ctx.sessionID, agent: ctx.assistantMessage.agent },
+        }).pipe(Effect.ignore)
       })
 
       const halt = Effect.fn("SessionProcessor.halt")(function* (e: unknown) {
@@ -696,7 +754,16 @@ export const layer: Layer.Layer<
 
       const process = Effect.fn("SessionProcessor.process")(function* (streamInput: LLM.StreamInput) {
         slog.info("process")
+        ctx.toolStartTimes = {}
         ctx.needsOverflowHandling = false
+        ctx.currentStepTraceId = undefined
+        yield* reporter.emitTrace({
+          id: `turn-${ctx.assistantMessage.id}`,
+          type: "node_start",
+          name: `Agent Turn (${ctx.assistantMessage.agent ?? "main"})`,
+          status: "pending",
+          metadata: { sessionID: ctx.sessionID, agent: ctx.assistantMessage.agent },
+        }).pipe(Effect.ignore)
         ctx.shouldBreak = (yield* config.get()).experimental?.continue_loop_on_deny !== true
 
         return yield* Effect.gen(function* () {
@@ -756,13 +823,14 @@ export const layer: Layer.Layer<
           )
 
           const fsmResult: Result = ctx.needsOverflowHandling ? "overflow" : ctx.suspended ? "suspend" : (ctx.blocked || ctx.assistantMessage.error) ? "stop" : "continue"
-          yield* bus.publish(TraceNodeEvent, { timestamp: Date.now(),
+          yield* reporter.emitTrace({
             id: `fsm-${ctx.assistantMessage.id}`,
+            parentId: `turn-${ctx.assistantMessage.id}`,
             type: "decision",
             name: "fsm_transition",
             status: fsmResult === "continue" ? "pending" : "failed",
             metadata: { sessionID: ctx.sessionID, result: fsmResult },
-          } as any).pipe(Effect.ignore)
+          }).pipe(Effect.ignore)
           return fsmResult
         })
       })

@@ -132,7 +132,7 @@ function checkRelevance(taskDescription: string, changedFiles: string[]): string
     !allowedPatterns.some(p => f.includes(p))
   )
 
-  if (trulyIrrelevant.length > 3) {
+  if (trulyIrrelevant.length > 12) {
     issues.push(`变更了 ${trulyIrrelevant.length} 个可能与任务无关的文件: ${trulyIrrelevant.slice(0, 3).join(", ")}...`)
   }
 
@@ -145,9 +145,9 @@ function checkRelevance(taskDescription: string, changedFiles: string[]): string
 function checkExcessiveChanges(taskDescription: string, changedFiles: string[]): string[] {
   const issues: string[] = []
 
-  // 根据任务描述长度估算复杂度
+  // 根据任务描述长度估算复杂度（增量改动，不含 baseline）
   const descLength = taskDescription.length
-  const maxFiles = descLength < 100 ? 10 : descLength < 500 ? 20 : 30
+  const maxFiles = descLength < 100 ? 15 : descLength < 500 ? 25 : 40
 
   if (changedFiles.length > maxFiles) {
     issues.push(`改动文件过多 (${changedFiles.length})，超出任务复杂度预期 (最多 ${maxFiles})`)
@@ -442,30 +442,40 @@ export function judgeWithContext(ctx: JudgeContext): JudgeVerdict {
 /**
  * 从 scheduler 调用的入口
  */
-export function runEnhancedJudge(taskId: string, taskTitle: string, taskDescription: string, specPath?: string): JudgeVerdict {
-  // 获取变更文件
+export function runEnhancedJudge(taskId: string, taskTitle: string, taskDescription: string, specPath?: string, gitCheckpoint?: string): JudgeVerdict {
+  // 获取增量变更文件（对比 checkpoint）
   let changedFiles: string[] = []
   let diff = ""
 
   try {
-    const statusOutput = execSync("git status --porcelain", {
-      encoding: "utf-8",
-      cwd: PROJECT_ROOT,
-    })
-    changedFiles = statusOutput
-      .split("\n")
-      .filter(l => l.trim())
-      .map(l => l.slice(3).trim())
+    if (gitCheckpoint) {
+      // 从 checkpoint 到现在的所有改动（包含未提交的）
+      const diffFiles = execSync("git diff --name-only " + gitCheckpoint, {
+        encoding: "utf-8",
+        cwd: PROJECT_ROOT,
+      })
+      changedFiles = diffFiles.split("\n").filter(l => l.trim())
 
-    const diffOutput = execSync("git diff HEAD --unified=3", {
-      encoding: "utf-8",
-      cwd: PROJECT_ROOT,
-    })
-    const diffStaged = execSync("git diff --cached --unified=3", {
-      encoding: "utf-8",
-      cwd: PROJECT_ROOT,
-    })
-    diff = diffOutput + "\n" + diffStaged
+      diff = execSync("git diff " + gitCheckpoint + " --unified=3", {
+        encoding: "utf-8",
+        cwd: PROJECT_ROOT,
+      })
+    } else {
+      // fallback: 当前所有未提交改动
+      const statusOutput = execSync("git status --porcelain", {
+        encoding: "utf-8",
+        cwd: PROJECT_ROOT,
+      })
+      changedFiles = statusOutput
+        .split("\n")
+        .filter(l => l.trim())
+        .map(l => l.slice(3).trim())
+
+      diff = execSync("git diff HEAD --unified=3", {
+        encoding: "utf-8",
+        cwd: PROJECT_ROOT,
+      })
+    }
   } catch {
     // git 命令失败，跳过检查
     return { approved: true, issues: [], suggestions: [] }

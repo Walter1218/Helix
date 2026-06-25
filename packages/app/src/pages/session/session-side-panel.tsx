@@ -45,6 +45,7 @@ export function SessionSidePanel(props: {
   size: Sizing
   taskPanel?: () => JSX.Element
   checkpointPanel?: () => JSX.Element
+  executionTreePanel?: () => JSX.Element
 }) {
   const layout = useLayout()
   const platform = usePlatform()
@@ -258,6 +259,9 @@ export function SessionSidePanel(props: {
                       <Show when={props.taskPanel}>
                         <Tabs.Trigger value="tasks">✅ Tasks</Tabs.Trigger>
                       </Show>
+                      <Show when={props.executionTreePanel}>
+                        <Tabs.Trigger value="execution-tree">📊 执行树</Tabs.Trigger>
+                      </Show>
                       <Show when={props.checkpointPanel}>
                         <Tabs.Trigger value="checkpoints">📋 Checkpoints</Tabs.Trigger>
                       </Show>
@@ -330,6 +334,12 @@ export function SessionSidePanel(props: {
                   <Show when={props.checkpointPanel}>
                     <Tabs.Content value="checkpoints" class="flex flex-col h-full overflow-hidden contain-strict">
                       <Show when={activeTab() === "checkpoints"}>{props.checkpointPanel?.()}</Show>
+                    </Tabs.Content>
+                  </Show>
+
+                  <Show when={props.executionTreePanel}>
+                    <Tabs.Content value="execution-tree" class="flex flex-col h-full overflow-hidden contain-strict">
+                      <Show when={activeTab() === "execution-tree"}>{props.executionTreePanel?.()}</Show>
                     </Tabs.Content>
                   </Show>
 

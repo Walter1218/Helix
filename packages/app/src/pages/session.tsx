@@ -67,6 +67,7 @@ import { formatServerError } from "@/utils/server-errors"
 import { createMockTaskService } from "@/services/mock/mock-task-service"
 import { createMockCheckpointService } from "@/services/mock/mock-checkpoint-service"
 import { TaskListPanel } from "@/pages/session/task-list-panel"
+import { ExecutionTree } from "@/components/execution-tree"
 import { CheckpointPanel } from "@/pages/session/checkpoint-panel"
 
 const emptyUserMessages: UserMessage[] = []
@@ -1974,6 +1975,7 @@ export default function Page() {
           reviewSnap={ui.reviewSnap}
           size={size}
           taskPanel={() => <TaskListPanel groups={taskService.groups} />}
+          executionTreePanel={() => <ExecutionTree sessionID={params.id} />}
           checkpointPanel={() => (
             <CheckpointPanel
               changes={cpService.changes}

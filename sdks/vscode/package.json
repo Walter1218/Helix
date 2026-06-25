@@ -45,6 +45,12 @@
           "id": "helix.sidebar",
           "name": "Helix",
           "type": "tree"
+        },
+        {
+          "id": "helix.executionTree",
+          "name": "Execution Tree",
+          "type": "tree",
+          "when": "true"
         }
       ]
     },

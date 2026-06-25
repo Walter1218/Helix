@@ -190,7 +190,7 @@
           "id": "M5-T3",
           "title": "执行树可视化",
           "description": "在飞书或VS Code中展示Agent执行树：每步操作、耗时、结果",
-          "status": "pending",
+          "status": "in_progress",
           "priority": "medium",
           "estimated_tokens": 50000,
           "tags": [
@@ -210,7 +210,7 @@
           "id": "M6-T1a",
           "title": "VS Code 前端稳定性 - JS 错误修复",
           "description": "修复 helix-welcome.html 内联 JS 的变量重复声明、函数未定义错误",
-          "status": "pending",
+          "status": "in_progress",
           "priority": "medium",
           "estimated_tokens": 50000,
           "tags": [

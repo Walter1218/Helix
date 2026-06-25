@@ -306,6 +306,7 @@ export function Chat() {
     const display: DisplayMessage[] = []
     for (const msg of data) {
       const info = msg.info
+      if (!Array.isArray(msg.parts)) continue
       const textParts = msg.parts.filter((p: any) => p.type === "text")
       const toolParts = msg.parts.filter((p: any) => p.type === "tool-call" || p.type === "tool-result")
       const content = textParts.map((p: any) => p.text).join("\n")
@@ -334,7 +335,8 @@ export function Chat() {
   }
 
   async function handleSend() {
-    const text = (textarea?.plainText ?? "").trim()
+    let text = ""
+    try { text = (textarea?.plainText ?? "").trim() } catch {}
     if (!text || isLoading()) return
 
     if (text.length > 100000) {
@@ -352,7 +354,9 @@ export function Chat() {
       setError(null)
     })
 
-    if (textarea) textarea.clear()
+    if (textarea) {
+      try { textarea.clear() } catch { /* EditBuffer may be destroyed in test environments */ }
+    }
 
     // Save to input history (deduplicated, max 50)
     setInputHistory((prev) => {
@@ -374,8 +378,8 @@ export function Chat() {
         modelRef: currentModel(),
       })
 
-      if (err || !data) {
-        const errMsg = err ? JSON.stringify(err) : "No response from server"
+      if (err || !data || !Array.isArray(data.parts)) {
+        const errMsg = err ? JSON.stringify(err) : !Array.isArray(data.parts) ? "Invalid response format from server" : "No response from server"
         trace.emit("session.error", "error", "Prompt failed", { error: errMsg }, sid)
         updateLastAssistant("", "error", `Server error: ${errMsg}`)
         setError(`Prompt failed: ${errMsg}`)
@@ -416,7 +420,7 @@ export function Chat() {
     setError(null)
 
     if (textarea) {
-      textarea.setPlainText(userText)
+      try { textarea.setPlainText(userText) } catch { /* EditBuffer may be destroyed in test environments */ }
     }
     await handleSend()
   }
@@ -869,12 +873,14 @@ export function Chat() {
                 const idx = historyIndex()
                 if (idx < 0) {
                   // Save current draft
-                  setDraftInput(textarea?.plainText ?? "")
+                  try { setDraftInput(textarea?.plainText ?? "") } catch {}
                 }
                 const newIdx = Math.min(idx + 1, hist.length - 1)
                 if (newIdx !== idx) {
                   setHistoryIndex(newIdx)
-                  if (textarea) textarea.setPlainText(hist[newIdx]!)
+                  if (textarea) {
+                    try { textarea.setPlainText(hist[newIdx]!) } catch {}
+                  }
                 }
                 e.preventDefault()
                 e.stopPropagation()
@@ -886,10 +892,14 @@ export function Chat() {
                 const newIdx = idx - 1
                 if (newIdx >= 0) {
                   setHistoryIndex(newIdx)
-                  if (textarea) textarea.setPlainText(inputHistory()[newIdx]!)
+                  if (textarea) {
+                    try { textarea.setPlainText(inputHistory()[newIdx]!) } catch {}
+                  }
                 } else {
                   setHistoryIndex(-1)
-                  if (textarea) textarea.setPlainText(draftInput())
+                  if (textarea) {
+                    try { textarea.setPlainText(draftInput()) } catch {}
+                  }
                 }
                 e.preventDefault()
                 e.stopPropagation()

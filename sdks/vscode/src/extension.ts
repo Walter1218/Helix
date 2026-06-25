@@ -4,7 +4,7 @@ import * as path from "path";
 import * as childProcess from "child_process";
 import { HelixWebviewPanel } from "./webview/panel";
 import { HelixServer } from "./server";
-import { HelixSidebarProvider } from "./sidebar/tree-provider";
+import { HelixSidebarProvider, ExecutionTreeProvider } from "./sidebar/tree-provider";
 
 const TERMINAL_NAME = "Helix";
 const server = new HelixServer();
@@ -20,6 +20,15 @@ export function activate(context: vscode.ExtensionContext) {
     treeDataProvider: sidebarProvider,
     showCollapseAll: false
   });
+
+  // ── 2b. 注册执行树侧边栏 ──
+  const execTreeProvider = new ExecutionTreeProvider();
+  const execTreeView = vscode.window.createTreeView("helix.executionTree", {
+    treeDataProvider: execTreeProvider,
+    showCollapseAll: true,
+  });
+  execTreeProvider.setServerPort(server.getPort());
+  execTreeProvider.startPolling(3000);
 
   // ── 3. 注册 GUI 命令 ──
   const openGUIDisposable = vscode.commands.registerCommand("helix.openGUI", async () => {
@@ -74,6 +83,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     sidebarTreeView,
+    execTreeView,
     openGUIDisposable,
     openNewGUIDisposable,
     openNewTerminalDisposable,
@@ -83,6 +93,7 @@ export function activate(context: vscode.ExtensionContext) {
       dispose: () => {
         server.stop();
         activePanel?.dispose();
+        execTreeProvider.dispose();
       },
     }
   );

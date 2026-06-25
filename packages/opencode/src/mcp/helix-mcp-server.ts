@@ -6,7 +6,7 @@ import { Log } from "@/util"
 import { Session } from "@/session"
 import { SessionID } from "@/session/schema"
 import { AlignmentGuard } from "@/observability/alignment-guard"
-import { TraceReporter } from "@/observability/trace-reporter"
+import { TraceReporter, formatTree } from "@/observability/trace-reporter"
 // AGENTS_MD_PATH was imported from "@/constants", now defined inline
 import type { Provider } from "@/provider"
 import z from "zod"
@@ -106,30 +106,75 @@ registerTool({
 
 registerTool({
   name: "helix.get_trace",
-  description: "获取指定 session 的执行轨迹（Trace），包含 AST 分析、工具调用、报错及修复过程。",
+  description: "获取指定 session 的执行轨迹（Trace），包含工具调用、LLM 推理、FSM 决策等事件。返回扁平列表或树形结构。",
   inputSchema: {
     type: "object",
     properties: {
       sessionID: { type: "string", description: "Helix 会话 ID" },
-      limit: { type: "number", description: "最多返回多少条事件（默认 20）" },
+      tree: { type: "boolean", description: "是否返回树形结构（默认 false，返回扁平列表）" },
+      format: { type: "string", enum: ["json", "text"], description: "输出格式：json（默认）返回原始 JSON，text 返回可读的树形文本（适合飞书/VS Code 展示）" },
+      limit: { type: "number", description: "最多返回多少条事件（默认 50）" },
     },
     required: ["sessionID"],
   },
   handler: async (params) => {
     const sessionID = params.sessionID as string
-    const limit = ((params.limit ?? 20) as number)
+    const treeMode = (params.tree ?? false) as boolean
+    const format = ((params.format ?? "json") as string)
+    const limit = ((params.limit ?? 50) as number)
+
+    const { AppRuntime } = await import("@/effect/app-runtime")
+    const events = await AppRuntime.runPromise(
+      TraceReporter.Service.use((reporter) => reporter.getTraces()),
+    )
+
+    const filtered = events
+      .filter((e) => e.metadata?.sessionID === sessionID)
+      .slice(-limit)
+
+    if (format === "text") {
+      const text = formatTree(filtered)
+      return {
+        content: [{ type: "text", text }],
+      }
+    }
+
+    if (!treeMode) {
+      return {
+        content: [{ type: "text", text: JSON.stringify({ sessionID, count: filtered.length, events: filtered }, null, 2) }],
+      }
+    }
+
+    const map = new Map<string, any>()
+    const roots: any[] = []
+    for (const ev of filtered) {
+      map.set(ev.id, { ...ev, children: [] })
+    }
+    for (const ev of filtered) {
+      const node = map.get(ev.id)!
+      if (ev.parentId && map.has(ev.parentId)) {
+        map.get(ev.parentId)!.children.push(node)
+      } else {
+        roots.push(node)
+      }
+    }
+
+    const addDuration = (node: any): any => {
+      if (node.children?.length) node.children = node.children.map(addDuration)
+      const start = node.timestamp
+      const childEnds = (node.children ?? []).map((c: any) => c.timestamp + (c.duration ?? 0))
+      const end = childEnds.length ? Math.max(...childEnds) : start
+      node.duration = end - start
+      return node
+    }
+
+    const tree = roots.map(addDuration)
+    const totalMs = tree.length
+      ? Math.max(...tree.map((r: any) => (r.timestamp ?? 0) + (r.duration ?? 0))) - Math.min(...tree.map((r: any) => r.timestamp ?? 0))
+      : 0
 
     return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify({
-            sessionID,
-            events: [],
-            note: `Trace collection for ${sessionID} (limit: ${limit}). In production, reads from TraceReporter.`,
-          }),
-        },
-      ],
+      content: [{ type: "text", text: JSON.stringify({ sessionID, totalDuration: `${(totalMs / 1000).toFixed(1)}s`, stepCount: tree.length, tree }, null, 2) }],
     }
   },
 })

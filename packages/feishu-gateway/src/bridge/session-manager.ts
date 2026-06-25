@@ -85,8 +85,22 @@ export class SessionManager {
     throw new Error("无法创建 Helix session")
   }
 
+  /** 总是创建新 session（不复用） */
+  private async createSession(chatId: string): Promise<string> {
+    log.info("创建新 session（自动开发模式）", { chatId })
+    const result = await this.sdk.session.create({
+      title: `Auto-Dev ${chatId} ${new Date().toISOString().slice(0, 19)}`,
+    })
+    if (result.data?.id) {
+      this.sessions.set(chatId, result.data.id)
+      log.info("新 session 已创建", { sessionID: result.data.id })
+      return result.data.id
+    }
+    throw new Error("无法创建 Helix session")
+  }
+
   /** 通过 Helix HTTP API 执行任务，返回输出结果 */
-  async runTask(chatId: string, text: string): Promise<string> {
+  async runTask(chatId: string, text: string, autoApprove = false, mode = "ask"): Promise<string> {
     // 取消该 chat 之前未完成的任务
     this.cancel(chatId)
 
@@ -94,7 +108,10 @@ export class SessionManager {
     this.runningTasks.set(chatId, controller)
 
     try {
-      const sessionID = await this.getOrCreateSession(chatId)
+      // 自动开发模式每次创建新 session，避免状态污染
+      const sessionID = autoApprove
+        ? await this.createSession(chatId)
+        : await this.getOrCreateSession(chatId)
 
       log.info("发送消息到 Helix", { chatId, sessionID, text: text.slice(0, 80) })
 
@@ -112,6 +129,12 @@ export class SessionManager {
         // onCard: 卡片回调（权限请求 + 偏离告警）
         async (cardData: any) => {
           // 偏离告警卡片（由 EventBridge 构建）
+          if (cardData?.type === "execution_tree") {
+            log.info("收到执行树，发送卡片到飞书", { stepCount: cardData.card?.elements?.length })
+            await this.sendCard(chatId, cardData.card)
+            return
+          }
+
           if (cardData?.type === "alignment_alert") {
             log.info("收到偏离告警，发送卡片到飞书")
             await this.sendCard(chatId, cardData.card)
@@ -151,13 +174,29 @@ export class SessionManager {
       const baselineCount = await this.getMessageCount(sessionID)
 
       // 使用 promptAsync 发送消息（非阻塞）
+      // autoApprove 模式：禁用 actor（subagent 在 Gateway 下不可靠），只用基础工具
       await this.sdk.session.promptAsync({
         sessionID,
         parts: [{ type: "text", text }],
+        agent: mode,
+        ...(autoApprove ? { tools: {
+          "actor": false,
+          "read": true,
+          "write": true,
+          "edit": true,
+          "bash": true,
+          "glob": true,
+          "grep": true,
+          "skill": false,
+          "webfetch": false,
+          "websearch": false,
+          "screenshot": false,
+          "task": false,
+        } } : {}),
       })
 
       // 等待 AI 完成回复（只关注新消息）
-      const response = await this.waitForCompletion(sessionID, controller.signal, baselineCount, chatId)
+      const response = await this.waitForCompletion(sessionID, controller.signal, baselineCount, chatId, autoApprove)
 
       return response
     } catch (err: any) {
@@ -179,12 +218,12 @@ export class SessionManager {
 
   /** 自适应超时配置 */
   private static readonly TIMEOUT_CONFIG = {
-    baseTimeout: 3 * 60 * 1000,      // 基础超时 3 分钟
-    extensionTime: 3 * 60 * 1000,    // 每次延长 3 分钟
-    maxExtensions: 3,                 // 最大延长 3 次
-    maxTotalTime: 15 * 60 * 1000,    // 总超时上限 15 分钟
+    baseTimeout: 5 * 60 * 1000,      // 基础超时 5 分钟
+    extensionTime: 5 * 60 * 1000,    // 每次延长 5 分钟
+    maxExtensions: 4,                 // 最大延长 4 次
+    maxTotalTime: 25 * 60 * 1000,    // 总超时上限 25 分钟
     pollInterval: 3000,               // 轮询间隔 3 秒
-    maxSteps: 20,                     // 最大步骤数
+    maxSteps: 20,                     // 最大步骤数（仅用于日志）
   }
 
   /** 偏离状态检测：评估任务是否在正常推进 */
@@ -196,11 +235,12 @@ export class SessionManager {
       return { shouldExtend: false, reason: "无 assistant 消息" }
     }
 
-    // 检查步骤数是否过多
-    const stepCount = assistantMessages.length
-    if (stepCount >= SessionManager.TIMEOUT_CONFIG.maxSteps) {
-      return { shouldExtend: false, reason: `步骤数过多 (${stepCount})` }
-    }
+    // 检查最近 3 条 assistant 消息是否有工具调用（不只是最后一条）
+    const recentAssistants = assistantMessages.slice(-3)
+    const recentToolCalls = recentAssistants.flatMap((m: any) =>
+      (m.parts ?? []).filter((p: any) => p.type === "tool")
+    )
+    const hasRecentToolCalls = recentToolCalls.length > 0
 
     // 检查最近的 tool 调用
     const recentParts = lastAssistant.parts ?? []
@@ -208,27 +248,33 @@ export class SessionManager {
     const hasNewToolCalls = toolCalls.length > 0
 
     // 检查是否有错误
-    const hasErrors = toolCalls.some((p: any) => p.state?.status === "error")
+    const hasErrors = recentToolCalls.some((p: any) => p.state?.status === "error")
 
     // 检查是否有输出变化（通过检查 tool 输出是否为空）
-    const hasOutput = toolCalls.some((p: any) => {
+    const hasOutput = recentToolCalls.some((p: any) => {
       const output = p.state?.output
       return output && output.length > 0
     })
 
-    // 决策逻辑
-    if (hasErrors) {
-      return { shouldExtend: false, reason: "存在错误" }
+    // question 工具等待用户输入时视为正常推进
+    const hasRunningQuestion = toolCalls.some((p: any) => p.tool === "question" && p.state?.status === "running")
+
+    const stepCount = assistantMessages.length
+
+    // 只有在 agent 没有实际进展时才拒绝延长
+    if (hasErrors && !hasRecentToolCalls) {
+      return { shouldExtend: false, reason: "存在错误且无新工具调用" }
     }
 
-    if (!hasNewToolCalls) {
+    if (!hasRecentToolCalls) {
       return { shouldExtend: false, reason: "无新的工具调用" }
     }
 
-    if (!hasOutput) {
+    if (!hasOutput && !hasRunningQuestion) {
       return { shouldExtend: false, reason: "工具调用无输出" }
     }
 
+    // agent 有新工具调用且有输出或正在等待用户输入 → 允许延长
     return { shouldExtend: true, reason: `正常推进 (步骤 ${stepCount}, 有新输出)` }
   }
 
@@ -282,12 +328,13 @@ export class SessionManager {
   }
 
   /** 等待 session 完成回复（自适应超时） */
-  private async waitForCompletion(sessionID: string, signal: AbortSignal, baselineCount = 0, chatId: string): Promise<string> {
+  private async waitForCompletion(sessionID: string, signal: AbortSignal, baselineCount = 0, chatId: string, autoApprove = false): Promise<string> {
     const { baseTimeout, extensionTime, maxExtensions, maxTotalTime, pollInterval } = SessionManager.TIMEOUT_CONFIG
     const startTime = Date.now()
     let currentDeadline = startTime + baseTimeout
     let extensionCount = 0
     let lastDeviationCheck = 0
+    let emptyMessageCount = 0
 
     // 构建认证头
     const headers: Record<string, string> = { "Content-Type": "application/json" }
@@ -296,8 +343,8 @@ export class SessionManager {
       headers["Authorization"] = `Basic ${auth}`
     }
 
-    // 启动权限事件监听（后台运行）
-    const permissionMonitor = this.startPermissionMonitor(sessionID, headers, chatId)
+      // 启动权限事件监听（后台运行）
+      const permissionMonitor = this.startPermissionMonitor(sessionID, headers, chatId, autoApprove)
 
     while (Date.now() < currentDeadline) {
       if (signal.aborted) {
@@ -344,8 +391,17 @@ export class SessionManager {
 
           // 如果消息完成但没有文本输出，且没有正在运行的工具，可能是纯工具调用步骤
           if (completed && !textParts && !hasRunningTool) {
-            log.info("步骤完成，继续等待", { messageCount: messages.length })
-            // 继续等待，不要返回
+            if (parts.length === 0) {
+              // 空消息 — agent 没有产生任何内容
+              emptyMessageCount++
+              log.info("检测到空消息", { emptyMessageCount, messageCount: messages.length })
+              if (emptyMessageCount >= 2) {
+                permissionMonitor.stop()
+                throw new Error("Agent 连续产生空消息，可能模型异常或 session 状态损坏")
+              }
+            } else {
+              log.info("步骤完成，继续等待", { messageCount: messages.length })
+            }
           }
         }
 
@@ -371,6 +427,7 @@ export class SessionManager {
       } catch (err: any) {
         if (err.name === "AbortError") throw err
         if (err.message?.startsWith("任务执行超时")) throw err
+        if (err.message?.startsWith("Agent 连续产生空消息")) throw err
         log.warn("轮询消息失败", { error: err.message })
       }
 
@@ -382,7 +439,7 @@ export class SessionManager {
   }
 
   /** 启动权限事件监控器（后台运行） */
-  private startPermissionMonitor(sessionID: string, headers: Record<string, string>, chatId: string) {
+  private startPermissionMonitor(sessionID: string, headers: Record<string, string>, chatId: string, autoApprove = false) {
     let stopped = false
     const processedRequests = new Set<string>()
 
@@ -405,26 +462,32 @@ export class SessionManager {
               const callID = part.callID
               if (!callID || processedRequests.has(callID)) continue
               
-              // 找到新的权限请求，转发到飞书
-              log.info("检测到权限请求，转发到飞书", { callID, sessionID })
+              // 找到新的权限请求
+              log.info("检测到权限请求", { callID, sessionID, autoApprove })
               processedRequests.add(callID)
-              
+
               // 解析问题内容
               const questions = part.state?.input?.questions || []
               const questionText = questions[0]?.question || "未知权限请求"
-              
-              // 发送权限请求到飞书
-              const permissionMessage = `🔐 **权限请求**\n\n${questionText}\n\n请回复:\n- \`允许\` 或 \`yes\` - 批准\n- \`拒绝\` 或 \`no\` - 拒绝`
-              await this.sendText(chatId, permissionMessage)
-              
-              // 存储待处理的权限请求
-              this.pendingPermissions.set(callID, {
-                sessionID,
-                chatId,
-                callID,
-                questionText,
-                timestamp: Date.now()
-              })
+
+              if (autoApprove) {
+                // 自动开发模式：自动批准权限
+                log.info("自动批准权限请求", { callID })
+                await this.autoAnswerQuestion(sessionID, { callID })
+              } else {
+                // 正常模式：转发到飞书
+                const permissionMessage = `🔐 **权限请求**\n\n${questionText}\n\n请回复:\n- \`允许\` 或 \`yes\` - 批准\n- \`拒绝\` 或 \`no\` - 拒绝`
+                await this.sendText(chatId, permissionMessage)
+
+                // 存储待处理的权限请求
+                this.pendingPermissions.set(callID, {
+                  sessionID,
+                  chatId,
+                  callID,
+                  questionText,
+                  timestamp: Date.now()
+                })
+              }
             }
           }
         } catch (err) {

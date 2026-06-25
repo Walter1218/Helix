@@ -395,7 +395,7 @@ export const BashTool = Tool.define(
       return yield* resolvePath(next, cwd, shell)
     })
 
-    const collect = Effect.fn("BashTool.collect")(function* (root: Node, cwd: string, ps: boolean, shell: string) {
+    const collect = Effect.fn("BashTool.collect")(function* (root: Node, cwd: string, ps: boolean, shell: string, parentToolCallId?: string) {
       const scan: Scan = {
         dirs: new Set<string>(),
         patterns: new Set<string>(),
@@ -413,6 +413,7 @@ export const BashTool = Tool.define(
           const bus = yield* Bus.Service
           yield* bus.publish(TraceNodeEvent, {
             id: `block-${Date.now()}`,
+            parentId: parentToolCallId,
             type: "action",
             name: "tool_interceptor_block",
             status: "success",
@@ -428,6 +429,7 @@ export const BashTool = Tool.define(
             const bus = yield* Bus.Service
             yield* bus.publish(TraceNodeEvent, {
               id: `block-rm-${Date.now()}`,
+              parentId: parentToolCallId,
               type: "action",
               name: "tool_interceptor_block",
               status: "success",
@@ -678,7 +680,7 @@ export const BashTool = Tool.define(
               const timeout = params.timeout ?? DEFAULT_TIMEOUT
               const ps = PS.has(name)
               const root = yield* parse(params.command, ps)
-              const scan = yield* collect(root, cwd, ps, shell)
+              const scan = yield* collect(root, cwd, ps, shell, ctx.callID)
               if (!Instance.containsPath(cwd)) scan.dirs.add(cwd)
               yield* ask(ctx, scan)
 

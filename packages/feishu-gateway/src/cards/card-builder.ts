@@ -133,4 +133,90 @@ export class CardBuilder {
       ],
     }
   }
+
+  /** 构建 Agent 执行树卡片（支持增量更新） */
+  buildExecutionTreeCard(params: {
+    sessionID: string
+    steps: Array<{
+      name: string
+      status: "pending" | "success" | "failed"
+      duration?: number
+      detail?: string
+      children?: Array<{
+        name: string
+        status: "pending" | "success" | "failed"
+        duration?: number
+        detail?: string
+      }>
+    }>
+    totalDuration?: number
+    isFinal?: boolean
+  }) {
+    const { sessionID, steps, totalDuration, isFinal } = params
+
+    const statusIcon = (s: string) => s === "success" ? "✅" : s === "failed" ? "❌" : "🔄"
+    const fmtDuration = (ms?: number) => {
+      if (ms === undefined || ms === null) return ""
+      if (ms < 1000) return `${ms}ms`
+      return `${(ms / 1000).toFixed(1)}s`
+    }
+
+    const doneCount = steps.filter((s) => s.status !== "pending").length
+    const totalCount = steps.length
+    const progressPct = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0
+    const progressBar = this.renderProgressBar(progressPct, 10)
+
+    const stepLines = steps.map((step, i) => {
+      const icon = statusIcon(step.status)
+      const dur = fmtDuration(step.duration)
+      let line = `${icon} **${i + 1}. ${step.name}**${dur ? ` (${dur})` : ""}`
+      if (step.detail) line += `\n   ${step.detail.slice(0, 150)}`
+      if (step.children?.length) {
+        for (const child of step.children) {
+          const ci = statusIcon(child.status)
+          const cd = fmtDuration(child.duration)
+          line += `\n   ${ci} ${child.name}${cd ? ` (${cd})` : ""}`
+          if (child.detail) line += ` — ${child.detail.slice(0, 100)}`
+        }
+      }
+      return line
+    })
+
+    const totalTime = totalDuration ? fmtDuration(totalDuration) : ""
+    const headerSuffix = isFinal ? (totalTime ? ` · 完成 · ${totalTime}` : " · 完成") : (totalTime ? ` · 进行中 · ${totalTime}` : " · 进行中")
+    const headerTemplate = isFinal ? (steps.some((s) => s.status === "failed") ? "red" : "green") : "turquoise"
+
+    return {
+      config: { wide_screen_mode: true },
+      header: {
+        title: { tag: "plain_text", content: `📊 Agent 执行树${headerSuffix}` },
+        template: headerTemplate,
+      },
+      elements: [
+        {
+          tag: "div",
+          text: { tag: "lark_md", content: `${progressBar}  ${doneCount}/${totalCount} 步骤完成` },
+        },
+        { tag: "hr" },
+        {
+          tag: "div",
+          text: { tag: "lark_md", content: stepLines.join("\n") },
+        },
+        { tag: "hr" },
+        {
+          tag: "note",
+          elements: [
+            { tag: "plain_text", content: `Session: ${sessionID.slice(0, 12)}… · ${steps.filter(s => s.status === "success").length}✅ ${steps.filter(s => s.status === "failed").length}❌ ${steps.filter(s => s.status === "pending").length}🔄` },
+          ],
+        },
+      ],
+    }
+  }
+
+  private renderProgressBar(pct: number, width: number): string {
+    const filled = Math.round((pct / 100) * width)
+    const empty = width - filled
+    return "█".repeat(filled) + "░".repeat(empty)
+  }
+
 }

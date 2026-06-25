@@ -23,6 +23,7 @@ check_helix_server() {
     MIMOCODE_HOME="$PROJECT_ROOT/.dev-home" \
     MIMOCODE_SKIP_MIGRATIONS=1 \
     MIMOCODE_SERVER_PASSWORD=$SERVER_PASSWORD \
+    MIMOCODE_AUTONOMOUS=1 \
     bun run --cwd packages/opencode --conditions=browser src/index.ts serve --port $SERVER_PORT > /tmp/mimo-serve.log 2>&1 &
     
     # 等待 Server 健康检查通过

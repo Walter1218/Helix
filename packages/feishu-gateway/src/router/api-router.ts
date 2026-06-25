@@ -4,35 +4,97 @@ import { Logger } from "../logger"
 
 const log = Logger.create("api")
 
+interface AsyncTask {
+  id: string
+  chatId: string
+  message: string
+  status: "running" | "completed" | "failed"
+  result?: string
+  error?: string
+  startedAt: number
+  completedAt?: number
+}
+
 export function createApiRouter(sessions: SessionManager) {
   const app = new Hono()
 
-  // 存储待继续执行的任务
   const pendingTasks = new Map<string, { chatId: string; message: string; timestamp: number }>()
+  const asyncTasks = new Map<string, AsyncTask>()
 
-  // 发送任务到飞书（供自动开发任务调用）
+  // 异步任务提交 — 立即返回 taskId
   app.post("/task", async (c) => {
     try {
       const body = await c.req.json()
-      const { chatId, message } = body
+      const { chatId, message, mode } = body
 
       if (!chatId || !message) {
         return c.json({ error: "chatId and message are required" }, 400)
       }
 
-      log.info("收到 API 任务请求", { chatId, message: message.slice(0, 100) })
+      const taskId = "task_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8)
+      log.info("收到异步任务", { taskId, chatId, message: message.slice(0, 100), mode })
 
       // 通过飞书发送任务通知
-      await sessions.sendText(chatId, `🤖 自动开发任务:\n${message}`)
+      await sessions.sendText(chatId, `🤖 自动开发任务:\n${message.slice(0, 200)}`)
 
-      // 执行任务
-      const result = await sessions.runTask(chatId, message)
+      // 存储任务状态
+      const task: AsyncTask = {
+        id: taskId,
+        chatId,
+        message,
+        status: "running",
+        startedAt: Date.now(),
+      }
+      asyncTasks.set(taskId, task)
 
-      return c.json({ success: true, result })
+      // 后台执行（不阻塞 HTTP 响应）
+      sessions.runTask(chatId, message, true, mode || "build").then(
+        (result) => {
+          task.status = "completed"
+          task.result = result
+          task.completedAt = Date.now()
+          log.info("异步任务完成", { taskId, duration: task.completedAt - task.startedAt })
+        },
+        (err) => {
+          task.status = "failed"
+          task.error = err instanceof Error ? err.message : String(err)
+          task.completedAt = Date.now()
+          log.error("异步任务失败", { taskId, error: task.error })
+        },
+      )
+
+      return c.json({ taskId, status: "running" })
     } catch (err: any) {
-      log.error("API 任务执行失败", { error: err.message })
+      log.error("API 任务提交失败", { error: err.message })
       return c.json({ error: err.message }, 500)
     }
+  })
+
+  // 查询异步任务状态
+  app.get("/task/:taskId", (c) => {
+    const taskId = c.req.param("taskId")
+    const task = asyncTasks.get(taskId)
+    if (!task) {
+      return c.json({ error: "Task not found" }, 404)
+    }
+    return c.json({
+      taskId: task.id,
+      status: task.status,
+      result: task.result,
+      error: task.error,
+      startedAt: task.startedAt,
+      completedAt: task.completedAt,
+      duration: task.completedAt ? task.completedAt - task.startedAt : Date.now() - task.startedAt,
+    })
+  })
+
+  // 清理已完成的任务（保留最近 50 个）
+  app.get("/tasks", (c) => {
+    const tasks = Array.from(asyncTasks.values())
+      .sort((a, b) => b.startedAt - a.startedAt)
+      .slice(0, 50)
+      .map(t => ({ taskId: t.id, status: t.status, startedAt: t.startedAt, completedAt: t.completedAt }))
+    return c.json({ tasks })
   })
 
   // 健康检查
@@ -40,7 +102,7 @@ export function createApiRouter(sessions: SessionManager) {
     return c.json({ status: "ok", timestamp: Date.now() })
   })
 
-  // 通用通知接口（供 scheduler 等外部工具调用）
+  // 通用通知接口
   app.post("/notify", async (c) => {
     try {
       const body = await c.req.json()
@@ -74,24 +136,21 @@ export function createApiRouter(sessions: SessionManager) {
 
       log.info("发送权限问题通知", { chatId, taskId, taskTitle })
 
-      // 创建一个待处理的权限请求
       const callID = `permission_${Date.now()}`
       sessions.addPendingPermission(chatId, {
         callID,
         chatId,
         questionText: permissionRequest || '访问外部目录文件',
-        originalMessage: `请读取 /etc/hosts 文件，检查本地 DNS 配置`, // 存储原始消息
+        originalMessage: `请读取 /etc/hosts 文件，检查本地 DNS 配置`,
         timestamp: Date.now()
       })
 
-      // 存储待继续执行的任务
       pendingTasks.set(chatId, {
         chatId,
         message: `请读取 /etc/hosts 文件，检查本地 DNS 配置`,
         timestamp: Date.now()
       })
 
-      // 发送权限问题通知，包含具体的权限请求
       const notifyMessage = `⚠️ **自动开发任务遇到权限问题**\n\n` +
         `**任务**: ${taskTitle || taskId || '未知任务'}\n` +
         `**错误**: ${errorMessage || '权限不足'}\n\n` +
@@ -110,7 +169,7 @@ export function createApiRouter(sessions: SessionManager) {
   })
 
   // 查询权限请求状态
-  app.get("/permission/:chatId", async (c) => {
+  app.get("/permission/:chatId", (c) => {
     const chatId = c.req.param("chatId")
     const pending = sessions.getPendingPermission(chatId)
     return c.json({ pending: !!pending, permission: pending })
@@ -130,17 +189,13 @@ export function createApiRouter(sessions: SessionManager) {
     const success = await sessions.replyPermission(pending.callID, approved)
     if (success) {
       sessions.clearPendingPermission(chatId)
-      
-      // 如果批准了权限，继续执行待处理的任务
+
       if (approved) {
         const pendingTask = pendingTasks.get(chatId)
         if (pendingTask) {
           log.info("权限已批准，继续执行任务", { chatId })
-          
-          // 继续执行任务
           const result = await sessions.runTask(chatId, pendingTask.message)
           pendingTasks.delete(chatId)
-          
           return c.json({ success: true, continued: true, result })
         }
       }
@@ -149,12 +204,11 @@ export function createApiRouter(sessions: SessionManager) {
     return c.json({ success, continued: false })
   })
 
-  // 飞书卡片交互回调（偏离告警的暂停/忽略按钮）
+  // 飞书卡片交互回调
   app.post("/card/action", async (c) => {
     try {
       const body = await c.req.json()
 
-      // 飞书验证请求（challenge）
       if (body.challenge) {
         return c.json({ challenge: body.challenge })
       }
@@ -168,7 +222,6 @@ export function createApiRouter(sessions: SessionManager) {
 
       if (actionType === "suspend" && sessionID) {
         log.info("用户点击暂停任务", { sessionID })
-        // 取消该 session 对应的任务
         const sessionMap = (sessions as any).sessions as Map<string, string>
         const chatId = Array.from(sessionMap.entries())
           .find(([_, sid]: [string, any]) => sid === sessionID)?.[0]

@@ -227,63 +227,89 @@ async function executeViaGateway(task: RoadmapTask, chatId: string): Promise<{ s
     log(`通过 Gateway 执行任务: ${task.title}`)
     const startTs = Date.now()
     
-    // 发送任务到 Gateway
-    const response = await fetch(`${gatewayUrl}/api/task`, {
+    const taskContext = [
+      task.specPath ? `规范文件: ${task.specPath}` : "",
+      task.tags?.length ? `标签: ${task.tags.join(", ")}` : "",
+    ].filter(Boolean).join("\n")
+
+    // 1. 提交异步任务（立即返回 taskId）
+    const submitResp = await fetch(`${gatewayUrl}/api/task`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chatId,
-        message: task.description,
+        message: `你是一个自动开发 agent。严格遵守以下规则：
+
+1. **最小改动原则**：只修改与任务直接相关的文件，不要重构周边代码
+2. **先探索后动手**：先用 read/grep/glob 了解现有架构，再决定改哪些文件
+3. **不要修改测试文件**：除非任务明确要求
+4. **不要修改配置文件**：package.json、tsconfig、.env 等
+5. **不要创建新文件**：除非任务明确要求新建
+6. **每步验证**：改完一个文件后运行 typecheck 确认无误再继续
+7. **范围限制**：最多修改 5 个文件
+
+任务：${task.title}
+描述：${task.description}
+${taskContext}
+
+现在开始执行。先探索相关代码，然后做最小改动。`,
+        mode: "build",
       }),
+      signal: AbortSignal.timeout(30000),
     })
     
-    if (!response.ok) {
-      const error = await response.text()
-      log(`  ✗ Gateway API 错误: ${error}`)
+    if (!submitResp.ok) {
+      const error = await submitResp.text()
+      log(`  ✗ Gateway 提交失败: ${error}`)
       return { success: false, output: error, tokensUsed: 0 }
     }
     
-    const result = await response.json()
+    const { taskId } = await submitResp.json()
+    log(`  任务已提交: ${taskId}`)
+
+    // 2. 轮询任务状态（最长等待 25 分钟）
+    const maxWait = 25 * 60 * 1000
+    const pollInterval = 10000
     
-    // 查询实际 token 消耗
-    const tokensUsed = getRecentTokenUsage(startTs)
-    log(`  实际消耗: ${tokensUsed.toLocaleString()} tokens`)
-    
-    // 检查是否遇到权限问题
-    if (result.result && (
-      result.result.includes("权限") || 
-      result.result.includes("permission") || 
-      result.result.includes("blocked") ||
-      result.result.includes("限制")
-    )) {
-      log(`  ⚠️ 检测到权限问题，通知用户`)
+    while (Date.now() - startTs < maxWait) {
+      await new Promise(r => setTimeout(r, pollInterval))
       
-      // 提取具体的权限请求
-      let permissionRequest = '访问外部目录文件'
-      if (result.result.includes('/etc/hosts')) {
-        permissionRequest = '读取 /etc/hosts 文件'
-      } else if (result.result.includes('~/.ssh')) {
-        permissionRequest = '读取 ~/.ssh 目录'
-      } else if (result.result.includes('/etc/')) {
-        permissionRequest = '读取 /etc/ 目录文件'
+      const statusResp = await fetch(`${gatewayUrl}/api/task/${taskId}`, {
+        signal: AbortSignal.timeout(10000),
+      })
+      
+      if (!statusResp.ok) continue
+      
+      const status = await statusResp.json()
+      
+      if (status.status === "completed") {
+        const tokensUsed = getRecentTokenUsage(startTs)
+        log(`  实际消耗: ${tokensUsed.toLocaleString()} tokens`)
+        
+        const result = status.result || ""
+        if (result.includes("❌ Agent 执行失败") || result.includes("执行失败:") || result.includes("无法创建")) {
+          log(`  ✗ Gateway 执行失败: ${result.slice(0, 200)}`)
+          return { success: false, output: result, tokensUsed }
+        }
+        
+        log(`  ✓ Gateway 执行完成 (${((status.duration || 0) / 1000).toFixed(1)}s)`)
+        return { success: true, output: result, tokensUsed }
       }
       
-      // 发送权限问题通知到飞书
-      await fetch(`${gatewayUrl}/api/notify-permission-issue`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chatId,
-          taskId: task.id,
-          taskTitle: task.title,
-          errorMessage: result.result,
-          permissionRequest: permissionRequest,
-        }),
-      })
+      if (status.status === "failed") {
+        const tokensUsed = getRecentTokenUsage(startTs)
+        log(`  ✗ Gateway 执行失败: ${status.error}`)
+        return { success: false, output: status.error || "unknown error", tokensUsed }
+      }
+      
+      // 仍在运行，继续轮询
+      const elapsed = Math.round((Date.now() - startTs) / 1000)
+      if (elapsed % 60 === 0) {
+        log(`  ⏳ 任务进行中... (${elapsed}s)`)
+      }
     }
     
-    log(`  ✓ Gateway 执行完成`)
-    return { success: true, output: result.result || "", tokensUsed }
+    return { success: false, output: "Gateway 任务超时 (25 分钟)", tokensUsed: 0 }
   } catch (err: any) {
     log(`  ✗ Gateway 调用失败: ${err.message}`)
     return { success: false, output: err.message, tokensUsed: 0 }
@@ -450,13 +476,14 @@ async function stepTest(): Promise<StepResult> {
   return { name: "测试", ...result, duration: Date.now() - start }
 }
 
-async function stepLint(): Promise<StepResult> {
+async function stepLint(gitCheckpoint: string): Promise<StepResult> {
   const start = Date.now()
   log("[6/10] Lint 检查...")
   
-  // 只 lint 变更文件
-  const { output: changed } = runCmd("git diff --name-only HEAD~1 2>/dev/null || git status --porcelain")
-  const changedFiles = changed.split("\n").filter(f => f.trim()).map(f => f.replace(/^[AM]\s+/, "").trim())
+  // 只 lint 从 checkpoint 以来的增量变更文件
+  const { output: changed } = runCmd("git diff --name-only " + gitCheckpoint)
+  const changedFiles = changed.split("\n").filter(f => f.trim())
+  
   const tsFiles = changedFiles.filter(f => f.endsWith(".ts") || f.endsWith(".tsx"))
   
   if (tsFiles.length === 0) {
@@ -646,11 +673,11 @@ async function stepJudgeVerifyPipeline(steps: StepResult[]): Promise<StepResult>
   return { name: "Judge验证", success: true, output: "验证通过", duration: Date.now() - start }
 }
 
-async function stepEnhancedJudge(task: RoadmapTask): Promise<StepResult> {
+async function stepEnhancedJudge(task: RoadmapTask, gitCheckpoint: string): Promise<StepResult> {
   const start = Date.now()
   log("[2.5/9] 增强 Judge 审查...")
 
-  const verdict = runEnhancedJudge(task.id, task.title, task.description, task.specPath)
+  const verdict = runEnhancedJudge(task.id, task.title, task.description, task.specPath, gitCheckpoint)
 
   if (verdict.issues.length > 0) {
     log("  ✗ 增强 Judge 发现问题:")
@@ -811,6 +838,16 @@ async function runPipeline(task: RoadmapTask, options: { dryRun: boolean; noPush
   const evolutionConfig = getModeEvolutionConfig(mode)
   log(`模式: ${mode} | Judge: ${evolutionConfig.judgeEnabled ? "启用" : "禁用"} | Trace: ${evolutionConfig.traceExportEnabled ? "启用" : "禁用"}`)
   
+  // 记录 agent 执行前的 git commit 作为 checkpoint
+  // 如果有未提交改动，先自动提交作为 baseline
+  const hasUncommitted = runCmd("git status --porcelain").output.trim().length > 0
+  if (hasUncommitted) {
+    log("检测到未提交改动，自动提交作为 baseline")
+    runCmd('git add -A && git commit -m "auto-dev: baseline checkpoint" --no-verify')
+  }
+  const gitCheckpoint = runCmd("git rev-parse HEAD").output.trim()
+  log("Git checkpoint: " + gitCheckpoint.slice(0, 8))
+  
   // Step 1: 执行任务
   steps.push(await stepExecuteTask(task, options.dryRun, options.chatId))
   const execStep = steps[steps.length - 1]
@@ -847,12 +884,12 @@ async function runPipeline(task: RoadmapTask, options: { dryRun: boolean; noPush
   // Step 4-6: 验证步骤
   steps.push(await stepTypecheck())
   steps.push(await stepTest())
-  steps.push(await stepLint())
+  steps.push(await stepLint(gitCheckpoint))
   
   // Step 2.5: 增强 Judge 审查（根据模式配置决定是否启用）
   let enhancedJudgeFailed = false
   if (evolutionConfig.judgeEnabled) {
-    steps.push(await stepEnhancedJudge(task))
+    steps.push(await stepEnhancedJudge(task, gitCheckpoint))
     enhancedJudgeFailed = !steps[steps.length - 1].success
     if (enhancedJudgeFailed) {
       log("\n✗ 增强 Judge 审查失败，终止流程")
@@ -897,13 +934,16 @@ function printReport(steps: StepResult[]) {
   
   for (const step of steps) {
     const icon = step.success ? "✓" : "✗"
-    const duration = step.duration > 0 ? ` (${(step.duration / 1000).toFixed(1)}s)` : ""
-    log(`  ${icon} ${step.name}${duration}`)
+    const durSec = step.duration > 0 ? (step.duration / 1000).toFixed(1) : ""
+    const durStr = durSec ? " (" + durSec + "s)" : ""
+    log("  " + icon + " " + step.name + durStr)
   }
   
   log("-".repeat(50))
-  log(`  总耗时: ${(totalTime / 1000).toFixed(1)}s`)
-  log(`  结果: ${steps.every(s => s.success) ? "全部通过" : "有失败项"}`)
+  const totalSec = (totalTime / 1000).toFixed(1)
+  log("  总耗时: " + totalSec + "s")
+  const allPassed = steps.every(s => s.success)
+  log("  结果: " + (allPassed ? "全部通过" : "有失败项"))
   log("=".repeat(50))
 }
 
@@ -1000,7 +1040,8 @@ async function ensureGateway(): Promise<boolean> {
 
   log("Gateway 不可达，尝试启动...")
   try {
-    execSync(`cd ${PROJECT_ROOT}/packages/feishu-gateway && bun run src/index.ts &`, {
+    const serverPassword = process.env.MIMOCODE_SERVER_PASSWORD || "test123"
+    execSync(`cd ${PROJECT_ROOT}/packages/feishu-gateway && MIMOCODE_SERVER_PASSWORD=${serverPassword} HELIX_URL=http://localhost:3095 bun run src/index.ts &`, {
       encoding: "utf-8",
       timeout: 5000,
       stdio: "ignore",
