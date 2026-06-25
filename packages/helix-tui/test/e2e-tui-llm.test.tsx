@@ -484,7 +484,8 @@ describe("E2E TUI: Real LLM Blackbox", () => {
       const response = await fetch(input, init)
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
       const method = init?.method ?? (input instanceof Request ? input.method : "GET")
-      if (url.includes("/prompt") && method === "POST") {
+      // SDK calls POST /session/{sessionID}/message for prompt
+      if (url.includes("/session/") && url.includes("/message") && method === "POST") {
         return new Response(JSON.stringify({ error: "LLM provider timeout" }), {
           status: 200,
           statusText: "OK",

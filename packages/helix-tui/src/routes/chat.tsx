@@ -378,8 +378,6 @@ export function Chat() {
         modelRef: currentModel(),
       })
 
-      console.log("DEBUG prompt response:", JSON.stringify({ data, err }))
-
       if (err || !data || !Array.isArray(data.parts)) {
         const errMsg = err ? JSON.stringify(err) : data && typeof data === "object" && "error" in data && typeof data.error === "string" ? data.error : !Array.isArray(data.parts) ? "Invalid response format from server" : "No response from server"
         trace.emit("session.error", "error", "Prompt failed", { error: errMsg }, sid)
