@@ -1103,10 +1103,6 @@
         color: #d97706;
         font-size: 14px;
       }
-      @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.5; }
-      }
       .alignment-alert-header .title-text {
         font-size: 13px;
         font-weight: 600;
@@ -4964,7 +4960,24 @@
         div.textContent = text;
         return div.innerHTML;
       }
-      
+
+      function stripAnsi(str) {
+        return str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+      }
+
+      function formatDuration(ms) {
+        if (ms < 1000) return Math.round(ms) + 'ms';
+        const s = ms / 1000;
+        if (s < 60) return s.toFixed(1) + 's';
+        return Math.floor(s / 60) + 'm ' + Math.round(s % 60) + 's';
+      }
+
+      function applyToolVisibility() {
+        document.querySelectorAll('.tool-call-details, .part-reasoning-body').forEach(el => {
+          el.classList.toggle('expanded', showDetailsMode);
+        });
+      }
+
       // Simple Markdown formatter
       function formatMarkdown(text) {
         if (!text) return '';
