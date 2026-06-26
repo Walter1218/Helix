@@ -44,6 +44,7 @@ export type DisplayMessage = {
   status?: "pending" | "streaming" | "done" | "error"
   error?: string
   toolCalls?: ToolCall[]
+  reasoning?: { text: string; duration?: number }
   agent?: string
   model?: string
 }
@@ -466,8 +467,9 @@ export function Chat() {
       if (!Array.isArray(msg.parts)) continue
       const textParts = msg.parts.filter((p: any) => p.type === "text")
       const toolParts = msg.parts.filter((p: any) => p.type === "tool-call" || p.type === "tool-result")
+      const reasoningParts = msg.parts.filter((p: any) => p.type === "reasoning")
       const content = textParts.map((p: any) => p.text).join("\n")
-      if (!content && info.role === "user" && toolParts.length === 0) continue
+      if (!content && info.role === "user" && toolParts.length === 0 && reasoningParts.length === 0) continue
 
       const toolCalls: ToolCall[] = toolParts.map((p: any) => ({
         id: p.id || Math.random().toString(36).slice(2),
@@ -477,6 +479,15 @@ export function Chat() {
         status: p.state === "running" ? "running" : p.state === "error" ? "error" : "done",
       }))
 
+      const reasoning = reasoningParts.length > 0
+        ? {
+            text: reasoningParts.map((p: any) => p.text).join("\n"),
+            duration: (reasoningParts[0] as any)?.time?.end && (reasoningParts[0] as any)?.time?.start
+              ? (reasoningParts[0] as any).time.end - (reasoningParts[0] as any).time.start
+              : undefined,
+          }
+        : undefined
+
       display.push({
         id: info.id,
         role: info.role as DisplayMessage["role"],
@@ -484,6 +495,7 @@ export function Chat() {
         timestamp: (info as any).time?.created ?? Date.now(),
         status: "done",
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        reasoning,
         agent: (info as any).agent,
         model: (info as any).model?.modelID,
       })
@@ -638,6 +650,23 @@ export function Chat() {
           const msg = next[i]
           if (msg && msg.role === "assistant" && (msg.status === "pending" || msg.status === "streaming")) {
             next[i] = { ...msg, content: msg.content + (props.delta ?? ""), status: "streaming" }
+            break
+          }
+        }
+        return next
+      })
+    }
+
+    // Reasoning delta
+    if (type === "message.part.delta" && props.field === "reasoning_content") {
+      trace.emit("event.delta", "debug", "Received reasoning delta", { delta: (props.delta ?? "").length }, sid ?? undefined)
+      setMessages((prev) => {
+        const next: DisplayMessage[] = prev.map((m) => ({ ...m }))
+        for (let i = next.length - 1; i >= 0; i--) {
+          const msg = next[i]
+          if (msg && msg.role === "assistant" && (msg.status === "pending" || msg.status === "streaming")) {
+            const existing = msg.reasoning ?? { text: "", duration: undefined }
+            next[i] = { ...msg, reasoning: { ...existing, text: existing.text + (props.delta ?? "") }, status: "streaming" }
             break
           }
         }
@@ -1402,6 +1431,14 @@ export function Chat() {
                       <text fg={theme.getColor("warning")} onMouseDown={() => retryMessage(msg)}> [Retry]</text>
                     </Show>
                   </box>
+
+                  {/* Reasoning */}
+                  <Show when={msg.reasoning}>
+                    <ReasoningPart
+                      text={msg.reasoning!.text}
+                      duration={msg.reasoning!.duration}
+                    />
+                  </Show>
 
                   {/* Text content */}
                   <Show when={msg.content}>
