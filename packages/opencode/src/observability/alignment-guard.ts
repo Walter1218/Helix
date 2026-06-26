@@ -3,10 +3,22 @@ import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import { Log } from "@/util"
 import type { SessionID } from "@/session/schema"
+import { Event as SessionEvent } from "@/session/session"
 import { inboxServiceRef } from "@/inbox/inbox-ref"
 import z from "zod"
 
 const log = Log.create({ service: "alignment-guard" })
+
+function publishAlignmentDrift(bus: Bus.Interface, payload: AlignmentAlertPayload, alertType: string) {
+  return bus.publish(SessionEvent.AlignmentDrift, {
+    sessionID: payload.sessionID,
+    id: Math.random().toString(36).slice(2),
+    alertType,
+    severity: payload.level === "critical" ? "critical" : "warning",
+    message: payload.reason,
+    metrics: { files: payload.files, suggestion: payload.suggestion, timestamp: payload.timestamp },
+  }).pipe(Effect.catch(() => Effect.void))
+}
 
 // ============================================================================
 // 附加能力：AlignmentGuard 不仅向外部广播告警，也可以通过 Actor inbox
@@ -179,6 +191,7 @@ export const layer = Layer.effect(
                 Effect.all([
                   Ref.update(alerts, (a) => [...a, payload]),
                   bus.publish(AlignmentAlert, payload).pipe(Effect.catch(() => Effect.void)),
+                  publishAlignmentDrift(bus, payload, "distraction"),
                 ]),
               )
             }
@@ -201,6 +214,7 @@ export const layer = Layer.effect(
                   Effect.all([
                     Ref.update(alerts, (a) => [...a, payload]),
                     bus.publish(AlignmentAlert, payload).pipe(Effect.catch(() => Effect.void)),
+                    publishAlignmentDrift(bus, payload, "rabbit-hole"),
                   ]),
                 )
               }
@@ -228,6 +242,7 @@ export const layer = Layer.effect(
                 Effect.all([
                   Ref.update(alerts, (a) => [...a, payload]),
                   bus.publish(AlignmentAlert, payload).pipe(Effect.catch(() => Effect.void)),
+                  publishAlignmentDrift(bus, payload, "failed-cmd"),
                 ]),
               )
             }
@@ -262,6 +277,7 @@ export const layer = Layer.effect(
                 Effect.all([
                   Ref.update(alerts, (a) => [...a, payload]),
                   bus.publish(AlignmentAlert, payload).pipe(Effect.catch(() => Effect.void)),
+                  publishAlignmentDrift(bus, payload, "file-drift"),
                 ]),
               )
             }

@@ -1117,3 +1117,112 @@ describe("session.message-v2.fromError", () => {
     expect(result.name).toBe("MessageAbortedError")
   })
 })
+
+describe("session.message-v2 empty parts handling", () => {
+  test("empty-parts user message between valid messages is skipped", async () => {
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo("m1"),
+        parts: [{ ...basePart("m1", "p1"), type: "text", text: "first" }] as MessageV2.Part[],
+      },
+      {
+        info: userInfo("m-empty"),
+        parts: [],
+      },
+      {
+        info: userInfo("m2"),
+        parts: [{ ...basePart("m2", "p2"), type: "text", text: "second" }] as MessageV2.Part[],
+      },
+    ]
+
+    const result = await MessageV2.toModelMessages(input, model)
+    expect(result).toStrictEqual([
+      { role: "user", content: [{ type: "text", text: "first" }] },
+      { role: "user", content: [{ type: "text", text: "second" }] },
+    ])
+  })
+
+  test("empty-parts assistant message is skipped", async () => {
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo("m-user"),
+        parts: [{ ...basePart("m-user", "p1"), type: "text", text: "hello" }] as MessageV2.Part[],
+      },
+      {
+        info: assistantInfo("m-empty", "m-user"),
+        parts: [],
+      },
+    ]
+
+    const result = await MessageV2.toModelMessages(input, model)
+    expect(result).toStrictEqual([
+      { role: "user", content: [{ type: "text", text: "hello" }] },
+    ])
+  })
+
+  test("multiple consecutive empty-parts messages are all skipped", async () => {
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo("m-empty1"),
+        parts: [],
+      },
+      {
+        info: userInfo("m-empty2"),
+        parts: [],
+      },
+      {
+        info: userInfo("m-real"),
+        parts: [{ ...basePart("m-real", "p1"), type: "text", text: "hello" }] as MessageV2.Part[],
+      },
+    ]
+
+    const result = await MessageV2.toModelMessages(input, model)
+    expect(result).toStrictEqual([
+      { role: "user", content: [{ type: "text", text: "hello" }] },
+    ])
+  })
+
+  test("message with only snapshot/patch parts produces empty content and is omitted", async () => {
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo("m-snap"),
+        parts: [
+          { ...basePart("m-snap", "p1"), type: "snapshot", snapshot: "abc123" },
+          { ...basePart("m-snap", "p2"), type: "patch", hash: "def", files: ["a.ts"] },
+        ] as MessageV2.Part[],
+      },
+      {
+        info: userInfo("m-real"),
+        parts: [{ ...basePart("m-real", "p3"), type: "text", text: "after" }] as MessageV2.Part[],
+      },
+    ]
+
+    const result = await MessageV2.toModelMessages(input, model)
+    expect(result).toStrictEqual([
+      { role: "user", content: [{ type: "text", text: "after" }] },
+    ])
+  })
+
+  test("empty-parts messages at end are silently dropped", async () => {
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo("m1"),
+        parts: [{ ...basePart("m1", "p1"), type: "text", text: "hello" }] as MessageV2.Part[],
+      },
+      {
+        info: assistantInfo("m2", "m1"),
+        parts: [{ ...basePart("m2", "p2"), type: "text", text: "reply" }] as MessageV2.Part[],
+      },
+      {
+        info: userInfo("m-empty"),
+        parts: [],
+      },
+    ]
+
+    const result = await MessageV2.toModelMessages(input, model)
+    expect(result).toStrictEqual([
+      { role: "user", content: [{ type: "text", text: "hello" }] },
+      { role: "assistant", content: [{ type: "text", text: "reply" }] },
+    ])
+  })
+})

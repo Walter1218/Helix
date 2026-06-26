@@ -95,14 +95,14 @@ type CardinalAlert = {
 
 type JudgeVerdict = {
   id: string
-  status: "pass" | "reject" | "question" | "rollback"
+  status: "pass" | "reject" | "question" | "rollback" | "fail"
   checks: Array<{ name: string; passed: boolean; detail?: string }>
   summary: string
 }
 
 type AlignmentAlert = {
   id: string
-  alertType: "drift" | "rabbitHole" | "fileDrift" | "distraction"
+  alertType: "drift" | "rabbitHole" | "fileDrift" | "distraction" | "rabbit-hole" | "file-drift"
   severity: "warning" | "critical"
   message: string
   metrics?: Record<string, number>
@@ -138,14 +138,14 @@ type DecompositionState = {
 }
 
 type PersonaState = {
-  active: boolean
+  active: true
   name: string
   description: string
   temporary: boolean
 }
 
 type AgentStatsState = {
-  active: boolean
+  active: true
   successRate: number
   avgDuration: number
   totalTasks: number
@@ -623,14 +623,7 @@ export function Chat() {
     const payload = (event as any).payload ?? event
     const type = payload?.type
     const props = payload?.properties
-    if (!type || !props) {
-      console.log("[CHAT DEBUG] rejected event:", JSON.stringify(event).slice(0, 200))
-      return
-    }
-    console.log("[CHAT DEBUG] accepted event type:", type, "props keys:", Object.keys(props))
-    if (type === "judge.verdict") {
-      console.log("[CHAT DEBUG] judge.verdict props:", JSON.stringify(props).slice(0, 300))
-    }
+    if (!type || !props) return
 
     const sid = sessionID()
     if (props.sessionID && sid && props.sessionID !== sid) return
@@ -987,7 +980,7 @@ export function Chat() {
       return
     }
     // Support numeric keys via name, input, or key properties
-    const input = evt.input || evt.name || evt.key || ""
+    const input = (evt as any).input || evt.name || (evt as any).key || ""
     const num = parseInt(input.replace(/^digit/, "").replace(/^num/, ""), 10)
     if (!isNaN(num) && num >= 1 && num <= 9) {
       handlePreFlightSelect(num)
@@ -1227,7 +1220,7 @@ export function Chat() {
         <Show when={judgeVerdict()}>
           <box flexDirection="column" border borderColor={theme.getColor("accent")} paddingLeft={1} paddingRight={1}>
             <text fg={theme.getColor("accent")} attributes={1}>
-              {judgeVerdict()!.status === "pass" ? "Judge: PASS" : judgeVerdict()!.status === "reject" ? "Judge: FAIL" : judgeVerdict()!.status === "rollback" ? "Judge: ROLLBACK" : "Judge: QUESTION"}
+              {judgeVerdict()!.status === "pass" ? "Judge: PASS" : judgeVerdict()!.status === "fail" || judgeVerdict()!.status === "reject" ? "Judge: FAIL" : judgeVerdict()!.status === "rollback" ? "Judge: ROLLBACK" : "Judge: QUESTION"}
             </text>
             <text fg={theme.getColor("text")}>{judgeVerdict()!.summary}</text>
             <Show when={judgeVerdict()!.checks.length > 0}>
@@ -1259,9 +1252,9 @@ export function Chat() {
               paddingLeft={1}
               paddingRight={1}
             >
-              <text fg={alert.severity === "critical" ? theme.getColor("error") : theme.getColor("warning")} attributes={1}>
-                {alert.alertType === "rabbitHole" ? "Rabbit Hole" : alert.alertType === "fileDrift" ? "File Drift" : alert.alertType === "distraction" ? "Distraction" : "Alignment Drift"}
-              </text>
+            <text fg={alert.severity === "critical" ? theme.getColor("error") : theme.getColor("warning")} attributes={1}>
+              {alert.alertType === "rabbitHole" || alert.alertType === "rabbit-hole" ? "Rabbit Hole" : alert.alertType === "fileDrift" || alert.alertType === "file-drift" ? "File Drift" : alert.alertType === "distraction" ? "Distraction" : "Alignment Drift"}
+            </text>
               <text fg={theme.getColor("text")}>{alert.message}</text>
               <Show when={alert.metrics && Object.keys(alert.metrics).length > 0}>
                 <box flexDirection="row" gap={1} flexWrap="wrap">
@@ -1302,8 +1295,8 @@ export function Chat() {
         </For>
 
         {/* Decomposition card */}
-        <Show when={decomposition()?.active}>
-          {(d) => (
+        <Show when={decomposition()}>
+          {(d) => d().active ? (
             <box flexDirection="column" border borderColor={theme.getColor("accent")} paddingLeft={1} paddingRight={1}>
               <text fg={theme.getColor("accent")} attributes={1}>
                 {d().status === "required" ? "Task Decomposition" : d().status === "decision" ? "Decomposition Decision" : "Task Decomposition"}
@@ -1324,12 +1317,12 @@ export function Chat() {
                 </box>
               </Show>
             </box>
-          )}
+          ) : null}
         </Show>
 
         {/* Persona card */}
-        <Show when={persona()?.active}>
-          {(p) => (
+        <Show when={persona()}>
+          {(p) => p().active ? (
             <box flexDirection="column" border borderColor={theme.getColor("success")} paddingLeft={1} paddingRight={1}>
               <text fg={theme.getColor("success")} attributes={1}>
                 Dynamic Persona: {p().name}
@@ -1339,12 +1332,12 @@ export function Chat() {
                 <text fg={theme.getColor("warning")}>(temporary)</text>
               </Show>
             </box>
-          )}
+          ) : null}
         </Show>
 
         {/* AgentStats card */}
-        <Show when={agentStats()?.active}>
-          {(s) => (
+        <Show when={agentStats()}>
+          {(s) => s().active ? (
             <box flexDirection="column" border borderColor={theme.getColor("primary")} paddingLeft={1} paddingRight={1}>
               <text fg={theme.getColor("primary")} attributes={1}>
                 Agent Stats ({s().level})
@@ -1355,7 +1348,7 @@ export function Chat() {
                 <text fg={theme.getColor("textMuted")}>Tasks: {s().totalTasks}</text>
               </box>
             </box>
-          )}
+          ) : null}
         </Show>
 
         {/* Messages */}

@@ -294,7 +294,7 @@ describe("Phase 2b: Cardinal + Judge + AlignmentGuard", () => {
 
   // ── Judge Tests ──────────────────────────────────────────
 
-  test.only("2b-11: Judge verdict pass card", async () => {
+  test("2b-11: Judge verdict pass card", async () => {
     server = createMockServer()
     const url = await server.start({ type: "direct", response: "OK" })
     const { result, cleanup } = await renderApp({ serverUrl: url })
@@ -314,20 +314,13 @@ describe("Phase 2b: Cardinal + Judge + AlignmentGuard", () => {
         summary: "All checks passed",
       },
     })
-    console.log("[DEBUG] emitSSE returned:", emitted)
 
     await new Promise((r) => setTimeout(r, 300))
     await result.renderOnce()
     await new Promise((r) => setTimeout(r, 500))
     await result.renderOnce()
-    const frame = result.captureCharFrame()
-    console.log("[DEBUG] frame JSON:", JSON.stringify(frame.slice(0, 500)))
-    console.log("[DEBUG] frame includes 'All checks passed':", frame.includes("All checks passed"))
-    console.log("[DEBUG] frame includes 'Judge: PASS':", frame.includes("Judge: PASS"))
-    console.log("[DEBUG] frame includes 'Judge: QUESTION':", frame.includes("Judge: QUESTION"))
 
     const { found, frame: frame2 } = await waitForFrame(result, (f) => f.includes("[PASS] syntax"), 15000)
-    console.log("[DEBUG] waitForFrame found:", found)
     expect(found).toBe(true)
     assertFrameContains(frame2, ["All checks passed", "[PASS] syntax"])
     server.stop()

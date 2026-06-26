@@ -259,6 +259,39 @@ export const Event = {
       error: z.lazy(() => MessageV2.Assistant.shape.error),
     }),
   ),
+  CardinalDetected: BusEvent.define(
+    "cardinal.detected",
+    z.object({
+      sessionID: SessionID.zod,
+      id: z.string(),
+      cardinalType: z.string(),
+      severity: z.enum(["block", "pause", "stop", "warn"]),
+      message: z.string(),
+      autoDegrade: z.boolean().optional(),
+      degradeTimeout: z.number().optional(),
+    }),
+  ),
+  JudgeVerdict: BusEvent.define(
+    "judge.verdict",
+    z.object({
+      sessionID: SessionID.zod,
+      id: z.string(),
+      status: z.enum(["pass", "fail", "question"]),
+      checks: z.array(z.string()),
+      summary: z.string(),
+    }),
+  ),
+  AlignmentDrift: BusEvent.define(
+    "alignment.drift",
+    z.object({
+      sessionID: z.string(),
+      id: z.string(),
+      alertType: z.string(),
+      severity: z.string(),
+      message: z.string(),
+      metrics: z.record(z.string(), z.any()).optional(),
+    }),
+  ),
   RetryAttempt: BusEvent.define(
     "session.retry.attempt",
     z.object({

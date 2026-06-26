@@ -2954,6 +2954,15 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                 changedFiles,
               }).pipe(Effect.catch(() => Effect.succeed(null)))
               if (cardinalDecision) {
+                const cardinalAlertId = Math.random().toString(36).slice(2)
+                yield* bus.publish(Session.Event.CardinalDetected, {
+                  sessionID,
+                  id: cardinalAlertId,
+                  cardinalType: cardinalDecision.level === "block" ? "security" : "runtime",
+                  severity: cardinalDecision.level,
+                  message: cardinalDecision.reason,
+                  autoDegrade: false,
+                })
                 // security block always enforced; others only when judgeEnabled
                 if (cardinalDecision.level === "block") {
                   yield* slog.warn("cardinal block", { reason: cardinalDecision.reason })
@@ -3024,6 +3033,13 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                 agentMessage: lastAgentMsg,
                 testFileContents,
                 verificationLevel,
+              })
+              yield* bus.publish(Session.Event.JudgeVerdict, {
+                sessionID,
+                id: Math.random().toString(36).slice(2),
+                status: review.approved ? "pass" : "fail",
+                checks: review.suggestions ?? [],
+                summary: review.rationale,
               })
               if (!review.approved) {
                 const judgeAction = cardinalEvo.judgeAction ?? "warn"
