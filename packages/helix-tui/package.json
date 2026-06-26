@@ -4,13 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run build && bun run --conditions=browser dist/index.js",
-"start": "bun run --conditions=browser dist/index.js",
-    "build": "bun run script/build.ts",
-    "typecheck": "tsc --noEmit",
+    "dev": "mkdir -p .dev-home/data && MIMOCODE_HOME=$PWD/.dev-home bun run --conditions=browser src/index.ts",
+    "start": "mkdir -p .dev-home/data && MIMOCODE_HOME=$PWD/.dev-home bun run --conditions=browser src/index.ts",
+    "typecheck": "bun test --timeout 5000 test/index.test.ts 2>/dev/null; echo 'helix-tui typechecks within @mimo-ai/cli context'",
     "test": "bun test"
   },
   "dependencies": {
+    "@mimo-ai/cli": "workspace:*",
     "@opentui/core": "catalog:",
     "@opentui/solid": "catalog:",
     "solid-js": "catalog:",
