@@ -4,6 +4,7 @@ import type {
   ConnectionStatus,
   Subscription,
 } from "./types"
+import * as trace from "../trace"
 
 export class WebSocketAdapter implements CommunicationAdapter {
   private ws: WebSocket | null = null
@@ -23,17 +24,20 @@ export class WebSocketAdapter implements CommunicationAdapter {
   async connect(config: ConnectionConfig): Promise<void> {
     this.config = config
     this._status = "connecting"
+    trace.emit("sdk.connecting", "info", "WebSocket connecting", { endpoint: config.endpoint })
 
     return new Promise((resolve, reject) => {
       this.ws = new WebSocket(config.endpoint)
 
       this.ws.onopen = () => {
         this._status = "connected"
+        trace.emit("sdk.connected", "info", "WebSocket connected", { endpoint: config.endpoint })
         resolve()
       }
 
       this.ws.onerror = (error) => {
         this._status = "error"
+        trace.emit("sdk.error", "error", "WebSocket error", { endpoint: config.endpoint, error: String(error) })
         reject(error)
       }
 
@@ -51,11 +55,13 @@ export class WebSocketAdapter implements CommunicationAdapter {
 
       this.ws.onclose = () => {
         this._status = "disconnected"
+        trace.emit("sdk.disconnected", "info", "WebSocket disconnected")
       }
     })
   }
 
   async disconnect(): Promise<void> {
+    trace.emit("sdk.disconnecting", "info", "WebSocket disconnecting")
     if (this.ws) {
       this.ws.close()
       this.ws = null
@@ -68,6 +74,7 @@ export class WebSocketAdapter implements CommunicationAdapter {
       throw new Error("Not connected")
     }
 
+    trace.emit("sdk.request", "debug", "WebSocket request", { endpoint })
     return new Promise((resolve, reject) => {
       const requestId = Math.random().toString(36).slice(2)
       const timeout = setTimeout(() => reject(new Error("Request timeout")), 30000)

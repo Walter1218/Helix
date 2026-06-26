@@ -4,6 +4,7 @@ import type {
   ConnectionStatus,
   Subscription,
 } from "./types"
+import * as trace from "../trace"
 
 export class HttpAdapter implements CommunicationAdapter {
   private config: ConnectionConfig | null = null
@@ -21,16 +22,19 @@ export class HttpAdapter implements CommunicationAdapter {
   async connect(config: ConnectionConfig): Promise<void> {
     this.config = config
     this._status = "connected"
+    trace.emit("sdk.connected", "info", "HTTP adapter connected", { endpoint: config.endpoint })
   }
 
   async disconnect(): Promise<void> {
     this.config = null
     this._status = "disconnected"
+    trace.emit("sdk.disconnected", "info", "HTTP adapter disconnected")
   }
 
   async request<T>(endpoint: string, data?: unknown): Promise<T> {
     if (!this.config) throw new Error("Not connected")
 
+    trace.emit("sdk.request", "debug", "HTTP request", { endpoint, method: data ? "POST" : "GET" })
     const url = `${this.config.endpoint}${endpoint}`
     const headers: Record<string, string> = {
       "Content-Type": "application/json",

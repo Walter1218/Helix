@@ -1,6 +1,7 @@
 import { createSignal, For, onMount } from "solid-js"
 import { useTheme } from "../context/theme"
 import { ConfigManager, type HelixConfig } from "../config"
+import * as trace from "../trace"
 
 type SettingSection = "general" | "theme" | "communication" | "plugins" | "voice"
 
@@ -26,9 +27,11 @@ export function Settings() {
   ]
 
   onMount(async () => {
+    trace.emit("ui.init", "info", "Settings route mounting")
     const manager = new ConfigManager()
     await manager.load()
     setConfig(manager.getAll())
+    trace.emit("ui.init", "info", "Settings loaded")
   })
 
   const getSettings = (): SettingItem[] => {

@@ -7,6 +7,7 @@ import type {
 } from "./types"
 import { HttpAdapter } from "./http-adapter"
 import { WebSocketAdapter } from "./websocket-adapter"
+import * as trace from "../trace"
 
 export class GrpcAdapter implements CommunicationAdapter {
   private config: ConnectionConfig | null = null
@@ -78,12 +79,14 @@ export class CommunicationManager {
   private defaultAdapter: CommunicationAdapter | null = null
 
   async initialize(config: CommunicationConfig): Promise<void> {
+    trace.emit("sdk.initializing", "info", "Communication manager initializing", { adapters: Object.keys(config.adapters) })
     for (const [name, adapterConfig] of Object.entries(config.adapters)) {
       const adapter = this.createAdapter(adapterConfig)
       await adapter.connect(adapterConfig)
       this.adapters.set(name, adapter)
     }
     this.defaultAdapter = this.adapters.get(config.default) || null
+    trace.emit("sdk.initialized", "info", "Communication manager initialized", { default: config.default })
   }
 
   private createAdapter(config: ConnectionConfig): CommunicationAdapter {

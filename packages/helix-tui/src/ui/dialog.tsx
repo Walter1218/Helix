@@ -3,6 +3,7 @@ import { batch, createContext, Show, useContext, type JSX, type ParentProps } fr
 import { useTheme } from "../context/theme"
 import { RGBA } from "@opentui/core"
 import { createStore } from "solid-js/store"
+import * as trace from "../trace"
 
 export function Dialog(
   props: ParentProps<{
@@ -81,6 +82,7 @@ function init() {
 
   return {
     clear() {
+      trace.emit("session.dialog.open", "debug", "Dialog clearing", { stackSize: store.stack.length })
       for (const item of store.stack) {
         if (item.onClose) item.onClose()
       }
@@ -90,6 +92,7 @@ function init() {
       })
     },
     replace(input: any, onClose?: () => void) {
+      trace.emit("session.dialog.open", "debug", "Dialog replacing")
       for (const item of store.stack) {
         if (item.onClose) item.onClose()
       }

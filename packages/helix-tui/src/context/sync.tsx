@@ -17,6 +17,7 @@ import { createStore, produce, reconcile } from "solid-js/store"
 import { useSDK } from "./sdk"
 import { createSimpleContext } from "./helper"
 import { batch, onMount } from "solid-js"
+import * as trace from "../trace"
 
 type BinarySearchResult = { found: true; index: number } | { found: false; index: number }
 
@@ -527,6 +528,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     })
 
     async function bootstrap() {
+      trace.emit("session.create", "info", "Sync bootstrap starting")
       const start = Date.now() - 30 * 24 * 60 * 60 * 1000
 
       const blockingRequests = Promise.all([
@@ -549,6 +551,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         })
         .then(() => {
           setStore("status", "partial")
+          trace.emit("session.created", "info", "Sync bootstrap partial", { providers: store.provider.length, sessions: store.session.length })
           void Promise.all([
             sdk.client.command.list().then((x) => setStore("command", reconcile(x.data ?? []))),
             sdk.client.lsp.status().then((x) => setStore("lsp", reconcile(x.data ?? []))),
@@ -557,9 +560,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             sdk.client.vcs.get().then((x) => setStore("vcs", reconcile(x.data as any))),
           ]).then(() => {
             setStore("status", "complete")
+            trace.emit("session.created", "info", "Sync bootstrap complete")
           })
         })
         .catch((e) => {
+          trace.emit("session.error", "error", "Sync bootstrap failed", { error: String(e) })
           console.error("Sync bootstrap failed", e)
         })
     }

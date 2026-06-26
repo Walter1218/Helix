@@ -4,6 +4,7 @@ import { batch, createMemo, createSignal } from "solid-js"
 import { useSync } from "./sync"
 import { useTheme, type ThemeColors } from "./theme"
 import { RGBA } from "@opentui/core"
+import * as trace from "../trace"
 
 export function parseModel(model: string) {
   const [providerID, ...rest] = model.split("/")
@@ -44,6 +45,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       },
       set(name: string) {
         if (!agents().some((x) => x.name === name)) return
+        trace.emit("mode.switch", "info", "Agent switching", { from: agentStore.current, to: name })
         setAgentStore("current", name)
       },
       move(direction: 1 | -1) {

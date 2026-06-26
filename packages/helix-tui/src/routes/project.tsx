@@ -1,5 +1,6 @@
 import { createSignal, For, onMount, Show } from "solid-js"
 import { useTheme } from "../context/theme"
+import * as trace from "../trace"
 
 type Project = {
   id: string
@@ -18,6 +19,7 @@ export function Project() {
   const [isLoading, setIsLoading] = createSignal(true)
 
   onMount(async () => {
+    trace.emit("ui.init", "info", "Project route mounting")
     // Simulate loading projects
     setTimeout(() => {
       setProjects([
@@ -26,6 +28,7 @@ export function Project() {
         { id: "3", name: "Legacy", path: "~/legacy", status: "inactive" },
       ])
       setIsLoading(false)
+      trace.emit("ui.init", "info", "Projects loaded", { count: 3 })
     }, 500)
   })
 

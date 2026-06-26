@@ -1,7 +1,9 @@
 import { useTheme } from "../context/theme"
+import * as trace from "../trace"
 
 export function Home() {
   const theme = useTheme()
+  trace.emit("ui.render", "debug", "Home route rendered")
 
   return (
     <box flexDirection="column" alignItems="center" justifyContent="center" flexGrow={1}>

@@ -1,6 +1,7 @@
 import { readFile, writeFile, mkdir } from "fs/promises"
 import { join, dirname } from "path"
 import { existsSync } from "fs"
+import * as trace from "../trace"
 
 export interface HelixConfig {
   version: string
@@ -74,20 +75,25 @@ export class ConfigManager {
   }
 
   async load(): Promise<void> {
+    trace.emit("mode.config.apply", "info", "Config loading", { path: this.configPath })
     try {
       const data = await readFile(this.configPath, "utf-8")
       this.config = { ...DEFAULT_CONFIG, ...JSON.parse(data) }
+      trace.emit("mode.config.apply", "info", "Config loaded")
     } catch {
+      trace.emit("mode.config.apply", "warn", "Config not found, creating default")
       await this.save()
     }
   }
 
   async save(): Promise<void> {
+    trace.emit("mode.config.apply", "info", "Config saving")
     const dir = dirname(this.configPath)
     if (!existsSync(dir)) {
       await mkdir(dir, { recursive: true })
     }
     await writeFile(this.configPath, JSON.stringify(this.config, null, 2))
+    trace.emit("mode.config.apply", "info", "Config saved")
   }
 
   get<T>(path: string): T {

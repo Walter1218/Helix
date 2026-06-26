@@ -1,6 +1,7 @@
 import { readdir, readFile } from "fs/promises"
 import { join } from "path"
 import type { HelixPlugin, LoadedPlugin, PluginContext, PluginMetadata } from "./types"
+import * as trace from "../trace"
 
 export class PluginManager {
   private plugins: Map<string, LoadedPlugin> = new Map()
@@ -13,6 +14,7 @@ export class PluginManager {
   }
 
   async loadPlugins(): Promise<void> {
+    trace.emit("mode.registry.load", "info", "Loading plugins", { directory: this.pluginDir })
     try {
       const entries = await readdir(this.pluginDir, { withFileTypes: true })
       for (const entry of entries) {
@@ -20,12 +22,15 @@ export class PluginManager {
           await this.loadPlugin(join(this.pluginDir, entry.name))
         }
       }
+      trace.emit("mode.registry.load", "info", "Plugins loaded", { count: this.plugins.size })
     } catch (error) {
+      trace.emit("ui.error", "error", "Failed to load plugins directory", { error: String(error) })
       console.warn("Failed to load plugins directory:", error)
     }
   }
 
   async loadPlugin(pluginPath: string): Promise<void> {
+    trace.emit("mode.registry.load", "debug", "Loading plugin", { path: pluginPath })
     try {
       const configPath = join(pluginPath, "plugin.json")
       const configData = await readFile(configPath, "utf-8")
@@ -41,7 +46,9 @@ export class PluginManager {
       })
 
       await plugin.onInit?.(this.context)
+      trace.emit("mode.registry.load", "info", "Plugin loaded", { id: metadata.id })
     } catch (error) {
+      trace.emit("ui.error", "error", "Failed to load plugin", { path: pluginPath, error: String(error) })
       console.error(`Failed to load plugin at ${pluginPath}:`, error)
     }
   }
@@ -56,24 +63,30 @@ export class PluginManager {
     const loaded = this.plugins.get(pluginId)
     if (!loaded) throw new Error(`Plugin ${pluginId} not found`)
 
+    trace.emit("mode.switch", "info", "Activating plugin", { id: pluginId })
     await loaded.plugin.onActivate?.()
     loaded.active = true
+    trace.emit("mode.switch", "info", "Plugin activated", { id: pluginId })
   }
 
   async deactivatePlugin(pluginId: string): Promise<void> {
     const loaded = this.plugins.get(pluginId)
     if (!loaded) return
 
+    trace.emit("mode.switch", "info", "Deactivating plugin", { id: pluginId })
     await loaded.plugin.onDeactivate?.()
     loaded.active = false
+    trace.emit("mode.switch", "info", "Plugin deactivated", { id: pluginId })
   }
 
   async unloadPlugin(pluginId: string): Promise<void> {
     const loaded = this.plugins.get(pluginId)
     if (!loaded) return
 
+    trace.emit("mode.registry.load", "info", "Unloading plugin", { id: pluginId })
     await loaded.plugin.onDestroy?.()
     this.plugins.delete(pluginId)
+    trace.emit("mode.registry.load", "info", "Plugin unloaded", { id: pluginId })
   }
 
   getPlugin(pluginId: string): LoadedPlugin | undefined {

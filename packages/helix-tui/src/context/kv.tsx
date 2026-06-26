@@ -4,6 +4,7 @@ import { createStore, unwrap } from "solid-js/store"
 import { createSimpleContext } from "./helper"
 import path from "path"
 import { existsSync } from "fs"
+import * as trace from "../trace"
 
 const STATE_DIR = path.join(
   process.env.MIMOCODE_HOME ?? path.join(process.env.HOME ?? "~", ".config", "helix-tui"),
@@ -35,11 +36,14 @@ export const { use: useKV, provider: KVProvider } = createSimpleContext({
     const [store, setStore] = createStore<Record<string, any>>()
     let write = Promise.resolve()
 
+    trace.emit("ui.init", "info", "KV store initializing", { path: FILE_PATH })
     readJson(FILE_PATH)
       .then((data) => {
         if (data) setStore(data as Record<string, any>)
+        trace.emit("ui.init", "info", "KV store loaded")
       })
       .catch((error) => {
+        trace.emit("ui.error", "error", "KV store load failed", { error: String(error) })
         console.error("Failed to read KV state", { filePath: FILE_PATH, error })
       })
       .finally(() => {

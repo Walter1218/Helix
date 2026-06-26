@@ -1,5 +1,6 @@
 import { createSignal, onMount, onCleanup, For } from "solid-js"
 import { useTheme } from "../context/theme"
+import * as trace from "../trace"
 
 type Metric = {
   label: string
@@ -16,6 +17,7 @@ export function Monitor() {
   let interval: Timer | null = null
 
   onMount(() => {
+    trace.emit("ui.init", "info", "Monitor route mounting")
     loadMetrics()
     interval = setInterval(() => {
       loadMetrics()
