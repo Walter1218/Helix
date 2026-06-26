@@ -1225,33 +1225,28 @@ export function Chat() {
 
         {/* Judge verdict card */}
         <Show when={judgeVerdict()}>
-          {(v) => {
-            console.log("[JSX DEBUG] v().status:", v().status, "v().summary:", v().summary)
-            return (
-            <box flexDirection="column" border borderColor={theme.getColor("accent")} paddingLeft={1} paddingRight={1}>
-              <text fg={theme.getColor("accent")} attributes={1}>
-                {v().status === "pass" ? "Judge: PASS" : v().status === "reject" ? "Judge: FAIL" : v().status === "rollback" ? "Judge: ROLLBACK" : "Judge: QUESTION"}
-              </text>
-              <text fg={theme.getColor("text")}>{v().summary}</text>
-              <Show when={v().checks.length > 0}>
-                <box flexDirection="column" paddingLeft={1}>
-                  <For each={v().checks}>
-                    {(check) => (
-                      <box flexDirection="row">
-                        <text fg={check.passed ? theme.getColor("success") : theme.getColor("error")}>
-                          {check.passed ? "[PASS]" : "[FAIL]"} {check.name}
-                        </text>
-                        <Show when={check.detail}>
-                          <text fg={theme.getColor("textMuted")}> — {check.detail}</text>
-                        </Show>
-                      </box>
-                    )}
-                  </For>
-                </box>
-              </Show>
-            </box>
-            )
-          }}
+          <box flexDirection="column" border borderColor={theme.getColor("accent")} paddingLeft={1} paddingRight={1}>
+            <text fg={theme.getColor("accent")} attributes={1}>
+              {judgeVerdict()!.status === "pass" ? "Judge: PASS" : judgeVerdict()!.status === "reject" ? "Judge: FAIL" : judgeVerdict()!.status === "rollback" ? "Judge: ROLLBACK" : "Judge: QUESTION"}
+            </text>
+            <text fg={theme.getColor("text")}>{judgeVerdict()!.summary}</text>
+            <Show when={judgeVerdict()!.checks.length > 0}>
+              <box flexDirection="column" paddingLeft={1}>
+                <For each={judgeVerdict()!.checks}>
+                  {(check) => (
+                    <box flexDirection="row">
+                      <text fg={check.passed ? theme.getColor("success") : theme.getColor("error")}>
+                        {check.passed ? "[PASS]" : "[FAIL]"} {check.name}
+                      </text>
+                      <Show when={check.detail}>
+                        <text fg={theme.getColor("textMuted")}> — {check.detail}</text>
+                      </Show>
+                    </box>
+                  )}
+                </For>
+              </box>
+            </Show>
+          </box>
         </Show>
 
         {/* AlignmentGuard alert cards */}

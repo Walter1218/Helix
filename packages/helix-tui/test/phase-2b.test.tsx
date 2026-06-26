@@ -321,10 +321,10 @@ describe("Phase 2b: Cardinal + Judge + AlignmentGuard", () => {
     await new Promise((r) => setTimeout(r, 500))
     await result.renderOnce()
     const frame = result.captureCharFrame()
+    console.log("[DEBUG] frame JSON:", JSON.stringify(frame.slice(0, 500)))
     console.log("[DEBUG] frame includes 'All checks passed':", frame.includes("All checks passed"))
     console.log("[DEBUG] frame includes 'Judge: PASS':", frame.includes("Judge: PASS"))
     console.log("[DEBUG] frame includes 'Judge: QUESTION':", frame.includes("Judge: QUESTION"))
-    console.log("[DEBUG] frame slice 0-2000:", frame.slice(0, 2000))
 
     const { found, frame: frame2 } = await waitForFrame(result, (f) => f.includes("[PASS] syntax"), 15000)
     console.log("[DEBUG] waitForFrame found:", found)
