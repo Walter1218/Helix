@@ -1,4 +1,5 @@
 import type { JSX } from "solid-js"
+import * as trace from "../trace"
 
 export interface HelixSlotMap {
   sidebar_title: object
@@ -44,6 +45,7 @@ export function setupSlots(context: SlotContext) {
 }
 
 export function register(plugin: SlotPlugin) {
+  trace.emit("mode.registry.load", "info", "Registering plugin slots", { pluginId: plugin.id, slots: Object.keys(plugin.slots) })
   for (const [slotName, renderer] of Object.entries(plugin.slots)) {
     if (!renderer) continue
     const entries = slotRegistry.get(slotName as SlotName) ?? []
@@ -57,6 +59,7 @@ export function register(plugin: SlotPlugin) {
 }
 
 export function unregister(pluginId: string) {
+  trace.emit("mode.registry.load", "info", "Unregistering plugin slots", { pluginId })
   for (const [slotName, entries] of slotRegistry) {
     slotRegistry.set(
       slotName,

@@ -1,6 +1,7 @@
 import { createStore, reconcile } from "solid-js/store"
 import { createMemo, type Accessor } from "solid-js"
 import { createSimpleContext } from "./helper"
+import * as trace from "../trace"
 
 export type HomeRoute = {
   type: "home"
@@ -54,6 +55,7 @@ export const { use: useRoute, provider: RouteProvider } = createSimpleContext({
         return store
       },
       navigate(route: Route) {
+        trace.emit("user.navigate", "info", `Navigating to ${route.type}`, { route: route.type })
         setStore(reconcile(route))
       },
     }

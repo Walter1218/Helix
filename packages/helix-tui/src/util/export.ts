@@ -1,4 +1,5 @@
 import type { DisplayMessage } from "../routes/chat"
+import * as trace from "../trace"
 
 export interface ExportOptions {
   format: "markdown" | "text"
@@ -92,6 +93,8 @@ export function exportSessionToMarkdown(messages: DisplayMessage[], options: Par
 }
 
 export function exportSessionToFile(messages: DisplayMessage[], filePath: string, options?: Partial<ExportOptions>): void {
+  trace.emit("user.send", "info", "Exporting session to file", { messageCount: messages.length, filePath })
   const content = exportSessionToMarkdown(messages, options)
   Bun.write(filePath, content)
+  trace.emit("user.send", "info", "Session exported successfully", { filePath })
 }
