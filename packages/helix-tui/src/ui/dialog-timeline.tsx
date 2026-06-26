@@ -2,6 +2,7 @@ import { createSignal, For, Show, onMount } from "solid-js"
 import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
 import type { DisplayMessage } from "../routes/chat"
+import * as trace from "../trace"
 
 interface TimelineEntry {
   id: string
@@ -105,6 +106,7 @@ export function DialogTimeline(props: DialogTimelineProps) {
 }
 
 export function showTimeline(messages: DisplayMessage[], onJumpTo: (messageId: string) => void) {
+  trace.emit("session.dialog.open", "info", "Showing timeline dialog", { messageCount: messages.length })
   const { replace, clear, setSize } = useDialog()
   setSize("large")
   replace(

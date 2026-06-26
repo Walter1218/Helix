@@ -1,3 +1,5 @@
+import * as trace from "../trace"
+
 export interface VoiceConfig {
   language: string
   continuous: boolean
@@ -54,6 +56,7 @@ export class VoiceServiceImpl implements VoiceService {
   async startRecognition(): Promise<void> {
     if (this._isListening) return
 
+    trace.emit("ui.init", "info", "Starting voice recognition", { language: this.config.language })
     try {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
       if (!SpeechRecognition) {
@@ -75,6 +78,7 @@ export class VoiceServiceImpl implements VoiceService {
       }
 
       this.recognition.onerror = (event: any) => {
+        trace.emit("ui.error", "error", "Voice recognition error", { error: event.error })
         console.error("Speech recognition error:", event.error)
         this._isListening = false
       }
@@ -86,11 +90,13 @@ export class VoiceServiceImpl implements VoiceService {
       this.recognition.start()
       this._isListening = true
     } catch (error) {
+      trace.emit("ui.error", "warn", "Voice recognition not available", { error: String(error) })
       console.warn("Voice recognition not available:", error)
     }
   }
 
   async stopRecognition(): Promise<void> {
+    trace.emit("ui.init", "info", "Stopping voice recognition")
     if (this.recognition) {
       this.recognition.stop()
       this._isListening = false
@@ -102,6 +108,7 @@ export class VoiceServiceImpl implements VoiceService {
       this.stopSpeaking()
     }
 
+    trace.emit("ui.init", "info", "Speaking text", { length: text.length, language: options?.language })
     try {
       this.synthesis = window.speechSynthesis
       if (!this.synthesis) {
@@ -119,6 +126,7 @@ export class VoiceServiceImpl implements VoiceService {
           resolve()
         }
         utterance.onerror = (event: any) => {
+          trace.emit("ui.error", "error", "Voice synthesis error", { error: event.error })
           this._isSpeaking = false
           reject(event.error)
         }
@@ -126,11 +134,13 @@ export class VoiceServiceImpl implements VoiceService {
         this._isSpeaking = true
       })
     } catch (error) {
+      trace.emit("ui.error", "warn", "Voice synthesis not available", { error: String(error) })
       console.warn("Voice synthesis not available:", error)
     }
   }
 
   stopSpeaking(): void {
+    trace.emit("ui.init", "info", "Stopping speech")
     if (this.synthesis) {
       this.synthesis.cancel()
       this._isSpeaking = false

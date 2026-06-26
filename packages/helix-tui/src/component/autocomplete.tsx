@@ -1,6 +1,7 @@
 import { createSignal, For, Show, createEffect, onCleanup } from "solid-js"
 import { useTheme } from "../context/theme"
 import { useSDK } from "../context/sdk"
+import * as trace from "../trace"
 
 export interface AutocompleteOption {
   label: string
@@ -34,6 +35,7 @@ export function Autocomplete(props: AutocompleteProps) {
 
     if (prefix === "@") {
       setLoading(true)
+      trace.emit("ui.init", "debug", "Autocomplete: searching files", { query: searchTerm })
       sdk.client.find
         .files({ query: searchTerm || ".", limit: 10 })
         .then((res) => {
@@ -45,6 +47,7 @@ export function Autocomplete(props: AutocompleteProps) {
             }),
           )
           setOptions(files)
+          trace.emit("ui.init", "debug", "Autocomplete: files found", { count: files.length })
         })
         .catch(() => setOptions([]))
         .finally(() => setLoading(false))

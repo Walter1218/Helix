@@ -3,6 +3,7 @@ import { useTheme } from "../context/theme"
 import { useDialog, type DialogContext } from "./dialog"
 import { Show, createEffect, onMount, type JSX } from "solid-js"
 import { useKeyboard } from "@opentui/solid"
+import * as trace from "../trace"
 
 export type DialogPromptProps = {
   title: string
@@ -101,6 +102,7 @@ export function DialogPrompt(props: DialogPromptProps) {
 }
 
 DialogPrompt.show = (dialog: DialogContext, title: string, options?: Omit<DialogPromptProps, "title">) => {
+  trace.emit("session.dialog.open", "info", "Showing prompt dialog", { title })
   return new Promise<string | null>((resolve) => {
     dialog.replace(
       () => (

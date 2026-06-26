@@ -2,6 +2,7 @@ import { TextAttributes } from "@opentui/core"
 import { useTheme } from "../context/theme"
 import { useDialog, type DialogContext } from "./dialog"
 import { useKeyboard } from "@opentui/solid"
+import * as trace from "../trace"
 
 export type DialogAlertProps = {
   title: string
@@ -51,6 +52,7 @@ export function DialogAlert(props: DialogAlertProps) {
 }
 
 DialogAlert.show = (dialog: DialogContext, title: string, message: string) => {
+  trace.emit("session.dialog.open", "info", "Showing alert dialog", { title })
   return new Promise<void>((resolve) => {
     dialog.replace(
       () => <DialogAlert title={title} message={message} onConfirm={() => resolve()} />,

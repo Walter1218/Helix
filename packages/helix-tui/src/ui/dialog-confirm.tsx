@@ -4,6 +4,7 @@ import { useDialog, type DialogContext } from "./dialog"
 import { createStore } from "solid-js/store"
 import { For } from "solid-js"
 import { useKeyboard } from "@opentui/solid"
+import * as trace from "../trace"
 
 export type DialogConfirmProps = {
   title: string
@@ -82,6 +83,7 @@ export function DialogConfirm(props: DialogConfirmProps) {
 }
 
 DialogConfirm.show = (dialog: DialogContext, title: string, message: string, label?: string) => {
+  trace.emit("session.dialog.open", "info", "Showing confirm dialog", { title })
   return new Promise<DialogConfirmResult>((resolve) => {
     dialog.replace(
       () => (

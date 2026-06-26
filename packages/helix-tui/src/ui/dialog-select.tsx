@@ -4,6 +4,7 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
 import { useTheme } from "../context/theme"
 import { useDialog } from "./dialog"
 import { TextAttributes } from "@opentui/core"
+import * as trace from "../trace"
 
 export interface DialogSelectProps<T> {
   title: string
@@ -235,6 +236,7 @@ DialogSelect.show = <T,>(
   options: DialogSelectOption<T>[],
   current?: T,
 ) => {
+  trace.emit("session.dialog.open", "info", "Showing select dialog", { title, optionCount: options.length })
   return new Promise<DialogSelectOption<T> | null>((resolve) => {
     dialog.replace(
       () => (

@@ -1,6 +1,7 @@
 import { createSignal, Show } from "solid-js"
 import { useTheme } from "../context/theme"
 import { useKV } from "../context/kv"
+import * as trace from "../trace"
 
 const STASH_KEY = "prompt-stash"
 
@@ -8,6 +9,7 @@ export function usePromptStash() {
   const kv = useKV()
 
   function save(text: string) {
+    trace.emit("user.send", "debug", "Stashing prompt", { length: text.length })
     const existing: string[] = kv.get(STASH_KEY, [])
     const updated = [text, ...existing.filter((t) => t !== text)].slice(0, 10)
     kv.set(STASH_KEY, updated)
