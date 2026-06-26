@@ -132,3 +132,16 @@ const cb = Instance.bind((err, evts) => {
 })
 nativeAddon.subscribe(dir, cb)
 ```
+
+# Superpowers Skill
+
+The **superpowers** skill (at `.mimocode/skills/superpowers/SKILL.md`) provides structured development workflow guidance. Load it when:
+
+- Starting a fresh task (not mid-task)
+- Needing structured planning before implementation
+- Executing parallelizable work
+- Verifying completion
+
+Available workflows: brainstorming, writing-plans, executing-plans, subagent-driven-development, verification-before-completion, test-driven-development.
+
+Use the `skill` tool to load `superpowers` when starting a new development task.

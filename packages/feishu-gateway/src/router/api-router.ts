@@ -37,7 +37,7 @@ export function createApiRouter(sessions: SessionManager) {
       log.info("收到异步任务", { taskId, chatId, message: message.slice(0, 100), mode })
 
       // 通过飞书发送任务通知
-      await sessions.sendText(chatId, `🤖 自动开发任务:\n${message.slice(0, 200)}`)
+      await sessions.sendText(chatId, `🤖 自动开发任务:\n${message}`)
 
       // 存储任务状态
       const task: AsyncTask = {

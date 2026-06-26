@@ -236,7 +236,7 @@
           "id": "M6-T2a",
           "title": "e2e 测试 - 扩展激活与守护进程",
           "description": "测试扩展激活、守护进程启动、前端渲染",
-          "status": "in_progress",
+          "status": "done",
           "priority": "medium",
           "estimated_tokens": 50000,
           "tags": [
@@ -249,7 +249,7 @@
           "id": "M6-T2b",
           "title": "e2e 测试 - 消息与流式响应",
           "description": "测试发送消息、接收流式响应、断开重连",
-          "status": "pending",
+          "status": "in_progress",
           "priority": "medium",
           "estimated_tokens": 50000,
           "tags": [

@@ -971,6 +971,15 @@ export const SessionRoutes = lazy(() =>
         c.header("Content-Type", "application/json")
         return stream(c, async (stream) => {
           const body = c.req.valid("json")
+          // If the HTTP client gives up (TUI exits, driver kills its `mimo run`
+          // client on its own per-turn timeout, network drop), we have to drive
+          // the server-side runner to Idle ourselves. Otherwise the prompt
+          // fiber keeps running with no consumer, and any next POST attaches
+          // to the same dead Deferred via SessionRunState.ensureRunning's
+          // `Running` branch — every subsequent turn then hangs waiting on a
+          // result that will never arrive. SessionPrompt.cancel interrupts
+          // the fiber, which lets the runner transition Running -> Idle
+          // through Runner.cancel, freeing the next POST to start a fresh run.
           const signal = c.req.raw.signal
           const onClientDisconnect = () => {
             void runRequest(
@@ -985,20 +994,15 @@ export const SessionRoutes = lazy(() =>
           }
           signal.addEventListener("abort", onClientDisconnect, { once: true })
           try {
-            console.log("DEBUG backend: starting runRequest")
             const msg = await runRequest(
               "SessionRoutes.prompt",
               c,
               SessionPrompt.Service.use((svc) => svc.prompt({ ...body, sessionID })),
             )
-            console.log("DEBUG backend: msg =", JSON.stringify(msg))
             await stream.write(JSON.stringify(msg))
-            console.log("DEBUG backend: write done")
           } catch (e) {
-            console.log("DEBUG backend: catch e =", e)
             const error = e instanceof Error ? e.message : String(e)
             await stream.write(JSON.stringify({ error }))
-            console.log("DEBUG backend: error write done")
           } finally {
             signal.removeEventListener("abort", onClientDisconnect)
           }

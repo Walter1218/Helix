@@ -19,23 +19,50 @@ interface TraceNode {
   duration?: number
 }
 
+interface StreamingState {
+  textBuffer: string
+  toolCalls: Map<string, { name: string; input: string; status: "running" | "done" | "error"; output?: string }>
+  lastFlush: number
+  flushTimer: ReturnType<typeof setTimeout> | null
+  pendingFlush: boolean
+}
+
 /**
- * Event Bridge：订阅 Helix SSE 事件流，将关键事件反向推送到飞书。
+ * Event Bridge：订阅 Helix SSE 事件流，将 Agent 执行的全量事件反向推送到飞书。
+ *
+ * 支持的事件类型：
+ * - message.part.delta: 文本流式输出 + 工具调用实时状态
+ * - session.status: 会话状态变化（idle/busy/retry）
+ * - session.error: 会话错误
+ * - permission.asked: 权限请求
+ * - question.asked: 用户追问
+ * - observability.alignment_alert: 偏离告警
+ * - observability.trace_node: 执行追踪树
+ * - metrics.tool_call: 工具调用完成指标
+ * - workflow.*: 工作流生命周期事件
  */
 export class EventBridge {
   private controllers = new Map<string, AbortController>()
   private cards = new CardBuilder()
   private traceBuffers = new Map<string, TraceNode[]>()
   private traceTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private streamingStates = new Map<string, StreamingState>()
 
   /**
    * 订阅指定 session 的 Helix 事件流。
-   * 监听到 AlignmentAlert / session 状态变化时，通过回调推到飞书。
+   * 监听全量 Agent 事件并通过回调推送到飞书。
    */
   subscribe(sessionID: string, chatId: string, onMsg: OnMessage, onCard: OnCard) {
     const ctrl = new AbortController()
     this.controllers.set(sessionID, ctrl)
     this.traceBuffers.set(sessionID, [])
+    this.streamingStates.set(sessionID, {
+      textBuffer: "",
+      toolCalls: new Map(),
+      lastFlush: 0,
+      flushTimer: null,
+      pendingFlush: false,
+    })
 
     const url = `${config.helix.url}/event`
     log.info("订阅 Helix 事件流", { sessionID })
@@ -60,37 +87,12 @@ export class EventBridge {
             if (!match) continue
             try {
               const event = JSON.parse(match[1])
+              const props = event.properties ?? {}
 
-              if (event.type === "observability.alignment_alert") {
-                const props = event.properties ?? {}
-                const card = this.cards.buildAlignmentAlertCard({
-                  level: props.level ?? "warn",
-                  reason: props.reason ?? "未知偏离",
-                  suggestion: props.suggestion ?? "请检查 Agent 执行状态",
-                  sessionID: props.sessionID ?? sessionID,
-                  files: props.files,
-                })
-                log.info("发送偏离告警卡片到飞书", { level: props.level, reason: props.reason?.slice(0, 60) })
-                onCard({ type: "alignment_alert", card, chatId })
-              }
+              // 过滤非本 session 的事件
+              if (props.sessionID && props.sessionID !== sessionID) continue
 
-              if (event.type === "session.status") {
-                const status = event.properties?.status
-                if (status?.type === "idle") {
-                  this.flushTraceTree(sessionID, chatId, onCard, true)
-                  onMsg("✅ 任务执行完成。")
-                  this.unsubscribe(sessionID)
-                }
-              }
-
-              if (event.type === "permission.asked") {
-                log.info("收到权限请求", { event: event.properties })
-                onCard(event.properties)
-              }
-
-              if (event.type === "observability.trace_node") {
-                this.accumulateTrace(sessionID, chatId, event.properties, onCard)
-              }
+              this.handleEvent(event, sessionID, chatId, onMsg, onCard)
             } catch {
               // ignore parse errors
             }
@@ -101,6 +103,214 @@ export class EventBridge {
         if (e.name === "AbortError") return
         log.error("Event SSE 连接断开", e)
       })
+  }
+
+  private handleEvent(event: { type: string; properties?: Record<string, unknown> }, sessionID: string, chatId: string, onMsg: OnMessage, onCard: OnCard) {
+    const props = event.properties ?? {}
+
+    switch (event.type) {
+      case "message.part.delta":
+        this.handlePartDelta(props, sessionID, chatId, onCard)
+        break
+
+      case "session.status":
+        this.handleSessionStatus(props, sessionID, chatId, onMsg, onCard)
+        break
+
+      case "session.error":
+        this.handleSessionError(props, sessionID, chatId, onCard)
+        break
+
+      case "permission.asked":
+        log.info("收到权限请求", { event: props })
+        onCard(props)
+        break
+
+      case "question.asked":
+        log.info("收到追问请求", { event: props })
+        onCard({ type: "question", ...props })
+        break
+
+      case "observability.alignment_alert":
+        this.handleAlignmentAlert(props, sessionID, chatId, onCard)
+        break
+
+      case "observability.trace_node":
+        this.accumulateTrace(sessionID, chatId, props as unknown as TraceNode, onCard)
+        break
+
+      case "metrics.tool_call":
+        this.handleToolCallMetric(props, sessionID)
+        break
+
+      case "workflow.started":
+      case "workflow.finished":
+      case "workflow.phase":
+        this.handleWorkflowEvent(event.type, props, sessionID, chatId, onCard)
+        break
+
+      default:
+        // 未知事件类型不处理
+        break
+    }
+  }
+
+  /** 处理 message.part.delta：文本流式输出 + 工具调用状态 */
+  private handlePartDelta(props: Record<string, unknown>, sessionID: string, chatId: string, onCard: OnCard) {
+    const field = props.field as string
+    const delta = props.delta as string
+    const state = this.streamingStates.get(sessionID)
+    if (!state) return
+
+    if (field === "text") {
+      state.textBuffer += delta
+      this.scheduleStreamingFlush(sessionID, chatId, onCard)
+    } else if (field === "tool-call") {
+      const toolID = props.partID as string || props.id as string || "unknown"
+      const existing = state.toolCalls.get(toolID)
+      if (existing) {
+        existing.input += delta
+      } else {
+        state.toolCalls.set(toolID, {
+          name: (props.name as string) || "tool",
+          input: delta,
+          status: "running",
+        })
+      }
+      this.scheduleStreamingFlush(sessionID, chatId, onCard)
+    } else if (field === "tool-result") {
+      const toolID = props.partID as string || props.id as string || "unknown"
+      const existing = state.toolCalls.get(toolID)
+      if (existing) {
+        existing.status = "done"
+        existing.output = delta
+      }
+      this.scheduleStreamingFlush(sessionID, chatId, onCard)
+    }
+  }
+
+  /** 批量刷新流式内容到飞书（3秒去抖） */
+  private scheduleStreamingFlush(sessionID: string, chatId: string, onCard: OnCard) {
+    const state = this.streamingStates.get(sessionID)
+    if (!state) return
+
+    const now = Date.now()
+    if (now - state.lastFlush < 3000) {
+      if (!state.flushTimer) {
+        state.flushTimer = setTimeout(() => {
+          state.flushTimer = null
+          this.flushStreamingState(sessionID, chatId, onCard)
+        }, 3000)
+      }
+      return
+    }
+
+    this.flushStreamingState(sessionID, chatId, onCard)
+  }
+
+  private flushStreamingState(sessionID: string, chatId: string, onCard: OnCard) {
+    const state = this.streamingStates.get(sessionID)
+    if (!state) return
+
+    const hasText = state.textBuffer.length > 0
+    const hasTools = state.toolCalls.size > 0
+    if (!hasText && !hasTools) return
+
+    const card = this.cards.buildStreamingUpdateCard({
+      sessionID,
+      text: state.textBuffer,
+      toolCalls: Array.from(state.toolCalls.entries()).map(([id, t]) => ({
+        id,
+        name: t.name,
+        input: t.input,
+        status: t.status,
+        output: t.output,
+      })),
+    })
+
+    log.info("发送流式更新卡片到飞书", {
+      sessionID,
+      textLen: state.textBuffer.length,
+      toolCount: state.toolCalls.size,
+    })
+    onCard({ type: "streaming_update", card, chatId })
+
+    state.textBuffer = ""
+    state.toolCalls.clear()
+    state.lastFlush = Date.now()
+  }
+
+  /** 处理 session.status 事件 */
+  private handleSessionStatus(props: Record<string, unknown>, sessionID: string, chatId: string, onMsg: OnMessage, onCard: OnCard) {
+    const status = props.status as { type: string } | undefined
+    if (!status) return
+
+    if (status.type === "idle") {
+      this.flushStreamingState(sessionID, chatId, onCard)
+      this.flushTraceTree(sessionID, chatId, onCard, true)
+      onMsg("✅ 任务执行完成。")
+      this.unsubscribe(sessionID)
+    } else if (status.type === "busy") {
+      log.info("Session 进入忙碌状态", { sessionID })
+    }
+  }
+
+  /** 处理 session.error 事件 */
+  private handleSessionError(props: Record<string, unknown>, sessionID: string, chatId: string, onCard: OnCard) {
+    const error = props.error as { message?: string } | undefined
+    const errorMsg = error?.message ?? "未知错误"
+
+    log.error("Session 错误", { sessionID, error: errorMsg })
+
+    const card = this.cards.buildErrorCard({
+      sessionID,
+      error: errorMsg,
+    })
+    onCard({ type: "session_error", card, chatId })
+  }
+
+  /** 处理偏离告警事件 */
+  private handleAlignmentAlert(props: Record<string, unknown>, sessionID: string, chatId: string, onCard: OnCard) {
+    const card = this.cards.buildAlignmentAlertCard({
+      level: (props.level as "warn" | "critical") ?? "warn",
+      reason: (props.reason as string) ?? "未知偏离",
+      suggestion: (props.suggestion as string) ?? "请检查 Agent 执行状态",
+      sessionID: (props.sessionID as string) ?? sessionID,
+      files: props.files as string[] | undefined,
+    })
+    log.info("发送偏离告警卡片到飞书", { level: props.level, reason: (props.reason as string)?.slice(0, 60) })
+    onCard({ type: "alignment_alert", card, chatId })
+  }
+
+  /** 处理工具调用指标事件 */
+  private handleToolCallMetric(props: Record<string, unknown>, _sessionID: string) {
+    const toolName = props.tool_name as string
+    const status = props.tool_call_status as string
+    const latencyMs = props.latency_ms as number | undefined
+
+    log.info("工具调用完成", {
+      tool: toolName,
+      status,
+      latencyMs,
+      inputBytes: props.input_bytes,
+      outputBytes: props.output_bytes,
+    })
+  }
+
+  /** 处理工作流生命周期事件 */
+  private handleWorkflowEvent(type: string, props: Record<string, unknown>, _sessionID: string, chatId: string, onCard: OnCard) {
+    log.info("工作流事件", { type, props })
+
+    if (type === "workflow.finished") {
+      const status = props.status as string
+      const error = props.error as string | undefined
+      const card = this.cards.buildWorkflowResultCard({
+        runID: props.runID as string,
+        status,
+        error,
+      })
+      onCard({ type: "workflow_result", card, chatId })
+    }
   }
 
   private accumulateTrace(sessionID: string, chatId: string, node: TraceNode, onCard: OnCard) {
@@ -227,5 +437,10 @@ export class EventBridge {
       clearTimeout(timer)
       this.traceTimers.delete(sessionID)
     }
+    const state = this.streamingStates.get(sessionID)
+    if (state?.flushTimer) {
+      clearTimeout(state.flushTimer)
+    }
+    this.streamingStates.delete(sessionID)
   }
 }

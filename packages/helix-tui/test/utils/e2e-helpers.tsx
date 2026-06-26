@@ -87,7 +87,7 @@ export async function waitForFrame(
   result: any,
   predicate: (frame: string) => boolean,
   maxWaitMs: number = 60000,
-  intervalMs: number = 2000,
+  intervalMs: number = 100,
 ) {
   const start = Date.now()
   while (Date.now() - start < maxWaitMs) {

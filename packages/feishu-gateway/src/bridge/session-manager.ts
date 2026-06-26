@@ -118,7 +118,7 @@ export class SessionManager {
       // 注册到全局偏离告警通知器
       this.alignmentNotifier.registerChat(sessionID, chatId)
 
-      // 订阅事件流，监听权限请求
+      // 订阅事件流，监听权限请求和实时更新
       this.eventBridge.subscribe(
         sessionID,
         chatId,
@@ -126,18 +126,66 @@ export class SessionManager {
         (msg) => {
           log.info("收到事件消息", { msg })
         },
-        // onCard: 卡片回调（权限请求 + 偏离告警）
+        // onCard: 卡片回调（权限请求 + 偏离告警 + 流式更新 + 错误）
         async (cardData: any) => {
-          // 偏离告警卡片（由 EventBridge 构建）
+          // 流式更新卡片
+          if (cardData?.type === "streaming_update") {
+            log.info("收到流式更新，发送卡片到飞书", { sessionID })
+            await this.sendCard(chatId, cardData.card)
+            return
+          }
+
+          // 执行树卡片
           if (cardData?.type === "execution_tree") {
             log.info("收到执行树，发送卡片到飞书", { stepCount: cardData.card?.elements?.length })
             await this.sendCard(chatId, cardData.card)
             return
           }
 
+          // 偏离告警卡片
           if (cardData?.type === "alignment_alert") {
             log.info("收到偏离告警，发送卡片到飞书")
             await this.sendCard(chatId, cardData.card)
+            return
+          }
+
+          // 会话错误卡片
+          if (cardData?.type === "session_error") {
+            log.error("收到会话错误，发送卡片到飞书")
+            await this.sendCard(chatId, cardData.card)
+            return
+          }
+
+          // 工作流结果卡片
+          if (cardData?.type === "workflow_result") {
+            log.info("收到工作流结果，发送卡片到飞书")
+            await this.sendCard(chatId, cardData.card)
+            return
+          }
+
+          // 追问请求
+          if (cardData?.type === "question") {
+            log.info("收到追问请求，转发到飞书", { questionData: cardData })
+            const questionText = cardData.question || "Agent 需要你的输入"
+            const options = cardData.options || []
+            
+            let msg = `❓ **Agent 追问**\n\n${questionText}`
+            if (options.length > 0) {
+              msg += `\n\n请回复选项编号或内容:\n${options.map((o: string, i: number) => `${i + 1}. ${o}`).join("\n")}`
+            }
+            
+            await this.sendText(chatId, msg)
+            
+            const requestId = cardData.id
+            if (requestId) {
+              this.pendingPermissions.set(requestId, {
+                sessionID,
+                chatId,
+                callID: requestId,
+                questionText,
+                timestamp: Date.now()
+              })
+            }
             return
           }
 

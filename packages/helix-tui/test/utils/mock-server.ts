@@ -80,6 +80,90 @@ export interface CustomScenario extends ScenarioBase {
   events: Array<{ type: string; properties: Record<string, any>; delay?: number }>
 }
 
+export interface PreFlightScenario extends ScenarioBase {
+  type: "preflight"
+  score: number
+  mode: "auto" | "ask" | "skip"
+  questions: Array<{
+    id: string
+    text: string
+    questionType: "single" | "multi" | "text"
+    options?: string[]
+  }>
+}
+
+export interface CardinalScenario extends ScenarioBase {
+  type: "cardinal"
+  cardinalType: "ambiguity" | "external_dep" | "test_failure" | "tool_error" | "token_budget" | "heal_exhausted"
+  severity: "block" | "pause" | "warn" | "stop"
+  message: string
+  id?: string
+  autoDegrade?: boolean
+  degradeTimeout?: number
+}
+
+export interface JudgeScenario extends ScenarioBase {
+  type: "judge"
+  status: "pass" | "reject" | "question" | "rollback"
+  checks: Array<{ name: string; passed: boolean; detail?: string }>
+  summary: string
+  id?: string
+}
+
+export interface AlignmentScenario extends ScenarioBase {
+  type: "alignment"
+  alertType: "drift" | "rabbitHole" | "fileDrift" | "distraction"
+  severity: "warning" | "critical"
+  message: string
+  id?: string
+  metrics?: Record<string, number>
+}
+
+export interface SubagentScenario extends ScenarioBase {
+  type: "subagent"
+  name: string
+  status: "spawned" | "progress" | "complete" | "error" | "aborted"
+  id?: string
+  progress?: { current: number; total: number }
+  result?: string
+}
+
+export interface ModeConfigScenario extends ScenarioBase {
+  type: "modeConfig"
+  modes: Array<{
+    id: string
+    name: string
+    icon?: string
+    color?: string
+    uiConfig?: { statusMessage?: string; placeholder?: string }
+  }>
+}
+
+export interface DecompositionScenario extends ScenarioBase {
+  type: "decomposition"
+  status: "required" | "complete" | "failed" | "decision"
+  subtasks?: Array<{ id: string; name: string; status: string }>
+  confidence?: number
+  id?: string
+}
+
+export interface PersonaScenario extends ScenarioBase {
+  type: "persona"
+  name: string
+  description: string
+  temporary?: boolean
+  id?: string
+}
+
+export interface AgentStatsScenario extends ScenarioBase {
+  type: "agentStats"
+  successRate: number
+  avgDuration: number
+  totalTasks: number
+  level: "L0" | "L1" | "L2"
+  id?: string
+}
+
 export type Scenario =
   | DirectScenario
   | StreamingScenario
@@ -87,6 +171,15 @@ export type Scenario =
   | ToolScenario
   | PermissionScenario
   | QuestionScenario
+  | PreFlightScenario
+  | CardinalScenario
+  | JudgeScenario
+  | AlignmentScenario
+  | SubagentScenario
+  | ModeConfigScenario
+  | DecompositionScenario
+  | PersonaScenario
+  | AgentStatsScenario
   | CustomScenario
 
 // ── Server State ─────────────────────────────────────────
@@ -178,6 +271,7 @@ export function createMockServer(): ServerState {
         }
         case "streaming": {
           // streaming 场景：HTTP 返回空，SSE 后续发送
+          setTimeout(() => playScenario(scenario).catch(() => {}), 50)
           return Response.json({ id: `msg-${Date.now()}`, parts: [] })
         }
         case "error": {
@@ -187,18 +281,59 @@ export function createMockServer(): ServerState {
               { status: scenario.status ?? 500 },
             )
           }
+          setTimeout(() => playScenario(scenario).catch(() => {}), 50)
           return Response.json({ id: `msg-${Date.now()}`, parts: [] })
         }
         case "tool": {
+          setTimeout(() => playScenario(scenario).catch(() => {}), 50)
           return Response.json({ id: `msg-${Date.now()}`, parts: [] })
         }
         case "permission": {
+          setTimeout(() => playScenario(scenario).catch(() => {}), 50)
           return Response.json({ id: `msg-${Date.now()}`, parts: [] })
         }
         case "question": {
+          setTimeout(() => playScenario(scenario).catch(() => {}), 50)
+          return Response.json({ id: `msg-${Date.now()}`, parts: [] })
+        }
+        case "preflight": {
+          setTimeout(() => playScenario(scenario).catch(() => {}), 50)
+          return Response.json({ id: `msg-${Date.now()}`, parts: [] })
+        }
+        case "cardinal": {
+          setTimeout(() => playScenario(scenario).catch(() => {}), 50)
+          return Response.json({ id: `msg-${Date.now()}`, parts: [] })
+        }
+        case "judge": {
+          setTimeout(() => playScenario(scenario).catch(() => {}), 50)
+          return Response.json({ id: `msg-${Date.now()}`, parts: [] })
+        }
+        case "alignment": {
+          setTimeout(() => playScenario(scenario).catch(() => {}), 50)
+          return Response.json({ id: `msg-${Date.now()}`, parts: [] })
+        }
+        case "subagent": {
+          setTimeout(() => playScenario(scenario).catch(() => {}), 50)
+          return Response.json({ id: `msg-${Date.now()}`, parts: [] })
+        }
+        case "modeConfig": {
+          setTimeout(() => playScenario(scenario).catch(() => {}), 50)
+          return Response.json({ id: `msg-${Date.now()}`, parts: [] })
+        }
+        case "decomposition": {
+          setTimeout(() => playScenario(scenario).catch(() => {}), 50)
+          return Response.json({ id: `msg-${Date.now()}`, parts: [] })
+        }
+        case "persona": {
+          setTimeout(() => playScenario(scenario).catch(() => {}), 50)
+          return Response.json({ id: `msg-${Date.now()}`, parts: [] })
+        }
+        case "agentStats": {
+          setTimeout(() => playScenario(scenario).catch(() => {}), 50)
           return Response.json({ id: `msg-${Date.now()}`, parts: [] })
         }
         case "custom": {
+          setTimeout(() => playScenario(scenario).catch(() => {}), 50)
           return Response.json({ id: `msg-${Date.now()}`, parts: [] })
         }
       }
@@ -306,6 +441,17 @@ export function createMockServer(): ServerState {
         })
         break
       }
+      case "preflight": {
+        emitSSE({
+          type: "preflight.required",
+          properties: {
+            score: scenario.score,
+            mode: scenario.mode,
+            questions: scenario.questions,
+          },
+        })
+        break
+      }
       case "custom": {
         for (const event of scenario.events) {
           emitSSE({ type: event.type, properties: event.properties })
@@ -315,6 +461,113 @@ export function createMockServer(): ServerState {
       }
       case "direct": {
         // direct 场景无需额外 SSE 事件，HTTP 已返回完整响应
+        break
+      }
+      case "cardinal": {
+        emitSSE({
+          type: "cardinal.detected",
+          properties: {
+            id: scenario.id ?? Math.random().toString(36).slice(2),
+            cardinalType: scenario.cardinalType,
+            severity: scenario.severity,
+            message: scenario.message,
+            autoDegrade: scenario.autoDegrade,
+            degradeTimeout: scenario.degradeTimeout,
+          },
+        })
+        break
+      }
+      case "judge": {
+        emitSSE({
+          type: "judge.verdict",
+          properties: {
+            id: scenario.id ?? Math.random().toString(36).slice(2),
+            status: scenario.status,
+            checks: scenario.checks,
+            summary: scenario.summary,
+          },
+        })
+        break
+      }
+      case "alignment": {
+        emitSSE({
+          type: "alignment.drift",
+          properties: {
+            id: scenario.id ?? Math.random().toString(36).slice(2),
+            alertType: scenario.alertType,
+            severity: scenario.severity,
+            message: scenario.message,
+            metrics: scenario.metrics,
+          },
+        })
+        break
+      }
+      case "subagent": {
+        const id = scenario.id ?? Math.random().toString(36).slice(2)
+        if (scenario.status === "spawned") {
+          emitSSE({
+            type: "subagent.spawn",
+            properties: { id, name: scenario.name },
+          })
+        } else if (scenario.status === "progress") {
+          emitSSE({
+            type: "subagent.progress",
+            properties: { id, current: scenario.progress?.current ?? 0, total: scenario.progress?.total ?? 1 },
+          })
+        } else if (scenario.status === "complete") {
+          emitSSE({
+            type: "subagent.complete",
+            properties: { id, result: scenario.result },
+          })
+        } else if (scenario.status === "error" || scenario.status === "aborted") {
+          emitSSE({
+            type: `subagent.${scenario.status === "aborted" ? "aborted" : "error"}` as any,
+            properties: { id },
+          })
+        }
+        break
+      }
+      case "modeConfig": {
+        emitSSE({
+          type: "mode.registry",
+          properties: { modes: scenario.modes },
+        })
+        break
+      }
+      case "decomposition": {
+        emitSSE({
+          type: `decomposition.${scenario.status}`,
+          properties: {
+            id: scenario.id ?? Math.random().toString(36).slice(2),
+            subtasks: scenario.subtasks,
+            confidence: scenario.confidence,
+          },
+        })
+        break
+      }
+      case "persona": {
+        emitSSE({
+          type: "persona.generated",
+          properties: {
+            id: scenario.id ?? Math.random().toString(36).slice(2),
+            name: scenario.name,
+            description: scenario.description,
+            temporary: scenario.temporary !== false,
+          },
+        })
+        break
+      }
+      case "agentStats": {
+        emitSSE({
+          type: "agent.stats",
+          properties: {
+            id: scenario.id ?? Math.random().toString(36).slice(2),
+            successRate: scenario.successRate,
+            avgDuration: scenario.avgDuration,
+            totalTasks: scenario.totalTasks,
+            level: scenario.level,
+          },
+        })
         break
       }
     }
@@ -361,9 +614,28 @@ export function createMockServer(): ServerState {
   async function start(scenario: Scenario): Promise<string> {
     currentScenario = scenario
     const port = startServer()
+    const url = `http://localhost:${port}`
+    // 等待 server 真正准备好接收请求
+    let ready = false
+    for (let i = 0; i < 100; i++) {
+      try {
+        const res = await fetch(`${url}/global/health`)
+        if (res.ok) {
+          ready = true
+          break
+        }
+      } catch {}
+      await new Promise((r) => setTimeout(r, 50))
+    }
+    if (!ready) throw new Error("Mock server failed to start")
     // 异步启动场景播放（事件缓存到 pendingEvents，SSE 连接后自动发送）
-    playScenario(scenario).catch(() => {})
-    return `http://localhost:${port}`
+    // 只有 direct 场景不依赖客户端的 pending 状态，可以在 start 时自动播放
+    // 其他场景（streaming, tool, permission, question, preflight, custom, error-sse）
+    // 需要在 HTTP prompt 请求返回后延迟触发，确保客户端已创建 pending 消息
+    if (scenario.type === "direct") {
+      playScenario(scenario).catch(() => {})
+    }
+    return url
   }
 
   async function restart(scenario: Scenario): Promise<string> {

@@ -52,6 +52,22 @@ type SessionInfo = {
   createdAt?: number
 }
 
+type PreFlightQuestion = {
+  id: string
+  text: string
+  questionType: string
+  options?: string[]
+}
+
+type PreFlightState = {
+  active: boolean
+  score: number
+  mode: string
+  questions: PreFlightQuestion[]
+  answers: Record<string, string>
+  currentIndex: number
+}
+
 type PermissionRequest = {
   id: string
   permission: string
@@ -63,6 +79,77 @@ type QuestionRequest = {
   id: string
   question: string
   options?: string[]
+}
+
+/* ── Phase 2b: Cardinal / Judge / AlignmentGuard ── */
+type CardinalAlert = {
+  id: string
+  type: string
+  severity: "block" | "pause" | "warn" | "stop"
+  message: string
+  countdown?: number
+  autoDegrade?: boolean
+  resolved?: boolean
+  action?: "allow" | "ignore" | "block"
+}
+
+type JudgeVerdict = {
+  id: string
+  status: "pass" | "reject" | "question" | "rollback"
+  checks: Array<{ name: string; passed: boolean; detail?: string }>
+  summary: string
+}
+
+type AlignmentAlert = {
+  id: string
+  alertType: "drift" | "rabbitHole" | "fileDrift" | "distraction"
+  severity: "warning" | "critical"
+  message: string
+  metrics?: Record<string, number>
+}
+
+/* ── Phase 3a: SubAgent ── */
+type SubAgent = {
+  id: string
+  name: string
+  status: "spawned" | "running" | "complete" | "error" | "aborted"
+  progress?: { current: number; total: number }
+  result?: string
+}
+
+/* ── Phase 3b: Mode Registry ── */
+type ModeRegistryState = {
+  modes: Mode[]
+  loaded: boolean
+}
+
+/* ── Phase 4: Decomposition / Persona / AgentStats ── */
+type SubTask = {
+  id: string
+  name: string
+  status: string
+}
+
+type DecompositionState = {
+  active: boolean
+  subtasks: SubTask[]
+  confidence?: number
+  status: "required" | "complete" | "failed" | "decision"
+}
+
+type PersonaState = {
+  active: boolean
+  name: string
+  description: string
+  temporary: boolean
+}
+
+type AgentStatsState = {
+  active: boolean
+  successRate: number
+  avgDuration: number
+  totalTasks: number
+  level: "L0" | "L1" | "L2"
 }
 
 export function Chat() {
@@ -93,15 +180,69 @@ export function Chat() {
   const [currentModel, setCurrentModel] = createSignal<string>("standard")
   const MODELS = ["standard", "ultra", "lite"]
 
+  const [preFlight, setPreFlight] = createSignal<PreFlightState | null>(null)
+
+  // Phase 2b signals
+  const [cardinalAlerts, setCardinalAlerts] = createSignal<CardinalAlert[]>([])
+  const [judgeVerdict, setJudgeVerdict] = createSignal<JudgeVerdict | null>(null)
+  const [alignmentAlerts, setAlignmentAlerts] = createSignal<AlignmentAlert[]>([])
+
+  // Phase 3a signals
+  const [subAgents, setSubAgents] = createSignal<SubAgent[]>([])
+  const [barrierWaiting, setBarrierWaiting] = createSignal(false)
+  const [barrierPendingCount, setBarrierPendingCount] = createSignal(0)
+
+  // Phase 3b signals
+  const [modeRegistry, setModeRegistry] = createSignal<ModeRegistryState>({ modes: MODES, loaded: false })
+
+  // Phase 4 signals
+  const [decomposition, setDecomposition] = createSignal<DecompositionState | null>(null)
+  const [persona, setPersona] = createSignal<PersonaState | null>(null)
+  const [agentStats, setAgentStats] = createSignal<AgentStatsState | null>(null)
+
   // Input history
   const [inputHistory, setInputHistory] = createSignal<string[]>([])
   const [historyIndex, setHistoryIndex] = createSignal(-1)
   const [draftInput, setDraftInput] = createSignal("")
 
+  function handlePreFlightSelect(num: number) {
+    const pf = preFlight()
+    if (!pf) return
+    const q = pf.questions[pf.currentIndex]
+    if (!q || !q.options || num > q.options.length || num < 1) return
+    const selected = q.options[num - 1]!
+    setPreFlight((prev) => {
+      if (!prev) return prev
+      return { ...prev, answers: { ...prev.answers, [q.id]: selected } }
+    })
+    trace.emit("preflight.answer", "info", "User selected preflight option", { questionId: q.id, answer: selected })
+  }
+
+  function handlePreFlightConfirm() {
+    const pf = preFlight()
+    if (!pf) return
+    trace.emit("preflight.confirm", "info", "User confirmed preflight", { answers: pf.answers })
+    setPreFlight((prev) => prev ? { ...prev, active: false } : prev)
+  }
+
+  function handlePreFlightSkip() {
+    trace.emit("preflight.skip", "info", "User skipped preflight")
+    setPreFlight(null)
+  }
+
   function cycleModel() {
     const idx = MODELS.indexOf(currentModel())
     setCurrentModel(MODELS[(idx + 1) % MODELS.length]!)
     trace.emit("user.navigate", "info", `Model changed: ${currentModel()}`, { model: currentModel() })
+  }
+
+  const effectiveModes = () => modeRegistry().modes.length > 0 ? modeRegistry().modes : MODES
+
+  function cycleMode(direction: 1 | -1) {
+    const modes = effectiveModes()
+    const idx = modes.findIndex((m) => m.id === mode().id)
+    setMode(modes[(idx + direction + modes.length) % modes.length]!)
+    trace.emit("user.navigate", "info", `Mode changed: ${mode().id}`, { mode: mode().id })
   }
 
   let textarea: any
@@ -403,8 +544,16 @@ export function Chat() {
 
       const textParts = data.parts.filter((p: any) => p.type === "text")
       const content = textParts.map((p: any) => p.text).join("\n")
-      trace.emit("session.prompt_response", "info", "Received response", { length: content.length }, sid)
-      updateLastAssistant(content || "(no text response)", "done")
+      if (content) {
+        trace.emit("session.prompt_response", "info", "Received direct response", { length: content.length }, sid)
+        updateLastAssistant(content, "done")
+      } else if (data.parts.length === 0) {
+        // Streaming mode: HTTP returned empty parts, wait for SSE message.part.delta
+        trace.emit("session.prompt_response", "info", "Streaming mode: waiting for SSE", {}, sid)
+      } else {
+        trace.emit("session.prompt_response", "info", "Received response (no text parts)", { parts: data.parts.length }, sid)
+        updateLastAssistant("(no text response)", "done")
+      }
     } catch (e: any) {
       const errMsg = e.message || "Unknown error"
       trace.emit("session.error", "error", "Prompt exception", { error: errMsg }, sessionID() ?? undefined)
@@ -474,7 +623,14 @@ export function Chat() {
     const payload = (event as any).payload ?? event
     const type = payload?.type
     const props = payload?.properties
-    if (!type || !props) return
+    if (!type || !props) {
+      console.log("[CHAT DEBUG] rejected event:", JSON.stringify(event).slice(0, 200))
+      return
+    }
+    console.log("[CHAT DEBUG] accepted event type:", type, "props keys:", Object.keys(props))
+    if (type === "judge.verdict") {
+      console.log("[CHAT DEBUG] judge.verdict props:", JSON.stringify(props).slice(0, 300))
+    }
 
     const sid = sessionID()
     if (props.sessionID && sid && props.sessionID !== sid) return
@@ -485,7 +641,7 @@ export function Chat() {
         const next: DisplayMessage[] = prev.map((m) => ({ ...m }))
         for (let i = next.length - 1; i >= 0; i--) {
           const msg = next[i]
-          if (msg && msg.role === "assistant" && msg.status === "pending") {
+          if (msg && msg.role === "assistant" && (msg.status === "pending" || msg.status === "streaming")) {
             next[i] = { ...msg, content: msg.content + (props.delta ?? ""), status: "streaming" }
             break
           }
@@ -551,7 +707,7 @@ export function Chat() {
         const next: DisplayMessage[] = prev.map((m) => ({ ...m }))
         for (let i = next.length - 1; i >= 0; i--) {
           const msg = next[i]
-          if (msg && msg.role === "assistant" && msg.status === "streaming") {
+          if (msg && msg.role === "assistant" && (msg.status === "streaming" || msg.status === "pending")) {
             next[i] = { ...msg, status: "done" }
             break
           }
@@ -586,6 +742,224 @@ export function Chat() {
         options: props.options,
       })
     }
+
+    if (type === "preflight.required") {
+      const score = props.score ?? 0
+      const pmode = props.mode ?? "ask"
+      if (pmode === "skip" || score < 0.6) {
+        trace.emit("preflight.skip", "info", "Pre-flight skipped", { score, mode: pmode, reason: score < 0.6 ? "low score" : "mode=skip" }, sid ?? undefined)
+        return
+      }
+      trace.emit("preflight.card", "info", "Pre-flight card rendered", { score, mode: pmode, questionCount: props.questions?.length ?? 0 }, sid ?? undefined)
+      setPreFlight({
+        active: true,
+        score,
+        mode: pmode,
+        questions: props.questions ?? [],
+        answers: {},
+        currentIndex: 0,
+      })
+    }
+
+    /* ── Phase 2b: Cardinal ── */
+    if (type === "cardinal.detected") {
+      const alert: CardinalAlert = {
+        id: props.id ?? Math.random().toString(36).slice(2),
+        type: props.cardinalType ?? "unknown",
+        severity: props.severity ?? "warn",
+        message: props.message ?? "Cardinal alert",
+        countdown: props.severity === "pause" ? (props.degradeTimeout ?? 30) : undefined,
+        autoDegrade: props.autoDegrade ?? false,
+      }
+      trace.emit("cardinal.detected", props.severity === "block" || props.severity === "stop" ? "error" : "warn", `Cardinal ${alert.severity}: ${alert.type}`, { id: alert.id, type: alert.type }, sid ?? undefined)
+      setCardinalAlerts((prev) => {
+        const filtered = prev.filter((a) => a.id !== alert.id)
+        return [...filtered, alert]
+      })
+    }
+
+    if (type === "cardinal.resolved") {
+      trace.emit("cardinal.action", "info", "Cardinal resolved", { id: props.id }, sid ?? undefined)
+      setCardinalAlerts((prev) => prev.filter((a) => a.id !== props.id))
+    }
+
+    /* ── Phase 2b: Judge ── */
+    if (type === "judge.verdict") {
+      const verdict: JudgeVerdict = {
+        id: props.id ?? Math.random().toString(36).slice(2),
+        status: props.status ?? "question",
+        checks: props.checks ?? [],
+        summary: props.summary ?? "Judge verdict",
+      }
+      trace.emit("judge.verdict", "info", `Judge ${verdict.status}`, { checkCount: verdict.checks.length }, sid ?? undefined)
+      setJudgeVerdict(verdict)
+    }
+
+    if (type === "judge.dismiss") {
+      trace.emit("judge.card", "info", "Judge dismissed", { id: props.id }, sid ?? undefined)
+      setJudgeVerdict(null)
+    }
+
+    /* ── Phase 2b: AlignmentGuard ── */
+    if (type === "alignment.drift") {
+      const alert: AlignmentAlert = {
+        id: props.id ?? Math.random().toString(36).slice(2),
+        alertType: props.alertType ?? "drift",
+        severity: props.severity ?? "warning",
+        message: props.message ?? "Alignment drift detected",
+        metrics: props.metrics,
+      }
+      trace.emit("alignment.drift", "warn", `Alignment ${alert.alertType}`, { severity: alert.severity }, sid ?? undefined)
+      setAlignmentAlerts((prev) => {
+        const filtered = prev.filter((a) => a.id !== alert.id)
+        return [...filtered, alert]
+      })
+    }
+
+    if (type === "alignment.resolved") {
+      trace.emit("alignment.drift", "info", "Alignment resolved", { id: props.id }, sid ?? undefined)
+      setAlignmentAlerts((prev) => prev.filter((a) => a.id !== props.id))
+    }
+
+    /* ── Phase 3a: SubAgent ── */
+    if (type === "subagent.spawn") {
+      const agent: SubAgent = {
+        id: props.id ?? Math.random().toString(36).slice(2),
+        name: props.name ?? "subagent",
+        status: "spawned",
+      }
+      trace.emit("subagent.spawn", "info", `Subagent spawned: ${agent.name}`, { id: agent.id }, sid ?? undefined)
+      setSubAgents((prev) => [...prev.filter((a) => a.id !== agent.id), agent])
+    }
+
+    if (type === "subagent.progress") {
+      trace.emit("subagent.progress", "info", `Subagent progress`, { id: props.id, current: props.current, total: props.total }, sid ?? undefined)
+      setSubAgents((prev) =>
+        prev.map((a) =>
+          a.id === props.id
+            ? { ...a, status: "running", progress: { current: props.current ?? 0, total: props.total ?? 1 } }
+            : a,
+        ),
+      )
+    }
+
+    if (type === "subagent.complete") {
+      trace.emit("subagent.complete", "info", `Subagent completed`, { id: props.id, resultLength: props.result?.length }, sid ?? undefined)
+      setSubAgents((prev) =>
+        prev.map((a) =>
+          a.id === props.id
+            ? { ...a, status: "complete", result: props.result }
+            : a,
+        ),
+      )
+      setBarrierPendingCount((c) => Math.max(0, c - 1))
+    }
+
+    if (type === "subagent.error" || type === "subagent.aborted") {
+      trace.emit("subagent.complete", "warn", `Subagent ${type === "subagent.aborted" ? "aborted" : "error"}`, { id: props.id }, sid ?? undefined)
+      setSubAgents((prev) =>
+        prev.map((a) =>
+          a.id === props.id
+            ? { ...a, status: type === "subagent.aborted" ? "aborted" : "error" }
+            : a,
+        ),
+      )
+      setBarrierPendingCount((c) => Math.max(0, c - 1))
+    }
+
+    /* ── Phase 3a: Barrier ── */
+    if (type === "barrier.wait") {
+      trace.emit("barrier.wait", "warn", "Barrier waiting", { pending: props.pendingSubagents }, sid ?? undefined)
+      setBarrierWaiting(true)
+      setBarrierPendingCount(props.pendingSubagents ?? 0)
+    }
+
+    if (type === "barrier.release") {
+      trace.emit("barrier.release", "info", "Barrier released", {}, sid ?? undefined)
+      setBarrierWaiting(false)
+      setBarrierPendingCount(0)
+    }
+
+    /* ── Phase 3b: Mode Registry ── */
+    if (type === "mode.registry") {
+      const newModes: Mode[] = (props.modes ?? []).map((m: any) => ({
+        id: m.id,
+        label: m.name ?? m.id,
+        description: m.uiConfig?.statusMessage ?? "",
+        color: m.color ?? "info",
+      }))
+      trace.emit("mode.registry.load", "info", `Mode registry loaded`, { modeCount: newModes.length }, sid ?? undefined)
+      if (newModes.length > 0) {
+        setModeRegistry({ modes: newModes, loaded: true })
+        // Ensure current mode still exists, else fallback to first
+        const currentId = mode().id
+        if (!newModes.find((m) => m.id === currentId)) {
+          setMode(newModes[0]!)
+        }
+      }
+    }
+
+    if (type === "mode.config") {
+      const mId = props.modeId
+      const cfg = props.config
+      trace.emit("mode.config.apply", "info", `Mode config applied`, { modeId: mId }, sid ?? undefined)
+      setModeRegistry((reg) => ({
+        modes: reg.modes.map((m) =>
+          m.id === mId
+            ? { ...m, description: cfg?.statusMessage ?? m.description, color: cfg?.color ?? m.color }
+            : m,
+        ),
+        loaded: reg.loaded,
+      }))
+    }
+
+    /* ── Phase 4: Decomposition ── */
+    if (type === "decomposition.required" || type === "decomposition.decision" || type === "decomposition.complete" || type === "decomposition.failed") {
+      const dStatus = type.replace("decomposition.", "") as DecompositionState["status"]
+      const dState: DecompositionState = {
+        active: dStatus !== "complete" && dStatus !== "failed",
+        subtasks: props.subtasks ?? [],
+        confidence: props.confidence,
+        status: dStatus,
+      }
+      trace.emit("decomposition.decision", "info", `Decomposition ${dStatus}`, { confidence: dState.confidence, taskCount: dState.subtasks.length }, sid ?? undefined)
+      setDecomposition(dState)
+    }
+
+    /* ── Phase 4: Persona ── */
+    if (type === "persona.generated") {
+      const pState: PersonaState = {
+        active: true,
+        name: props.name ?? "Dynamic Persona",
+        description: props.description ?? "",
+        temporary: props.temporary !== false,
+      }
+      trace.emit("persona.generate", "info", `Persona generated: ${pState.name}`, { temporary: pState.temporary }, sid ?? undefined)
+      setPersona(pState)
+    }
+
+    if (type === "persona.dismiss") {
+      trace.emit("persona.generate", "info", "Persona dismissed", { id: props.id }, sid ?? undefined)
+      setPersona(null)
+    }
+
+    /* ── Phase 4: AgentStats ── */
+    if (type === "agent.stats") {
+      const stats: AgentStatsState = {
+        active: true,
+        successRate: props.successRate ?? 0,
+        avgDuration: props.avgDuration ?? 0,
+        totalTasks: props.totalTasks ?? 0,
+        level: props.level ?? "L0",
+      }
+      trace.emit("agent.stats.update", "info", `Agent stats updated: ${stats.level}`, { successRate: stats.successRate, totalTasks: stats.totalTasks }, sid ?? undefined)
+      setAgentStats(stats)
+    }
+
+    if (type === "agent.stats.dismiss") {
+      trace.emit("agent.stats.update", "info", "Agent stats dismissed", { id: props.id }, sid ?? undefined)
+      setAgentStats(null)
+    }
   })
 
   onCleanup(() => unsub())
@@ -595,16 +969,31 @@ export function Chat() {
     if (evt.name === "f2") {
       cycleModel()
     }
-    if (evt.name === "tab" && !evt.shift) {
-      const idx = MODES.findIndex((m) => m.id === mode().id)
-      setMode(MODES[(idx + 1) % MODES.length]!)
-      trace.emit("user.navigate", "info", `Mode changed: ${mode().id}`, { mode: mode().id })
+  if (evt.name === "tab" && !evt.shift) {
+      cycleMode(1)
+      return
     }
     if (evt.name === "tab" && evt.shift) {
-      const idx = MODES.findIndex((m) => m.id === mode().id)
-      setMode(MODES[(idx - 1 + MODES.length) % MODES.length]!)
-      trace.emit("user.navigate", "info", `Mode changed: ${mode().id}`, { mode: mode().id })
+      cycleMode(-1)
+      return
     }
+  if (preFlight()?.active) {
+    if (evt.name === "escape") {
+      handlePreFlightSkip()
+      return
+    }
+    if (evt.name === "return") {
+      handlePreFlightConfirm()
+      return
+    }
+    // Support numeric keys via name, input, or key properties
+    const input = evt.input || evt.name || evt.key || ""
+    const num = parseInt(input.replace(/^digit/, "").replace(/^num/, ""), 10)
+    if (!isNaN(num) && num >= 1 && num <= 9) {
+      handlePreFlightSelect(num)
+      return
+    }
+  }
   })
 
   // Load sessions on mount + auto-recovery
@@ -695,7 +1084,7 @@ export function Chat() {
         {/* Mode selector */}
         <box height={1} paddingLeft={1} flexDirection="row" gap={1}>
           <text fg={theme.getColor("textMuted")}>Mode:</text>
-          <For each={MODES}>
+          <For each={modeRegistry().modes}>
             {(m) => (
               <text
                 fg={mode().id === m.id ? theme.getColor(m.color) : theme.getColor("textMuted")}
@@ -709,6 +1098,21 @@ export function Chat() {
               </text>
             )}
           </For>
+          {/* Cardinal status indicator */}
+          <Show when={cardinalAlerts().some((a) => a.severity === "block" || a.severity === "stop")}>
+            <text fg={theme.getColor("error")}> !</text>
+          </Show>
+          <Show when={cardinalAlerts().some((a) => a.severity === "pause") && !cardinalAlerts().some((a) => a.severity === "block" || a.severity === "stop")}>
+            <text fg={theme.getColor("warning")}> !</text>
+          </Show>
+          {/* Alignment status indicator */}
+          <Show when={alignmentAlerts().length > 0}>
+            <text fg={theme.getColor("warning")}> ~</text>
+          </Show>
+          {/* Barrier indicator */}
+          <Show when={barrierWaiting()}>
+            <text fg={theme.getColor("info")}> wait{barrierPendingCount()}</text>
+          </Show>
         </box>
 
         {/* Permission prompt */}
@@ -741,6 +1145,220 @@ export function Chat() {
                   </For>
                 </box>
               </Show>
+            </box>
+          )}
+        </Show>
+
+        {/* Pre-flight card */}
+        <Show when={preFlight()?.active}>
+          <box flexDirection="column" border borderColor={theme.getColor("warning")} paddingLeft={1} paddingRight={1}>
+            <text fg={theme.getColor("warning")} attributes={1}>Pre-flight</text>
+            <For each={preFlight()!.questions}>
+              {(q, i) => (
+                <box flexDirection="column" marginBottom={1}>
+                  <text fg={theme.getColor("text")}>{`${i() + 1}. ${q.text}`}</text>
+                  <Show when={q.options}>
+                    <box flexDirection="row" gap={1} flexWrap="wrap">
+                      <For each={q.options}>
+                        {(opt, j) => (
+                          <text fg={preFlight()!.answers[q.id] === opt ? theme.getColor("success") : theme.getColor("textMuted")}>
+                            {preFlight()!.answers[q.id] === opt ? "[OK] " : ""}[{j() + 1}] {opt}
+                          </text>
+                        )}
+                      </For>
+                    </box>
+                  </Show>
+                </box>
+              )}
+            </For>
+            <text fg={theme.getColor("textMuted")}>[Enter: confirm] [Esc: skip]</text>
+          </box>
+        </Show>
+
+        {/* Cardinal alert cards */}
+        <For each={cardinalAlerts()}>
+          {(alert) => (
+            <Show when={alert.severity !== "warn"}>
+              <box
+                flexDirection="column"
+                border
+                borderColor={
+                  alert.severity === "block" || alert.severity === "stop"
+                    ? theme.getColor("error")
+                    : alert.severity === "pause"
+                      ? theme.getColor("warning")
+                      : theme.getColor("textMuted")
+                }
+                paddingLeft={1}
+                paddingRight={1}
+              >
+            <text
+              fg={
+                alert.severity === "block" || alert.severity === "stop"
+                  ? theme.getColor("error")
+                  : alert.severity === "pause"
+                    ? theme.getColor("warning")
+                    : theme.getColor("textMuted")
+              }
+              attributes={1}
+            >
+              {alert.severity === "block" ? "[BLOCK]" : alert.severity === "stop" ? "[STOP]" : alert.severity === "pause" ? "[PAUSE]" : "[WARN] "}
+              {" "}{alert.type}: {alert.message}
+            </text>
+                <Show when={alert.countdown !== undefined}>
+                  <text fg={theme.getColor("textMuted")}>Auto-resolve in {alert.countdown}s</text>
+                </Show>
+                <box flexDirection="row" gap={1}>
+                  <text fg={theme.getColor("success")} onMouseDown={() => {
+                    trace.emit("cardinal.action", "info", "User allowed cardinal", { id: alert.id, type: alert.type })
+                    setCardinalAlerts((prev) => prev.filter((a) => a.id !== alert.id))
+                  }}>[Allow]</text>
+                  <text fg={theme.getColor("textMuted")} onMouseDown={() => {
+                    trace.emit("cardinal.action", "info", "User ignored cardinal", { id: alert.id, type: alert.type })
+                    setCardinalAlerts((prev) => prev.filter((a) => a.id !== alert.id))
+                  }}>[Ignore]</text>
+                </box>
+              </box>
+            </Show>
+          )}
+        </For>
+
+        {/* Judge verdict card */}
+        <Show when={judgeVerdict()}>
+          {(v) => {
+            console.log("[JSX DEBUG] v().status:", v().status, "v().summary:", v().summary)
+            return (
+            <box flexDirection="column" border borderColor={theme.getColor("accent")} paddingLeft={1} paddingRight={1}>
+              <text fg={theme.getColor("accent")} attributes={1}>
+                {v().status === "pass" ? "Judge: PASS" : v().status === "reject" ? "Judge: FAIL" : v().status === "rollback" ? "Judge: ROLLBACK" : "Judge: QUESTION"}
+              </text>
+              <text fg={theme.getColor("text")}>{v().summary}</text>
+              <Show when={v().checks.length > 0}>
+                <box flexDirection="column" paddingLeft={1}>
+                  <For each={v().checks}>
+                    {(check) => (
+                      <box flexDirection="row">
+                        <text fg={check.passed ? theme.getColor("success") : theme.getColor("error")}>
+                          {check.passed ? "[PASS]" : "[FAIL]"} {check.name}
+                        </text>
+                        <Show when={check.detail}>
+                          <text fg={theme.getColor("textMuted")}> — {check.detail}</text>
+                        </Show>
+                      </box>
+                    )}
+                  </For>
+                </box>
+              </Show>
+            </box>
+            )
+          }}
+        </Show>
+
+        {/* AlignmentGuard alert cards */}
+        <For each={alignmentAlerts()}>
+          {(alert) => (
+            <box
+              flexDirection="column"
+              border
+              borderColor={alert.severity === "critical" ? theme.getColor("error") : theme.getColor("warning")}
+              paddingLeft={1}
+              paddingRight={1}
+            >
+              <text fg={alert.severity === "critical" ? theme.getColor("error") : theme.getColor("warning")} attributes={1}>
+                {alert.alertType === "rabbitHole" ? "Rabbit Hole" : alert.alertType === "fileDrift" ? "File Drift" : alert.alertType === "distraction" ? "Distraction" : "Alignment Drift"}
+              </text>
+              <text fg={theme.getColor("text")}>{alert.message}</text>
+              <Show when={alert.metrics && Object.keys(alert.metrics).length > 0}>
+                <box flexDirection="row" gap={1} flexWrap="wrap">
+                  <For each={Object.entries(alert.metrics ?? {})}>
+                    {([k, val]) => (
+                      <text fg={theme.getColor("textMuted")}>{k}={val}</text>
+                    )}
+                  </For>
+                </box>
+              </Show>
+            </box>
+          )}
+        </For>
+
+        {/* SubAgent cards */}
+        <For each={subAgents()}>
+          {(agent) => (
+            <box flexDirection="column" border borderColor={theme.getColor("info")} paddingLeft={1} paddingRight={1}>
+              <box flexDirection="row">
+                <text fg={theme.getColor("info")} attributes={1}>
+                  {agent.status === "spawned" ? ">" : agent.status === "running" ? "~" : agent.status === "complete" ? "DONE" : agent.status === "error" ? "ERR" : "ABORT"}
+                  {" "}{agent.name}
+                </text>
+                <text fg={theme.getColor("textMuted")}> [{agent.status}]</text>
+              </box>
+              <Show when={agent.progress}>
+                <text fg={theme.getColor("textMuted")}>
+                  Progress: {agent.progress!.current}/{agent.progress!.total}
+                </text>
+              </Show>
+              <Show when={agent.result && agent.status === "complete"}>
+                <text fg={theme.getColor("text")} paddingLeft={2}>
+                  {agent.result!.slice(0, 200)}
+                </text>
+              </Show>
+            </box>
+          )}
+        </For>
+
+        {/* Decomposition card */}
+        <Show when={decomposition()?.active}>
+          {(d) => (
+            <box flexDirection="column" border borderColor={theme.getColor("accent")} paddingLeft={1} paddingRight={1}>
+              <text fg={theme.getColor("accent")} attributes={1}>
+                {d().status === "required" ? "Task Decomposition" : d().status === "decision" ? "Decomposition Decision" : "Task Decomposition"}
+              </text>
+              <Show when={d().confidence !== undefined}>
+                <text fg={theme.getColor("textMuted")}>Confidence: {Math.round((d().confidence ?? 0) * 100)}%</text>
+              </Show>
+              <Show when={d().subtasks.length > 0}>
+                <box flexDirection="column" paddingLeft={1}>
+                  <For each={d().subtasks}>
+                    {(task) => (
+                      <box flexDirection="row">
+                        <text fg={theme.getColor("text")}>• {task.name}</text>
+                        <text fg={theme.getColor("textMuted")}> [{task.status}]</text>
+                      </box>
+                    )}
+                  </For>
+                </box>
+              </Show>
+            </box>
+          )}
+        </Show>
+
+        {/* Persona card */}
+        <Show when={persona()?.active}>
+          {(p) => (
+            <box flexDirection="column" border borderColor={theme.getColor("success")} paddingLeft={1} paddingRight={1}>
+              <text fg={theme.getColor("success")} attributes={1}>
+                Dynamic Persona: {p().name}
+              </text>
+              <text fg={theme.getColor("textMuted")}>{p().description}</text>
+              <Show when={p().temporary}>
+                <text fg={theme.getColor("warning")}>(temporary)</text>
+              </Show>
+            </box>
+          )}
+        </Show>
+
+        {/* AgentStats card */}
+        <Show when={agentStats()?.active}>
+          {(s) => (
+            <box flexDirection="column" border borderColor={theme.getColor("primary")} paddingLeft={1} paddingRight={1}>
+              <text fg={theme.getColor("primary")} attributes={1}>
+                Agent Stats ({s().level})
+              </text>
+              <box flexDirection="row" gap={2}>
+                <text fg={theme.getColor("textMuted")}>Success: {Math.round(s().successRate * 100)}%</text>
+                <text fg={theme.getColor("textMuted")}>Avg: {s().avgDuration}ms</text>
+                <text fg={theme.getColor("textMuted")}>Tasks: {s().totalTasks}</text>
+              </box>
             </box>
           )}
         </Show>
@@ -875,16 +1493,54 @@ export function Chat() {
             textColor={theme.getColor("text")}
             focusedTextColor={theme.getColor("text")}
             onContentChange={() => {
-              // no-op: we read textarea.plainText directly in handleSend
+              if (preFlight()?.active) {
+                try {
+                  const text = (textarea?.plainText ?? "").trim()
+                  const num = parseInt(text, 10)
+                  if (!isNaN(num) && num >= 1 && num <= 9) {
+                    handlePreFlightSelect(num)
+                    if (textarea) {
+                      try { textarea.clear() } catch {}
+                    }
+                  }
+                } catch {}
+                return
+              }
+              // no-op when preflight is not active
             }}
             keyBindings={[
               { name: "return", action: "submit" },
               { name: "return", shift: true, action: "newline" },
             ]}
             onSubmit={() => {
+              if (preFlight()?.active) {
+                handlePreFlightConfirm()
+                return
+              }
               setTimeout(() => setTimeout(() => handleSend(), 0), 0)
             }}
             onKeyDown={(e: any) => {
+              if (preFlight()?.active) {
+                const input = e.input || e.name || e.key || ""
+                const num = parseInt(input.replace(/^digit/, "").replace(/^num/, ""), 10)
+                if (!isNaN(num) && num >= 1 && num <= 9) {
+                  handlePreFlightSelect(num)
+                  e.preventDefault()
+                  return
+                }
+                if (e.name === "escape") {
+                  handlePreFlightSkip()
+                  e.preventDefault()
+                  return
+                }
+                if (e.name === "return") {
+                  handlePreFlightConfirm()
+                  e.preventDefault()
+                  return
+                }
+                e.preventDefault()
+                return
+              }
               if (e.name === "escape") {
                 handleAbort()
                 return

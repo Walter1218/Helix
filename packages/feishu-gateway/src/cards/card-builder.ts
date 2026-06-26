@@ -213,6 +213,116 @@ export class CardBuilder {
     }
   }
 
+  /** 构建流式更新卡片（文本 + 工具调用实时状态） */
+  buildStreamingUpdateCard(params: {
+    sessionID: string
+    text: string
+    toolCalls: Array<{
+      id: string
+      name: string
+      input: string
+      status: "running" | "done" | "error"
+      output?: string
+    }>
+  }) {
+    const { sessionID, text, toolCalls } = params
+
+    const elements: unknown[] = []
+
+    if (text) {
+      elements.push({
+        tag: "div",
+        text: { tag: "lark_md", content: text.length > 2000 ? text.slice(-2000) : text },
+      })
+    }
+
+    if (toolCalls.length > 0) {
+      if (text) elements.push({ tag: "hr" })
+
+      const toolLines = toolCalls.map((t) => {
+        const icon = t.status === "running" ? "🔄" : t.status === "error" ? "❌" : "✅"
+        let line = `${icon} **${t.name}**`
+        if (t.input) line += `\n   ${t.input.slice(0, 150)}`
+        if (t.output && t.status === "done") line += `\n   → ${t.output.slice(0, 150)}`
+        if (t.output && t.status === "error") line += `\n   ❌ ${t.output.slice(0, 150)}`
+        return line
+      })
+
+      elements.push({
+        tag: "div",
+        text: { tag: "lark_md", content: toolLines.join("\n") },
+      })
+    }
+
+    elements.push({
+      tag: "note",
+      elements: [
+        { tag: "plain_text", content: `Session: ${sessionID.slice(0, 12)}… · 实时更新` },
+      ],
+    })
+
+    return {
+      config: { wide_screen_mode: true },
+      header: {
+        title: { tag: "plain_text", content: "📡 Agent 实时执行" },
+        template: "turquoise",
+      },
+      elements,
+    }
+  }
+
+  /** 构建错误卡片 */
+  buildErrorCard(params: { sessionID: string; error: string }) {
+    const { sessionID, error } = params
+    return {
+      config: { wide_screen_mode: true },
+      header: {
+        title: { tag: "plain_text", content: "❌ Agent 执行错误" },
+        template: "red",
+      },
+      elements: [
+        { tag: "div", text: { tag: "lark_md", content: error } },
+        { tag: "hr" },
+        {
+          tag: "note",
+          elements: [
+            { tag: "plain_text", content: `Session: ${sessionID.slice(0, 12)}…` },
+          ],
+        },
+      ],
+    }
+  }
+
+  /** 构建工作流结果卡片 */
+  buildWorkflowResultCard(params: { runID: string; status: string; error?: string }) {
+    const { runID, status, error } = params
+    const isFailed = status === "failed" || status === "cancelled"
+    const headerTitle = isFailed ? "❌ 工作流执行失败" : "✅ 工作流执行完成"
+    const template = isFailed ? "red" : "green"
+
+    const elements: unknown[] = [
+      { tag: "div", text: { tag: "lark_md", content: `状态: **${status}**` } },
+    ]
+
+    if (error) {
+      elements.push({ tag: "div", text: { tag: "lark_md", content: `错误: ${error}` } })
+    }
+
+    elements.push({ tag: "hr" })
+    elements.push({
+      tag: "note",
+      elements: [
+        { tag: "plain_text", content: `RunID: ${runID.slice(0, 12)}…` },
+      ],
+    })
+
+    return {
+      config: { wide_screen_mode: true },
+      header: { title: { tag: "plain_text", content: headerTitle }, template },
+      elements,
+    }
+  }
+
   private renderProgressBar(pct: number, width: number): string {
     const filled = Math.round((pct / 100) * width)
     const empty = width - filled

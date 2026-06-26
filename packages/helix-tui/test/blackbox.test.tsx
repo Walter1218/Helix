@@ -117,7 +117,7 @@ describe("Blackbox E2E: Helix TUI full system", () => {
   // ── Test 2: 流式响应 ─────────────────────────────────────
   // NOTE: streaming via SSE message.part.delta is not fully supported in current TUI handleSend
   // which sets status=done immediately after HTTP response. Skipped until streaming is implemented.
-  test.skip("streaming: response appears progressively", async () => {
+  test("streaming: response appears progressively", async () => {
     const url = await server.start({
       type: "streaming",
       chunks: ["Hel", "lo", "!", " ", "This", " ", "is", " ", "streaming."],
@@ -135,6 +135,7 @@ describe("Blackbox E2E: Helix TUI full system", () => {
       result,
       (f) => f.includes("Hel"),
       10000,
+      100,
     )
     expect(partial).toBe(true)
 
@@ -143,6 +144,7 @@ describe("Blackbox E2E: Helix TUI full system", () => {
       result,
       (f) => f.includes("streaming."),
       15000,
+      100,
     )
     expect(complete).toBe(true)
     assertFrameContains(frame2, ["You:", "stream", "Helix:", "streaming"])
@@ -524,13 +526,13 @@ describe("Blackbox E2E: Helix TUI full system", () => {
 
   // ── Test 15: 自定义事件序列 ─────────────────────────────────
   // NOTE: custom event sequences depend on streaming support. Skipped.
-  test.skip("custom events: sequence of multiple event types", async () => {
+  test("custom events: sequence of multiple event types", async () => {
     const url = await server.start({
       type: "custom",
       events: [
-        { type: "message.part.delta", properties: { content: "Processing" }, delay: 50 },
+        { type: "message.part.delta", properties: { field: "text", delta: "Processing" }, delay: 50 },
         { type: "session.status", properties: { status: "busy" }, delay: 50 },
-        { type: "message.part.delta", properties: { content: " done" }, delay: 50 },
+        { type: "message.part.delta", properties: { field: "text", delta: " done" }, delay: 50 },
         { type: "session.idle", properties: {}, delay: 50 },
       ],
       delay: 30,
@@ -545,6 +547,7 @@ describe("Blackbox E2E: Helix TUI full system", () => {
       result,
       (f) => f.includes("Processing") && f.includes("done"),
       15000,
+      100,
     )
 
     expect(found).toBe(true)

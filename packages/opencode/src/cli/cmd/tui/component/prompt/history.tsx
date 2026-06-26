@@ -1,10 +1,9 @@
-import path from "path"
-import { Global } from "@/global"
-import { Filesystem } from "@/util"
 import { onMount } from "solid-js"
 import { createStore, produce, unwrap } from "solid-js/store"
 import { createSimpleContext } from "../../context/helper"
-import { appendFile, writeFile } from "fs/promises"
+import { Database, desc } from "@/storage"
+import { InputHistoryTable } from "./history.sql"
+import { eq, sql } from "drizzle-orm"
 import type { AgentPart, FilePart, TextPart } from "@mimo-ai/sdk/v2"
 
 export type PromptInfo = {
@@ -30,29 +29,26 @@ const MAX_HISTORY_ENTRIES = 50
 export const { use: usePromptHistory, provider: PromptHistoryProvider } = createSimpleContext({
   name: "PromptHistory",
   init: () => {
-    const historyPath = path.join(Global.Path.state, "prompt-history.jsonl")
     onMount(async () => {
-      const text = await Filesystem.readText(historyPath).catch(() => "")
-      const lines = text
-        .split("\n")
-        .filter(Boolean)
-        .map((line) => {
-          try {
-            return JSON.parse(line)
-          } catch {
-            return null
-          }
-        })
-        .filter((line): line is PromptInfo => line !== null)
-        .slice(-MAX_HISTORY_ENTRIES)
+      const rows = Database.use((db) =>
+        db
+          .select()
+          .from(InputHistoryTable)
+          .orderBy(desc(InputHistoryTable.time_created))
+          .limit(MAX_HISTORY_ENTRIES)
+          .all(),
+      )
 
-      setStore("history", lines)
+      const entries = rows
+        .reverse()
+        .map((row) => ({
+          input: row.input,
+          mode: row.mode ?? undefined,
+          parts: (row.parts ?? []) as PromptInfo["parts"],
+        }))
+        .filter((entry) => entry.input.length > 0)
 
-      // Rewrite file with only valid entries to self-heal corruption
-      if (lines.length > 0) {
-        const content = lines.map((line) => JSON.stringify(line)).join("\n") + "\n"
-        writeFile(historyPath, content).catch(() => {})
-      }
+      setStore("history", entries)
     })
 
     const [store, setStore] = createStore({
@@ -95,13 +91,35 @@ export const { use: usePromptHistory, provider: PromptHistoryProvider } = create
           }),
         )
 
-        if (trimmed) {
-          const content = store.history.map((line) => JSON.stringify(line)).join("\n") + "\n"
-          writeFile(historyPath, content).catch(() => {})
-          return
-        }
+        Database.use((db) => {
+          db.insert(InputHistoryTable)
+            .values({
+              input: entry.input,
+              mode: entry.mode ?? null,
+              parts: entry.parts,
+            })
+            .run()
 
-        appendFile(historyPath, JSON.stringify(entry) + "\n").catch(() => {})
+          if (trimmed) {
+            const countRow = db
+              .select({ count: sql<number>`count(*)` })
+              .from(InputHistoryTable)
+              .get()
+            const total = countRow?.count ?? 0
+            if (total > MAX_HISTORY_ENTRIES) {
+              const excess = total - MAX_HISTORY_ENTRIES
+              const oldest = db
+                .select({ id: InputHistoryTable.id })
+                .from(InputHistoryTable)
+                .orderBy(InputHistoryTable.time_created)
+                .limit(excess)
+                .all()
+              for (const row of oldest) {
+                db.delete(InputHistoryTable).where(eq(InputHistoryTable.id, row.id)).run()
+              }
+            }
+          }
+        })
       },
     }
   },
