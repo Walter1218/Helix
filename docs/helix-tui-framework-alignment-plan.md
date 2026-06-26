@@ -1,6 +1,8 @@
 # Helix TUI 框架层对齐改造方案
 
 > 目标：框架层 (Context/Store/Plugin/i18n/Toast/Keybind) 与 MiMo TUI 对齐，UI 外观保持 Helix 风格。
+>
+> 基于 2026-06-26 更新：helix-tui 源码 (34 文件, 4565 行)、MiMo TUI 源码 (27086 行)、后端 API (58 模块, 100+ 路由, 60+ SSE 事件) 深度对比。
 
 ---
 
@@ -76,7 +78,7 @@ Phase 4: 路由增强 (依赖 Phase 1+2)
 ### 0.4 i18n 框架
 
 **新建文件**:
-- `src/i18n/locales.ts` — 直接复制 MiMo TUI 的 17 语言定义
+- `src/i18n/locales.ts` — 复制 MiMo TUI 的 7 语言定义 (en/zh/zht/ja/es/fr/ru)
 - `src/i18n/en.ts` — 精简版英文翻译 (~100 个 key，覆盖 helix-tui 现有 UI 文案)
 - `src/i18n/zh.ts` — 精简版中文翻译
 - `src/context/language.tsx` — 从 MiMo TUI 移植，适配：
@@ -297,10 +299,10 @@ useSync() → {
 
 **改造文件**: `src/voice/service.ts`
 
-从浏览器 SpeechRecognition 迁移到 MiMo TUI 的 VAD + ASR 方案:
+从浏览器 SpeechRecognition 迁移到 MiMo TUI 的 VAD + Whisper 方案:
 - 移植 `packages/opencode/src/cli/cmd/tui/util/voice.ts`
 - 移植 `packages/opencode/src/cli/cmd/tui/util/vad.ts` (WASM VAD)
-- 需要: `sox`/`rec`/`arecord` 检测 + MiMo ASR API 调用
+- 需要: `sox`/`rec`/`arecord` 检测 + Whisper API 调用
 
 ---
 
@@ -408,7 +410,32 @@ type ChatRoute = {
 | `@opentui/solid` (createSlot) | catalog | ✅ 已有 |
 | `@mimo-ai/plugin/tui` | workspace | ⚠️ 需确认 helix-tui 可引用 |
 
+## 后端 API 参考
+
+SyncProvider 需要消费的后端 API 端点（详见 `packages/opencode/src/server/routes/`）:
+
+| 数据域 | API 端点 | SSE 事件 |
+|--------|----------|----------|
+| Session | `GET /session/`, `POST /session/` | `session.status`, `session.error`, `session.diff` |
+| Message | `GET /session/:id/message` | `message.part.delta`, `message.updated`, `message.removed` |
+| Permission | `GET /permission/` | `permission.asked`, `permission.replied` |
+| Question | `GET /question/` | `question.asked`, `question.replied`, `question.rejected` |
+| Todo | `GET /session/:id/todo` | `session.todo.updated` |
+| Task | `GET /session/:id/task` | `task.created`, `task.updated` |
+| Actor | `GET /session/:id/actors` | `actor.registered`, `actor.statusChanged` |
+| Provider | `GET /provider/` | — |
+| Agent | `GET /agent` | — |
+| Command | `GET /command` | — |
+| Config | `GET /config/` | — |
+| LSP | `GET /lsp` | `lsp.updated`, `lsp.diagnostics` |
+| MCP | `GET /mcp/` | `mcp.toolsChanged` |
+| VCS | `GET /vcs` | `project.vcs.branchUpdated` |
+| Workflow | `GET /workflows/` | `workflow.started`, `workflow.phase`, `workflow.finished` |
+| Global SSE | `GET /global/event` | 所有实例事件的全局转发 |
+
+完整事件列表见 `packages/opencode/src/server/event.ts` 和各模块的 BusEvent 定义。
+
 ---
 
-*文档时间: 2026-06-26*
-*基于: packages/helix-tui + packages/opencode/src/cli/cmd/tui/ 深度源码调研*
+*文档时间: 2026-06-26 (更新)*
+*基于: packages/helix-tui (34 文件, 4565 行) + packages/opencode/src/cli/cmd/tui/ (27086 行) + packages/opencode/src/server/ (58 模块, 100+ 路由) 深度源码调研*

@@ -5,6 +5,9 @@ import { RouteProvider } from "./context/route"
 import { ThemeProvider } from "./context/theme"
 import { SDKProvider } from "./context/sdk"
 import { DialogProvider } from "./ui/dialog"
+import { KVProvider } from "./context/kv"
+import { SyncProvider } from "./context/sync"
+import { LocalProvider } from "./context/local"
 import * as trace from "./trace"
 
 export async function bootstrap(config?: {
@@ -45,13 +48,19 @@ export async function bootstrap(config?: {
   await render(
     () => (
       <SDKProvider url={url} directory={config?.directory} headers={authHeader}>
-        <ThemeProvider>
-          <DialogProvider>
-            <RouteProvider>
-              <App />
-            </RouteProvider>
-          </DialogProvider>
-        </ThemeProvider>
+        <KVProvider>
+          <SyncProvider>
+            <ThemeProvider>
+              <LocalProvider>
+                <DialogProvider>
+                  <RouteProvider>
+                    <App />
+                  </RouteProvider>
+                </DialogProvider>
+              </LocalProvider>
+            </ThemeProvider>
+          </SyncProvider>
+        </KVProvider>
       </SDKProvider>
     ),
     renderer,

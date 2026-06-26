@@ -3,6 +3,8 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
 import { useTheme } from "../context/theme"
 import { useSDK } from "../context/sdk"
 import { useDialog } from "../ui/dialog"
+import { ToolRenderer, type ToolCallData } from "../component/tool-renderers"
+import { ReasoningPart } from "../component/reasoning-part"
 import { DialogConfirm } from "../ui/dialog-confirm"
 import { DialogPrompt } from "../ui/dialog-prompt"
 import { DialogSelect } from "../ui/dialog-select"
@@ -1411,33 +1413,7 @@ export function Chat() {
                   {/* Tool calls */}
                   <Show when={msg.toolCalls?.length}>
                     <For each={msg.toolCalls}>
-                      {(tool) => (
-                        <box flexDirection="column" paddingLeft={2} marginTop={1}>
-                          <box flexDirection="row">
-                            <text fg={theme.getColor("accent")} attributes={1}>
-                              {tool.status === "running" ? "⟳" : tool.status === "error" ? "✗" : "✓"} {tool.name}
-                            </text>
-                            <Show when={tool.status === "running"}>
-                              <text fg={theme.getColor("textMuted")}> running...</text>
-                            </Show>
-                          </box>
-                          <Show when={tool.input}>
-                            <text fg={theme.getColor("textMuted")} paddingLeft={2}>
-                              {tool.input.length > 200 ? tool.input.slice(0, 200) + "..." : tool.input}
-                            </text>
-                          </Show>
-                          <Show when={tool.output && tool.status === "done"}>
-                            <text fg={theme.getColor("text")} paddingLeft={2}>
-                              {tool.output!.length > 500 ? tool.output!.slice(0, 500) + "..." : tool.output}
-                            </text>
-                          </Show>
-                          <Show when={tool.output && tool.status === "error"}>
-                            <text fg={theme.getColor("error")} paddingLeft={2}>
-                              {tool.output}
-                            </text>
-                          </Show>
-                        </box>
-                      )}
+                      {(tool) => <ToolRenderer tool={tool as ToolCallData} />}
                     </For>
                   </Show>
 

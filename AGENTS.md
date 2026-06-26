@@ -262,3 +262,111 @@ Always ensure `import React from 'react'` is present when writing JSX in `.tsx` 
 - **Trace Recording**: Ensure `TraceReporter` and `HeuristicFilter` are active during testing to record high-quality execution trajectories.
 - **DPO Datasets**: Run `bun run script/dogfooding/export_dpo.ts` periodically to convert raw traces into Chosen/Rejected JSONL datasets for local model fine-tuning.
 - **Rule Lifecycle**: Rules added by the DSPy Optimizer to this file are considered *temporary context augmentation*. Once the DPO fine-tuning merges these rules into the model's weights, the corresponding text rules should be pruned from `AGENTS.md` to prevent context bloat.
+
+### Self-Upgrade Mechanism
+
+The binary includes an auto-update system that downloads platform-specific deltas from GitHub Releases.
+
+```bash
+# Check for updates
+opencode upgrade check
+
+# Upgrade to latest version
+opencode upgrade run
+
+# Upgrade to specific version
+opencode upgrade run --version 1.2.3
+
+# Download full binary instead of delta
+opencode upgrade run --no-delta
+```
+
+**Registry**: `registry.json` maps platform identifiers to release assets:
+- `darwin-arm64`, `darwin-x64` — macOS (Apple Silicon, Intel)
+- `linux-x64`, `linux-arm64` — Linux
+- `win32-x64` — Windows
+
+**Delta Updates**: The system uses `bsdiff` for efficient binary patches (~1-5MB vs ~50MB full binary). If delta patching fails, it automatically falls back to full download.
+
+**Shell Installer**: `scripts/install.sh` provides a one-liner installation method:
+```bash
+curl -fsSL https://raw.githubusercontent.com/sinco-lab/opencode/dev/scripts/install.sh | bash
+```
+
+**Installation Directory**: Binaries are installed to `~/.opencode/bin/` by default (configurable via `OPENCODE_HOME`).
+
+## Agent Communication System
+
+The Helix Agent Communication System enables CLI-based interaction with AI agents through WebSocket connections.
+
+### Quick Start
+
+```bash
+# 1. Start the Helix server
+MIMOCODE_HOME=.mimo bun run packages/opencode/src/index.ts serve --port 3096
+
+# 2. Chat with an agent
+bun run packages/helix-tui/test/utils/helix-chat-cli.ts chat my_session --agent ask "What does this code do?"
+
+# 3. Build mode (read-write)
+bun run packages/helix-tui/test/utils/helix-chat-cli.ts chat my_session --agent build "Create a new file"
+```
+
+### Agent Modes
+
+- **Ask Mode** (`--agent ask`): Read-only access for code analysis and questions
+- **Build Mode** (`--agent build`): Full read-write access for task execution
+
+### CLI Commands
+
+```bash
+# Chat with agent
+bun run packages/helix-tui/test/utils/helix-chat-cli.ts chat <session_id> [options] "message"
+
+# List sessions
+bun run packages/helix-tui/test/utils/helix-chat-cli.ts sessions
+
+# Check server health
+bun run packages/helix-tui/test/utils/helix-chat-cli.ts health
+```
+
+### Options
+
+- `--agent <mode>`: Agent mode (`ask` or `build`, default: `ask`)
+- `--timeout <ms>`: Timeout in milliseconds (default: 180000)
+- `--verbose`: Enable detailed logging
+- `--json`: Output raw JSON responses
+
+### Session Management
+
+Use the same session ID to continue a conversation:
+
+```bash
+# First interaction
+bun run packages/helix-tui/test/utils/helix-chat-cli.ts chat my_session --agent ask "Hello"
+
+# Continue same session
+bun run packages/helix-tui/test/utils/helix-chat-cli.ts chat my_session --agent ask "Tell me more"
+```
+
+### Programming API
+
+```typescript
+import { HelixChat } from './test/utils/helix-chat'
+
+const chat = new HelixChat({
+  serverUrl: 'http://localhost:3096',
+  sessionId: 'my_session',
+  onText: (text) => console.log(text),
+  onToolCall: (call) => console.log('Tool:', call),
+  onError: (error) => console.error('Error:', error),
+  onEnd: () => console.log('Done'),
+})
+
+await chat.sendMessage('What does this code do?', 'ask')
+chat.close()
+```
+
+### Documentation
+
+For detailed documentation, see [docs/helix-agent-communication-system.md](docs/helix-agent-communication-system.md).
