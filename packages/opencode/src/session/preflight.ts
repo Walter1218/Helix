@@ -46,13 +46,38 @@ export interface TaskInfo {
   readonly estimatedTokens?: number
 }
 
+export interface EnrichedCheckResult extends CheckResult {
+  readonly id: string
+  readonly name: string
+}
+
 export interface PreFlightResult {
   readonly passed: boolean
   readonly blocked: boolean
   readonly paused: boolean
-  readonly results: CheckResult[]
+  readonly results: EnrichedCheckResult[]
   readonly blockReason?: string
   readonly pauseReason?: string
+}
+
+export type FrontendCheckStatus = "pending" | "running" | "completed" | "warning" | "failed"
+
+export interface FrontendCheckItem {
+  readonly id: string
+  readonly label: string
+  readonly status: FrontendCheckStatus
+  readonly details?: string
+  readonly subItems?: FrontendCheckItem[]
+}
+
+export type FrontendTrustLevel = "high" | "medium" | "low"
+
+export interface FrontendPreFlightCheck {
+  readonly items: FrontendCheckItem[]
+  readonly trustLevel: FrontendTrustLevel
+  readonly autoLearnEnabled: boolean
+  readonly cooldownRemaining?: number
+  readonly decision: "proceed" | "pause" | "block"
 }
 
 // ============================================================================
@@ -195,6 +220,34 @@ function createPermissionCheck(): PreFlightCheck {
 }
 
 // ============================================================================
+// 前端格式转换
+// ============================================================================
+
+function checkLevelToStatus(result: EnrichedCheckResult): FrontendCheckStatus {
+  if (!result.passed) return result.level === "block" ? "failed" : "warning"
+  if (result.level === "warn") return "warning"
+  return "completed"
+}
+
+export function toFrontendFormat(result: PreFlightResult): FrontendPreFlightCheck {
+  const items: FrontendCheckItem[] = result.results.map((r) => ({
+    id: r.id,
+    label: r.name,
+    status: checkLevelToStatus(r),
+    details: r.message,
+  }))
+
+  const failedCount = items.filter((i) => i.status === "failed").length
+  const warningCount = items.filter((i) => i.status === "warning").length
+  const trustLevel: FrontendTrustLevel =
+    failedCount > 0 ? "low" : warningCount > 0 ? "medium" : "high"
+
+  const decision = result.blocked ? "block" : result.paused ? "pause" : "proceed"
+
+  return { items, trustLevel, autoLearnEnabled: false, decision }
+}
+
+// ============================================================================
 // Service 接口
 // ============================================================================
 
@@ -240,7 +293,7 @@ export const layer = Layer.effect(
     const runAll = Effect.fn("PreFlight.runAll")(function* (task: TaskInfo) {
       log.info("preflight.start", { taskId: task.id })
 
-      const results: CheckResult[] = []
+      const results: EnrichedCheckResult[] = []
       let blocked = false
       let paused = false
       let blockReason: string | undefined
@@ -248,7 +301,7 @@ export const layer = Layer.effect(
 
       for (const check of checks.values()) {
         const result = yield* check.check(task)
-        results.push(result)
+        results.push({ ...result, id: check.id, name: check.name })
 
         if (!result.passed) {
           if (result.level === "block") {

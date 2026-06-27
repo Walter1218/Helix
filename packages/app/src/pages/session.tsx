@@ -14,6 +14,7 @@ import {
   onMount,
   untrack,
   createResource,
+  createSignal,
 } from "solid-js"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { createMediaQuery } from "@solid-primitives/media"
@@ -69,6 +70,7 @@ import { createMockCheckpointService } from "@/services/mock/mock-checkpoint-ser
 import { TaskListPanel } from "@/pages/session/task-list-panel"
 import { ExecutionTree } from "@/components/execution-tree"
 import { CheckpointPanel } from "@/pages/session/checkpoint-panel"
+import { PreFlightPanel, type PreFlightCheck } from "@/pages/session/preflight-panel"
 
 const emptyUserMessages: UserMessage[] = []
 type FollowupItem = FollowupDraft & { id: string }
@@ -863,6 +865,36 @@ export default function Page() {
     refreshVcs()
   })
   onCleanup(stopVcs)
+
+  const [preflightCheck, setPreflightCheck] = createSignal<PreFlightCheck | undefined>()
+  const stopPreflight = sdk.event.listen((evt) => {
+    const evtType = evt.details.type as string
+    if (evtType !== "preflight.result") return
+    const p = evt.details.properties as {
+      sessionID: string
+      passed: boolean
+      blocked: boolean
+      paused: boolean
+      results: { id: string; name: string; passed: boolean; level: string; message: string }[]
+    }
+    if (p.sessionID !== sessionKey()) return
+    const statusMap = (r: { passed: boolean; level: string }): PreFlightCheck["items"][number]["status"] => {
+      if (!r.passed) return r.level === "block" ? "failed" : "warning"
+      if (r.level === "warn") return "warning"
+      return "completed"
+    }
+    const items = p.results.map((r) => ({ id: r.id, label: r.name, status: statusMap(r), details: r.message }))
+    const failedCount = items.filter((i) => i.status === "failed").length
+    const warningCount = items.filter((i) => i.status === "warning").length
+    setPreflightCheck({
+      id: p.sessionID,
+      items,
+      trustLevel: failedCount > 0 ? "low" : warningCount > 0 ? "medium" : "high",
+      autoLearnEnabled: false,
+      decision: p.blocked ? "block" : p.paused ? "pause" : "proceed",
+    })
+  })
+  onCleanup(stopPreflight)
 
   createEffect(
     on(
@@ -1992,6 +2024,10 @@ export default function Page() {
               onRestoreCheckpoint={cpService.restoreCheckpoint}
             />
           )}
+          preflightPanel={() => {
+            const check = preflightCheck()
+            return check ? <PreFlightPanel check={() => check} /> : <></>
+          }}
         />
       </div>
 

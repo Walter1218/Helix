@@ -2600,12 +2600,12 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               passed: pfResult.passed,
               blocked: pfResult.blocked,
               paused: pfResult.paused,
-              results: pfResult.results.map((r: any) => ({
-                id: r.id ?? "",
-                name: r.name ?? "",
-                passed: r.passed ?? true,
-                level: r.level ?? "info",
-                message: r.message ?? "",
+              results: pfResult.results.map((r) => ({
+                id: r.id,
+                name: r.name,
+                passed: r.passed,
+                level: r.level,
+                message: r.message,
               })),
             }).pipe(Effect.ignore)
             if (pfResult.blocked) {

@@ -46,6 +46,7 @@ export function SessionSidePanel(props: {
   taskPanel?: () => JSX.Element
   checkpointPanel?: () => JSX.Element
   executionTreePanel?: () => JSX.Element
+  preflightPanel?: () => JSX.Element
 }) {
   const layout = useLayout()
   const platform = usePlatform()
@@ -265,6 +266,9 @@ export function SessionSidePanel(props: {
                       <Show when={props.checkpointPanel}>
                         <Tabs.Trigger value="checkpoints">📋 Checkpoints</Tabs.Trigger>
                       </Show>
+                      <Show when={props.preflightPanel}>
+                        <Tabs.Trigger value="preflight">🔍 Pre-flight</Tabs.Trigger>
+                      </Show>
                       <Show when={contextOpen()}>
                         <Tabs.Trigger
                           value="context"
@@ -340,6 +344,12 @@ export function SessionSidePanel(props: {
                   <Show when={props.executionTreePanel}>
                     <Tabs.Content value="execution-tree" class="flex flex-col h-full overflow-hidden contain-strict">
                       <Show when={activeTab() === "execution-tree"}>{props.executionTreePanel?.()}</Show>
+                    </Tabs.Content>
+                  </Show>
+
+                  <Show when={props.preflightPanel}>
+                    <Tabs.Content value="preflight" class="flex flex-col h-full overflow-hidden contain-strict">
+                      <Show when={activeTab() === "preflight"}>{props.preflightPanel?.()}</Show>
                     </Tabs.Content>
                   </Show>
 
