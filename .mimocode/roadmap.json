@@ -286,7 +286,7 @@
           "id": "M6-T4a",
           "title": "Pre-flight 检查后端",
           "description": "实现 session/preflight.ts，对接已有的前端展示面板",
-          "status": "in_progress",
+          "status": "pending",
           "priority": "low",
           "estimated_tokens": 50000,
           "tags": [
