@@ -600,7 +600,8 @@ async function stepTest(gitCheckpoint: string): Promise<StepResult> {
   let allSuccess = true
   
   for (const [pkg, files] of byPackage) {
-    const cmd = "cd " + pkg + " && bun test " + files.join(" ")
+    const relativeFiles = files.map(f => f.startsWith(pkg + "/") ? f.slice(pkg.length + 1) : f)
+    const cmd = "cd " + pkg + " && bun test " + relativeFiles.join(" ")
     const result = runCmd(cmd, 3 * 60 * 1000)
     allResults.push(result.output)
     if (!result.success) allSuccess = false
