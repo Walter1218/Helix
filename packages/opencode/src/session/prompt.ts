@@ -2581,6 +2581,12 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           // Pre-flight check (mode-aware)
           const modeId = agent.name
           const evoConfig = yield* modeRegistry.getEvolutionConfig(modeId)
+          yield* bus.publish(Session.Event.ModeApplied, {
+            sessionID,
+            mode: modeId,
+            judgeEnabled: evoConfig.judgeEnabled,
+            specDriven: evoConfig.specDrivenEnabled,
+          }).pipe(Effect.ignore)
           if (evoConfig.judgeEnabled && step === 1) {
             const lastUserText = msgs.findLast((m) => m.info.role === "user")
               ?.parts.filter((p) => p.type === "text").map((p) => p.text).join("\n") ?? ""
@@ -2589,6 +2595,19 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               title: lastUserText.slice(0, 100),
               description: lastUserText,
             }).pipe(Effect.catch(() => Effect.succeed({ passed: true, blocked: false, paused: false, results: [] as any[], blockReason: undefined as string | undefined, pauseReason: undefined as string | undefined })))
+            yield* bus.publish(Session.Event.PreFlightResult, {
+              sessionID,
+              passed: pfResult.passed,
+              blocked: pfResult.blocked,
+              paused: pfResult.paused,
+              results: pfResult.results.map((r: any) => ({
+                id: r.id ?? "",
+                name: r.name ?? "",
+                passed: r.passed ?? true,
+                level: r.level ?? "info",
+                message: r.message ?? "",
+              })),
+            }).pipe(Effect.ignore)
             if (pfResult.blocked) {
               yield* slog.warn("preflight blocked", { reason: pfResult.blockReason })
               yield* bus.publish(Session.Event.Error, { sessionID, error: new NamedError.Unknown({ message: `Pre-flight blocked: ${pfResult.blockReason}` }) })

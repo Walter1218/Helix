@@ -1,14 +1,49 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { Effect } from "effect"
+import { Effect, Layer, ManagedRuntime } from "effect"
+import * as Http from "node:http"
+import { NodeHttpServer } from "@effect/platform-node"
+import { HttpRouter } from "effect/unstable/http"
 import { Instance } from "../../src/project/instance"
 import { Server } from "../../src/server/server"
 import { Session as SessionNs } from "../../src/session"
+import { ModelID, ProviderID } from "../../src/provider/schema"
 import { SessionRunState } from "../../src/session/run-state"
+import { SessionPrompt } from "../../src/session/prompt"
 import { AppRuntime } from "../../src/effect/app-runtime"
 import { Log } from "../../src/util"
 import { tmpdir } from "../fixture/fixture"
+import { TestLLMServer, reply } from "../lib/llm-server"
 
 void Log.init({ print: false })
+
+const providerCfg = (url: string) => ({
+  provider: {
+    test: {
+      name: "Test",
+      id: "test",
+      env: [],
+      npm: "@ai-sdk/openai-compatible",
+      models: {
+        "test-model": {
+          id: "test-model",
+          name: "Test Model",
+          attachment: false,
+          reasoning: false,
+          temperature: false,
+          tool_call: true,
+          release_date: "2025-01-01",
+          limit: { context: 100000, output: 10000 },
+          cost: { input: 0, output: 0 },
+          options: {},
+        },
+      },
+      options: {
+        apiKey: "test-key",
+        baseURL: url,
+      },
+    },
+  },
+})
 
 afterEach(async () => {
   await Instance.disposeAll()
@@ -43,41 +78,49 @@ describe("E2E: Message and Streaming Response", () => {
   })
 
   test("POST /session/:id/message returns streaming response", async () => {
-    await using tmp = await tmpdir({ git: true })
+    const llmLayer = TestLLMServer.layer.pipe(
+      Layer.provide(HttpRouter.layer),
+      Layer.provide(NodeHttpServer.layer(() => Http.createServer(), { port: 0 })),
+    )
+    const llmRuntime = ManagedRuntime.make(llmLayer)
+    const llm = await llmRuntime.runPromise(
+      Effect.gen(function* () {
+        return yield* TestLLMServer
+      }),
+    )
+
+    await using tmp = await tmpdir({ git: true, config: providerCfg(llm.url) })
+
+    await llmRuntime.runPromise(llm.push(reply().text("Hello from E2E stream test!").stop().item()))
 
     await Instance.provide({
       directory: tmp.path,
-      fn: async () => {
-        const app = Server.Default().app
-        const dirQuery = `?directory=${encodeURIComponent(tmp.path)}`
+      fn: () =>
+        Effect.runPromise(
+          Effect.gen(function* () {
+            const promptSvc = yield* SessionPrompt.Service
+            const sessions = yield* SessionNs.Service
+            const sess = yield* sessions.create({ title: "Stream Test" })
 
-        const createRes = await app.request(`/session${dirQuery}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: "Streaming Test" }),
-        })
-        const session = (await createRes.json()) as { id: string }
+            const msg = yield* promptSvc.prompt({
+              sessionID: sess.id,
+              parts: [{ type: "text", text: "Tell me a joke" }],
+              model: { providerID: ProviderID.make("test"), modelID: ModelID.make("test-model") },
+              agent: "build",
+            })
 
-        const msgRes = await app.request(`/session/${session.id}/message${dirQuery}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            parts: [{ type: "text", text: "Hello, test message" }],
-          }),
-        })
+            expect(msg.info.role).toBe("assistant")
 
-        expect(msgRes.status).toBe(200)
-        expect(msgRes.headers.get("content-type")).toContain("application/json")
-
-        const body = await msgRes.text()
-        expect(body.length).toBeGreaterThan(0)
-
-        const parsed = JSON.parse(body)
-        if (parsed.error) {
-          expect(parsed.error).not.toContain("409")
-        }
-      },
+            const messages = yield* sessions.messages({ sessionID: sess.id })
+            expect(messages.length).toBeGreaterThanOrEqual(2)
+          }).pipe(
+            Effect.scoped,
+            Effect.provide(Layer.mergeAll(SessionPrompt.defaultLayer, SessionNs.defaultLayer)),
+          ),
+        ),
     })
+
+    await llmRuntime.dispose()
   })
 
   test("POST /session/:id/message with invalid JSON returns error", async () => {

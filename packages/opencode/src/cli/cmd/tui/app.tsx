@@ -85,16 +85,13 @@ function rendererConfig(_config: TuiConfig.Info, plainTerminal: boolean): CliRen
     openConsoleOnError: false,
     enableMouseMovement: mouseEnabled,
     useMouse: mouseEnabled,
+    maxFps: plainTerminal ? 15 : 60,
     ...(plainTerminal
       ? {
-          maxFps: 15,
-          screenMode: "main-screen" as const,
           useThread: false,
           backgroundColor: "transparent",
         }
-      : {
-          maxFps: 60,
-        }),
+      : {}),
     consoleOptions: {
       keyBindings: [{ name: "y", ctrl: true, action: "copy-selection" }],
       onCopySelection: (text) => {
@@ -1084,6 +1081,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     <box
       width={dimensions().width}
       height={dimensions().height}
+      flexDirection="column"
       backgroundColor={plainTerminal ? undefined : theme.background}
       onMouseDown={(evt) => {
         if (evt.button !== MouseButton.RIGHT) return
@@ -1113,16 +1111,20 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
         <TimeToFirstDraw />
       </Show>
       <Show when={ready()}>
-        <Switch>
-          <Match when={route.data.type === "home"}>
-            <Home />
-          </Match>
-          <Match when={route.data.type === "session"}>
-            <Session />
-          </Match>
-        </Switch>
+        <TuiPluginRuntime.Slot name="helix_header" />
+        <box flexGrow={1}>
+          <Switch>
+            <Match when={route.data.type === "home"}>
+              <Home />
+            </Match>
+            <Match when={route.data.type === "session"}>
+              <Session />
+            </Match>
+          </Switch>
+          {plugin()}
+        </box>
+        <TuiPluginRuntime.Slot name="helix_footer" />
       </Show>
-      {plugin()}
       <TuiPluginRuntime.Slot name="app" />
       <StartupLoading ready={ready} />
     </box>

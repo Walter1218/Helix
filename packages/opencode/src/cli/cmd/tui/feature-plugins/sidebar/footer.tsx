@@ -41,20 +41,20 @@ function View(props: { api: TuiPluginApi }) {
           </text>
           <box flexGrow={1} gap={1}>
             <box flexDirection="row" justifyContent="space-between">
-              <text fg={theme().text}>
+              <text fg={theme().text} wrapMode="word">
                 <b>Getting started</b>
               </text>
-              <text fg={theme().textMuted} onMouseDown={() => props.api.kv.set("dismissed_getting_started", true)}>
+              <text fg={theme().textMuted} onMouseDown={() => props.api.kv.set("dismissed_getting_started", true)} wrapMode="word">
                 ✕
               </text>
             </box>
-            <text fg={theme().textMuted}>MiMoCode includes free models so you can start immediately.</text>
-            <text fg={theme().textMuted}>
+            <text fg={theme().textMuted} wrapMode="word">MiMoCode includes free models so you can start immediately.</text>
+            <text fg={theme().textMuted} wrapMode="word">
               Connect from 75+ providers to use other models, including Claude, GPT, Gemini etc
             </text>
             <box flexDirection="row" gap={1} justifyContent="space-between">
-              <text fg={theme().text}>Connect provider</text>
-              <text fg={theme().textMuted}>/connect</text>
+              <text fg={theme().text} wrapMode="word">Connect provider</text>
+              <text fg={theme().textMuted} wrapMode="word">/connect</text>
             </box>
           </box>
         </box>
@@ -63,7 +63,7 @@ function View(props: { api: TuiPluginApi }) {
         <span style={{ fg: theme().textMuted }}>{path().parent}/</span>
         <span style={{ fg: theme().text }}>{path().name}</span>
       </text>
-      <text fg={theme().textMuted}>
+      <text fg={theme().textMuted} wrapMode="word">
         <span style={{ fg: theme().success }}>•</span> <b>MiMo</b>
         <span style={{ fg: theme().text }}>
           <b>Code</b>

@@ -12,27 +12,36 @@
 
 import { tui } from "../../opencode/src/cli/cmd/tui/app.tsx"
 import { TuiConfig } from "../../opencode/src/cli/cmd/tui/config/tui.ts"
-import path from "path"
 
-const cwd = process.cwd()
+import path from "path"
+import { existsSync } from "fs"
+
+// Find the nearest git root, falling back to current directory
+function findGitRoot(start: string): string {
+  let dir = path.resolve(start)
+  while (dir !== "/") {
+    if (existsSync(path.join(dir, ".git"))) return dir
+    dir = path.dirname(dir)
+  }
+  return path.resolve(start)
+}
+
+const cwd = findGitRoot(process.cwd())
 const externalUrl = process.env["HELIX_URL"]
 
 if (externalUrl) {
   const config = await TuiConfig.get()
-  await tui({ url: externalUrl, config, directory: cwd, args: {} })
+  await tui({ url: externalUrl, config, directory: cwd, args: { continue: !!process.env["HELIX_CONTINUE"] || undefined } })
 } else {
   const { Rpc } = await import("../../opencode/src/util/index.ts")
 
-  const mimoHome = process.env["MIMOCODE_HOME"] ?? path.join(cwd, ".dev-home")
-
-  // Suppress Worker log output to avoid polluting TUI stdout
   const env = {
     ...process.env,
-    MIMOCODE_HOME: mimoHome,
     MIMOCODE_PROCESS_ROLE: "worker",
     MIMOCODE_RUN_ID: `helix-${Date.now()}`,
     MIMOCODE_LOG_LEVEL: "ERROR",
   }
+  if (process.env["MIMOCODE_HOME"]) env.MIMOCODE_HOME = process.env["MIMOCODE_HOME"]
 
   const workerPath = Bun.resolveSync("../../opencode/src/cli/cmd/tui/worker.ts", import.meta.dir)
   const worker = new Worker(workerPath, { env })
@@ -78,7 +87,7 @@ if (externalUrl) {
     directory: cwd,
     fetch: workerFetch,
     events,
-    args: {},
+    args: { continue: !!process.env["HELIX_CONTINUE"] || undefined },
   })
 
   await stop()

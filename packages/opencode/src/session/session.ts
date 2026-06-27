@@ -292,6 +292,42 @@ export const Event = {
       metrics: z.record(z.string(), z.any()).optional(),
     }),
   ),
+  PreFlightResult: BusEvent.define(
+    "preflight.result",
+    z.object({
+      sessionID: SessionID.zod,
+      passed: z.boolean(),
+      blocked: z.boolean(),
+      paused: z.boolean(),
+      results: z.array(
+        z.object({
+          id: z.string(),
+          name: z.string(),
+          passed: z.boolean(),
+          level: z.string(),
+          message: z.string(),
+        }),
+      ),
+    }),
+  ),
+  ModeApplied: BusEvent.define(
+    "mode.applied",
+    z.object({
+      sessionID: SessionID.zod,
+      mode: z.string(),
+      judgeEnabled: z.boolean().optional(),
+      specDriven: z.boolean().optional(),
+    }),
+  ),
+  CandidateScored: BusEvent.define(
+    "candidate.scored",
+    z.object({
+      sessionID: SessionID.zod,
+      bestIndex: z.number().int(),
+      totalCandidates: z.number().int(),
+      bestScore: z.number(),
+    }),
+  ),
   RetryAttempt: BusEvent.define(
     "session.retry.attempt",
     z.object({

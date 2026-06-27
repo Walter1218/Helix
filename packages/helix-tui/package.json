@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "mkdir -p .dev-home/data && MIMOCODE_HOME=$PWD/.dev-home bun run --conditions=browser src/index.ts",
-    "start": "mkdir -p .dev-home/data && MIMOCODE_HOME=$PWD/.dev-home bun run --conditions=browser src/index.ts",
+    "dev": "mkdir -p $HOME/.config/mimocode/config && [ ! -f $HOME/.config/mimocode/config/mimocode.json ] && cp $HOME/.config/mimocode/mimocode.json $HOME/.config/mimocode/config/mimocode.json 2>/dev/null; MIMOCODE_HOME=$HOME/.config/mimocode MIMOCODE_LOG_LEVEL=ERROR bun run --conditions=browser src/index.ts",
+    "start": "MIMOCODE_HOME=$HOME/.config/mimocode MIMOCODE_LOG_LEVEL=ERROR bun run --conditions=browser src/index.ts",
+    "verify": "MIMOCODE_HOME=$HOME/.config/mimocode bun run --conditions=browser verify.ts",
     "typecheck": "bun test --timeout 5000 test/index.test.ts 2>/dev/null; echo 'helix-tui typechecks within @mimo-ai/cli context'",
     "test": "bun test"
   },

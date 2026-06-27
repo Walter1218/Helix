@@ -84,13 +84,13 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
 
   return (
     <box>
-      <text fg={theme().text}>
+      <text fg={theme().text} wrapMode="word">
         <b>Context</b>
       </text>
-      <text fg={theme().textMuted}>{state().tokens.toLocaleString()} tokens</text>
-      <text fg={theme().textMuted}>{state().percent ?? 0}% used</text>
-      <Show when={tpsLabel()}>{(label) => <text fg={theme().textMuted}>{label()}</text>}</Show>
-      <text fg={theme().textMuted}>{money.format(cost())} spent</text>
+      <text fg={theme().textMuted} wrapMode="word">{state().tokens.toLocaleString()} tokens</text>
+      <text fg={theme().textMuted} wrapMode="word">{state().percent ?? 0}% used</text>
+      <Show when={tpsLabel()}>{(label) => <text fg={theme().textMuted} wrapMode="word">{label()}</text>}</Show>
+      <text fg={theme().textMuted} wrapMode="word">{money.format(cost())} spent</text>
     </box>
   )
 }

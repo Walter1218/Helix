@@ -16,7 +16,7 @@ const levelPriority: Record<Level, number> = {
 }
 const keep = 10
 
-let level: Level = "INFO"
+let level: Level = (process.env.MIMOCODE_LOG_LEVEL as Level) ?? "INFO"
 
 function shouldLog(input: Level): boolean {
   return levelPriority[input] >= levelPriority[level]
@@ -59,6 +59,7 @@ let write = (msg: any) => {
 
 export async function init(options: Options) {
   if (options.level) level = options.level
+  if (process.env.MIMOCODE_LOG_LEVEL) level = process.env.MIMOCODE_LOG_LEVEL as Level
   void cleanup(Global.Path.log)
   if (options.print) return
   logpath = path.join(

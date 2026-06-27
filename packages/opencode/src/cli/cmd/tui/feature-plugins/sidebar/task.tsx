@@ -45,9 +45,9 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
       <box>
         <box flexDirection="row" gap={1} onMouseDown={() => collapsible() && setOpen((x) => !x)}>
           <Show when={collapsible()}>
-            <text fg={theme().text}>{open() ? "▼" : "▶"}</text>
+            <text fg={theme().text} wrapMode="word">{open() ? "▼" : "▶"}</text>
           </Show>
-          <text fg={theme().text}>
+          <text fg={theme().text} wrapMode="word">
             <b>Tasks</b>
           </text>
         </box>
@@ -65,7 +65,7 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
           </Index>
           <Show when={hiddenDoneCount() > 0 || doneExpanded()}>
             <box flexDirection="row" gap={0} onMouseDown={() => setDoneExpanded((x) => !x)}>
-              <text fg={theme().textMuted}>
+              <text fg={theme().textMuted} wrapMode="word">
                 {doneExpanded() ? "  ▾ fewer done" : `  ▸ ${hiddenDoneCount()} more done`}
               </text>
             </box>

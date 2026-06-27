@@ -13,15 +13,15 @@ function View(props: { api: TuiPluginApi }) {
     <box>
       <box flexDirection="row" gap={1} onMouseDown={() => list().length > 2 && setOpen((x) => !x)}>
         <Show when={list().length > 2}>
-          <text fg={theme().text}>{open() ? "▼" : "▶"}</text>
+          <text fg={theme().text} wrapMode="word">{open() ? "▼" : "▶"}</text>
         </Show>
-        <text fg={theme().text}>
+        <text fg={theme().text} wrapMode="word">
           <b>LSP</b>
         </text>
       </box>
       <Show when={list().length <= 2 || open()}>
         <Show when={list().length === 0}>
-          <text fg={theme().textMuted}>
+          <text fg={theme().textMuted} wrapMode="word">
             {off() ? "LSPs have been disabled in settings" : "LSPs will activate as files are read"}
           </text>
         </Show>
@@ -36,7 +36,7 @@ function View(props: { api: TuiPluginApi }) {
               >
                 •
               </text>
-              <text fg={theme().textMuted}>
+              <text fg={theme().textMuted} wrapMode="word">
                 {item.id} {item.root}
               </text>
             </box>

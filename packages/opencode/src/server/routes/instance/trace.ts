@@ -53,7 +53,6 @@ export async function jsonRequest<C extends Context, A, E>(
   // 捕获当前 Instance 上下文，在 Effect 执行时恢复
   try {
     const ctx = Instance.current
-    console.log("[trace] Instance context found:", ctx.directory)
     return Instance.restore(ctx, async () => {
       return c.json(
         await runRequest(

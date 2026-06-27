@@ -13,9 +13,9 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
       <box>
         <box flexDirection="row" gap={1} onMouseDown={() => list().length > 2 && setOpen((x) => !x)}>
           <Show when={list().length > 2}>
-            <text fg={theme().text}>{open() ? "▼" : "▶"}</text>
+            <text fg={theme().text} wrapMode="word">{open() ? "▼" : "▶"}</text>
           </Show>
-          <text fg={theme().text}>
+          <text fg={theme().text} wrapMode="word">
             <b>Modified Files</b>
           </text>
         </box>
@@ -23,15 +23,15 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
           <For each={list()}>
             {(item) => (
               <box flexDirection="row" gap={1} justifyContent="space-between">
-                <text fg={theme().textMuted} wrapMode="none">
+                <text fg={theme().textMuted} wrapMode="word">
                   {item.file}
                 </text>
                 <box flexDirection="row" gap={1} flexShrink={0}>
                   <Show when={item.additions}>
-                    <text fg={theme().diffAdded}>+{item.additions}</text>
+                    <text fg={theme().diffAdded} wrapMode="word">+{item.additions}</text>
                   </Show>
                   <Show when={item.deletions}>
-                    <text fg={theme().diffRemoved}>-{item.deletions}</text>
+                    <text fg={theme().diffRemoved} wrapMode="word">-{item.deletions}</text>
                   </Show>
                 </box>
               </box>

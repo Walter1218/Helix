@@ -13,7 +13,7 @@ function View(props: { api: TuiPluginApi }) {
     <Show when={list().length > 0}>
       <box>
         <box flexDirection="row" gap={1}>
-          <text fg={theme().text}>
+          <text fg={theme().text} wrapMode="word">
             <b>{t("tui.sidebar.instructions")}</b>
           </text>
         </box>
@@ -23,7 +23,7 @@ function View(props: { api: TuiPluginApi }) {
               <text flexShrink={0} fg={theme().primary}>
                 •
               </text>
-              <text fg={theme().textMuted} wrapMode="none">
+              <text fg={theme().textMuted} wrapMode="word">
                 {file}
               </text>
             </box>

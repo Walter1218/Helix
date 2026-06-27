@@ -18,9 +18,9 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
       <box>
         <box flexDirection="row" gap={1} onMouseDown={() => list().length > 2 && setOpen((x) => !x)}>
           <Show when={list().length > 2}>
-            <text fg={theme().text}>{open() ? "▼" : "▶"}</text>
+            <text fg={theme().text} wrapMode="word">{open() ? "▼" : "▶"}</text>
           </Show>
-          <text fg={theme().text}>
+          <text fg={theme().text} wrapMode="word">
             <b>Todo</b>
           </text>
         </box>

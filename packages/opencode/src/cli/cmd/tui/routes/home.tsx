@@ -101,14 +101,16 @@ export function Home() {
               </TuiPluginRuntime.Slot>
             }
           >
-            <box flexDirection="column" flexShrink={0}>
-              {logoThin.left.slice(2).map((line, index) => (
-                <box flexDirection="row" gap={1} flexShrink={0}>
-                  <text selectable={false}>{line}</text>
-                  <text selectable={false}>{logoThin.right[index + 2] ?? ""}</text>
-                </box>
-              ))}
-            </box>
+            <TuiPluginRuntime.Slot name="home_logo" mode="replace">
+              <box flexDirection="column" flexShrink={0}>
+                {logoThin.left.slice(2).map((line, index) => (
+                  <box flexDirection="row" gap={1} flexShrink={0}>
+                    <text selectable={false}>{line}</text>
+                    <text selectable={false}>{logoThin.right[index + 2] ?? ""}</text>
+                  </box>
+                ))}
+              </box>
+            </TuiPluginRuntime.Slot>
           </Show>
         </box>
         <box height={1} minHeight={0} flexShrink={1} />

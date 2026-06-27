@@ -296,6 +296,7 @@
       "name": "@mimo-ai/helix-tui",
       "version": "0.1.0",
       "dependencies": {
+        "@mimo-ai/cli": "workspace:*",
         "@mimo-ai/sdk": "workspace:*",
         "@mimo-ai/shared": "workspace:*",
         "@opentui/core": "catalog:",

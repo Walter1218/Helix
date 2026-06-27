@@ -18,10 +18,10 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
 
   return (
     <box>
-      <text fg={theme().text}>
+      <text fg={theme().text} wrapMode="word">
         <b>{t("tui.sidebar.cwd")}</b>
       </text>
-      <text fg={theme().textMuted}>{display()}</text>
+      <text fg={theme().textMuted} wrapMode="word">{display()}</text>
     </box>
   )
 }

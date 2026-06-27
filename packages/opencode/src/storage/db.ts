@@ -71,11 +71,15 @@ function migrations(dir: string): Journal {
       const file = path.join(dir, name, "migration.sql")
       if (!existsSync(file)) return
       let content = readFileSync(file, "utf-8")
-      // Make CREATE TABLE/INDEX idempotent to handle squashed migrations
-      // that conflict with tables created by earlier migrations
+      // Make CREATE TABLE/INDEX/VIRTUAL TABLE/TRIGGER idempotent to handle squashed
+      // migrations that conflict with objects created by earlier migration runs.
+      // SQLite doesn't support IF NOT EXISTS for VIRTUAL TABLE or TRIGGER natively,
+      // but the error tolerance in migrateWithTolerance handles the "already exists" case.
       content = content.replace(/\bCREATE TABLE\b(?! IF NOT EXISTS)/g, "CREATE TABLE IF NOT EXISTS")
-      content = content.replace(/\bCREATE INDEX\b(?! IF NOT EXISTS)/g, "CREATE INDEX IF NOT EXISTS")
+      content = content.replace(/\bCREATE\s+VIRTUAL\s+TABLE\b(?! IF NOT EXISTS)/gi, "CREATE VIRTUAL TABLE IF NOT EXISTS")
       content = content.replace(/\bCREATE UNIQUE INDEX\b(?! IF NOT EXISTS)/g, "CREATE UNIQUE INDEX IF NOT EXISTS")
+      content = content.replace(/\bCREATE INDEX\b(?! IF NOT EXISTS)/g, "CREATE INDEX IF NOT EXISTS")
+      content = content.replace(/\bCREATE TRIGGER\b(?! IF NOT EXISTS)/g, "CREATE TRIGGER IF NOT EXISTS")
       return {
         sql: content,
         timestamp: time(name),
@@ -161,14 +165,35 @@ function migrateWithTolerance(db: Client, entries: Journal) {
         }
       } catch (err: any) {
         const msg = (err?.message ?? "") + " " + (err?.cause?.message ?? "")
-        // Tolerate: table/index already exists, duplicate column, no such table (for DROP)
-        // Also tolerate: RENAME TABLE target already exists (Drizzle wraps this differently)
+        // Determine statement category for tolerance decisions
+        const isCreateIdempotent =
+          /^CREATE\s+(TABLE|INDEX|VIRTUAL\s+TABLE|TRIGGER)\s+IF\s+NOT\s+EXISTS/i.test(stmt)
+        const isDrop =
+          /^DROP\s+(TABLE|INDEX|TRIGGER)/i.test(stmt)
+        const isAlter = /^ALTER\s+TABLE/i.test(stmt)
+
+        // Idempotent CREATE statements and all DROP statements:
+        // CREATE IF NOT EXISTS is safe (table already exists → no-op).
+        // DROP (any) is safe because the table either doesn't exist yet,
+        // or is FK-protected but already populated — both are "already applied".
+        if (isCreateIdempotent || isDrop) {
+          log.info("migration statement skipped (already applied)", {
+            migration: entry.name,
+            error: msg.slice(0, 80),
+          })
+          continue
+        }
+
+        // ALTER TABLE statements: need precise matching since they're not idempotent.
+        // Only tolerate known "already applied" patterns.
         if (
-          msg.includes("already exists") ||
-          msg.includes("duplicate column") ||
-          msg.includes("no such table") ||
-          msg.includes("no such column") ||
-          (msg.includes("Failed to run the query") && msg.includes("RENAME TO"))
+          isAlter &&
+          (msg.includes("already exists") ||
+            msg.includes("duplicate column") ||
+            msg.includes("no such table") ||
+            msg.includes("no such column") ||
+            msg.includes("constraint failed") ||
+            (msg.includes("Failed to run the query") && msg.includes("RENAME TO")))
         ) {
           log.info("migration statement skipped (already applied)", {
             migration: entry.name,
@@ -176,6 +201,8 @@ function migrateWithTolerance(db: Client, entries: Journal) {
           })
           continue
         }
+
+        // Any other failure: re-throw as fatal.
         throw err
       }
     }
@@ -218,12 +245,28 @@ export const Client = lazy(() => {
         item.sql = "select 1;"
       }
     }
-    if (typeof OPENCODE_MIGRATIONS !== "undefined") {
-      // Bundled mode: use drizzle's built-in migrate (entries are trusted)
-      migrate(db, entries)
-    } else {
-      // Dev mode: use tolerant migration to handle squashed migration conflicts
-      migrateWithTolerance(db, entries)
+
+    // Retry up to 3 times to handle concurrent instance startup races.
+    // WAL + busy_timeout(5000) handles most cases, but rare edge cases
+    // (e.g. another process mid-WAL-checkpoint) benefit from a retry.
+    const maxRetries = 3
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        if (typeof OPENCODE_MIGRATIONS !== "undefined") {
+          migrate(db, entries)
+        } else {
+          migrateWithTolerance(db, entries)
+        }
+        break
+      } catch (err: any) {
+        const msg = (err?.message ?? "") + " " + (err?.cause?.message ?? "")
+        if (attempt < maxRetries - 1 && (msg.includes("database is locked") || msg.includes("SQLITE_BUSY"))) {
+          log.warn("migration locked, retrying", { attempt: attempt + 1, delay: 500 * (attempt + 1) })
+          Bun.sleepSync(500 * (attempt + 1))
+          continue
+        }
+        throw err
+      }
     }
   }
 

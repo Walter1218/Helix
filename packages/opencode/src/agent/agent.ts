@@ -18,6 +18,7 @@ import PROMPT_DISTILL from "./prompt/distill.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
+import PROMPT_SCRIPTWRITING from "./prompt/scriptwriting.txt"
 import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@/global"
@@ -431,6 +432,27 @@ export const layer = Layer.effect(
               user,
             ),
             toolAllowlist: ["read", "write", "edit", "glob", "grep", "memory", "bash"],
+          },
+          scriptwriting: {
+            name: "scriptwriting",
+            color: "#ff6b9d",
+            description: "短视频剧本编剧。根据主题生成多轮次剧本，每轮独立成片。",
+            options: {},
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                "*": "deny",
+                read: "allow",
+                write: "allow",
+                edit: "allow",
+                glob: "allow",
+                grep: "allow",
+              }),
+              user,
+            ),
+            mode: "subagent",
+            prompt: PROMPT_SCRIPTWRITING,
+            toolAllowlist: ["read", "write", "edit", "glob", "grep"],
           },
         }
 
