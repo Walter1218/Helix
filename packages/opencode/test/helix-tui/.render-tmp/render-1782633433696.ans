@@ -1,0 +1,3 @@
+^D[31merror[0m[2m: [0m[1mCannot find module './src/cli/cmd/tui/context/exit' from '/Users/onetwo/Documents/trae_projects/Helix/packages/opencode/test/helix-tui/.render-tmp/render-1782633433696.tsx'[0m
+[0m
+[2mBun v1.3.14 (macOS arm64)[0m
