@@ -215,4 +215,24 @@ function App() {
     
     expect(out).toContain("SLOT_FALLBACK")
   })
+
+  test("ErrorBoundary catches render error", async () => {
+    const imports = `
+import { ErrorBoundary } from "solid-js"
+
+function Broken() {
+  throw new Error("TEST_ERR_BOUNDARY_WORKS")
+  return null
+}`
+
+    const out = await captureRender(
+      `<ErrorBoundary fallback={(e: Error) => <text>{'CAUGHT:' + e.message}</text>}>
+        <Broken />
+      </ErrorBoundary>`,
+      1,
+      imports
+    )
+    
+    expect(out).toContain("CAUGHT:TEST_ERR_BOUNDARY_WORKS")
+  })
 })
