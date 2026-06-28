@@ -19,4 +19,4 @@ render(() => (
 
 // Let render complete
 await new Promise(r => setTimeout(r, 500))
-;renderer as any).destroy?.()
+;(renderer as any).destroy?.()
