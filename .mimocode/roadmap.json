@@ -286,7 +286,7 @@
           "id": "M6-T4a",
           "title": "Pre-flight 检查后端",
           "description": "实现 session/preflight.ts，对接已有的前端展示面板",
-          "status": "in_progress",
+          "status": "done",
           "priority": "low",
           "estimated_tokens": 50000,
           "tags": [
@@ -298,7 +298,7 @@
           "id": "M6-T4b",
           "title": "Cardinal 阻塞降级后端",
           "description": "实现 session/cardinal.ts，block/pause/stop/warn 四级阻塞",
-          "status": "in_progress",
+          "status": "done",
           "priority": "low",
           "estimated_tokens": 50000,
           "tags": [
