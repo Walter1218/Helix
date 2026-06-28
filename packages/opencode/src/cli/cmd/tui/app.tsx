@@ -232,23 +232,114 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
 
       yield* Effect.tryPromise(async () => {
         void renderer.getPalette({ size: 16 }).catch(() => undefined)
-        console.error("[DEBUG] About to call render()...")
-        try {
-          await render(() => {
-            return (
-              <box width={dimensions?.().width ?? 80} height={dimensions?.().height ?? 24} flexDirection="column">
-                <box flexGrow={1} alignItems="center" justifyContent="center">
-                  <text><b>Helix TUI — OpenCode Base</b></text>
-                  <box height={1} />
-                  <text>Rendering pipeline works.</text>
-                </box>
-              </box>
-            )
-          }, renderer)
-        } catch (e) {
-          console.error("[DEBUG] render() threw:", e instanceof Error ? e.message : String(e), e instanceof Error ? e.stack?.split('\n').slice(0, 5).join('\n') : '')
-          throw e
-        }
+        const mode = (await renderer.waitForThemeMode(1000)) ?? "dark"
+        if (renderer.isDestroyed) return
+
+        await render(() => {
+          return (
+            <ExitProvider
+              exit={(reason) => {
+                if (renderer.isDestroyed) return
+                exit.reason = reason
+                destroyRenderer(renderer)
+              }}
+            >
+              <EpilogueProvider set={(value) => (exit.epilogue = value)}>
+                <ErrorBoundary fallback={(error, reset) => <ErrorComponent error={error} reset={reset} mode={mode} />}>
+                  <TuiPathsProvider
+                    value={{
+                      cwd: process.cwd(),
+                      home: global.home,
+                      state: global.state,
+                      worktree: global.state + "/worktree",
+                    }}
+                  >
+                    <TuiTerminalEnvironmentProvider
+                      value={{
+                        platform: process.platform,
+                        multiplexer: process.env.TMUX ? "tmux" : process.env.STY ? "screen" : undefined,
+                        displayServer: process.env.WAYLAND_DISPLAY
+                          ? "wayland"
+                          : process.env.DISPLAY
+                            ? "x11"
+                            : undefined,
+                      }}
+                    >
+                      <TuiStartupProvider
+                        value={{
+                          initialRoute: process.env.OPENCODE_ROUTE ? JSON.parse(process.env.OPENCODE_ROUTE) : undefined,
+                          skipInitialLoading: Boolean(process.env.OPENCODE_FAST_BOOT),
+                        }}
+                      >
+                        <ClipboardProvider>
+                          <OpencodeKeymapProvider keymap={keymap}>
+                            <ArgsProvider {...input.args}>
+                              <KVProvider>
+                                <ToastProvider>
+                                  <RouteProvider
+                                    initialRoute={
+                                      input.args.continue
+                                        ? {
+                                            type: "session",
+                                            sessionID: "dummy",
+                                          }
+                                        : undefined
+                                    }
+                                  >
+                                    <TuiConfigProvider config={input.config}>
+                                      <PluginRuntimeProvider value={pluginRuntime}>
+                                        <SDKProvider
+                                          url={input.url}
+                                          directory={input.directory}
+                                          fetch={input.fetch}
+                                          headers={input.headers}
+                                          events={input.events}
+                                        >
+                                          <ProjectProvider>
+                                            <SyncProvider>
+                                              <DataProvider>
+                                                <ThemeProvider mode={mode}>
+                                                  <LocalProvider>
+                                                    <PromptStashProvider>
+                                                      <DialogProvider>
+                                                        <FrecencyProvider>
+                                                          <PromptHistoryProvider>
+                                                            <PromptRefProvider>
+                                                              <EditorContextProvider>
+                                                                <LocationProvider>
+                                                                  <App
+                                                                    onSnapshot={input.onSnapshot}
+                                                                    pluginHost={input.pluginHost}
+                                                                  />
+                                                                </LocationProvider>
+                                                              </EditorContextProvider>
+                                                            </PromptRefProvider>
+                                                          </PromptHistoryProvider>
+                                                        </FrecencyProvider>
+                                                      </DialogProvider>
+                                                    </PromptStashProvider>
+                                                  </LocalProvider>
+                                                </ThemeProvider>
+                                              </DataProvider>
+                                            </SyncProvider>
+                                          </ProjectProvider>
+                                        </SDKProvider>
+                                      </PluginRuntimeProvider>
+                                    </TuiConfigProvider>
+                                  </RouteProvider>
+                                </ToastProvider>
+                              </KVProvider>
+                            </ArgsProvider>
+                          </OpencodeKeymapProvider>
+                        </ClipboardProvider>
+                      </TuiStartupProvider>
+                    </TuiTerminalEnvironmentProvider>
+                  </TuiPathsProvider>
+                </ErrorBoundary>
+              </EpilogueProvider>
+            </ExitProvider>
+          )
+        }, renderer)
       })
       yield* Deferred.await(shutdown)
       return { epilogue: exit.epilogue, reason: exit.reason }
@@ -1036,14 +1127,17 @@ export function tui(input: {
   url: string; config: any; directory?: string; fetch?: typeof fetch
   headers?: any; events?: any; args?: any; onSnapshot?: () => Promise<string[]>
 }) {
-  return Effect.runPromise(
+  console.error("[TUI-COMPAT] tui() called, running Effect...")
+  const p = Effect.runPromise(
     run({
       url: input.url, config: input.config ?? {}, directory: input.directory,
       fetch: input.fetch, events: input.events, args: input.args ?? {},
       onSnapshot: input.onSnapshot, headers: input.headers,
       pluginHost: createCompatPluginHost(),
     } as any).pipe(
-      Effect.tapError((e: unknown) => Effect.sync(() => console.error("[TUI] Run error:", e)))
+      Effect.tapError((e: unknown) => Effect.sync(() => {
+        console.error("[TUI] Run error cause:", (e as any)?.cause?.message ?? (e as any)?.message ?? String(e))
+      })),
     ),
   )
 }
