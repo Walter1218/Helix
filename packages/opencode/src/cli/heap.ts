@@ -6,11 +6,17 @@ import { Log } from "@/util"
 
 const log = Log.create({ service: "heap" })
 const MINUTE = 60_000
-const LIMIT = 2 * 1024 * 1024 * 1024
+const LIMIT = 1.5 * 1024 * 1024 * 1024
+const WARN_LIMIT = 1024 * 1024 * 1024
 
 let timer: Timer | undefined
 let lock = false
 let armed = true
+let warned = false
+
+export function gc() {
+  globalThis.gc?.()
+}
 
 export function start() {
   if (!Flag.MIMOCODE_AUTO_HEAP_SNAPSHOT) return
@@ -22,6 +28,15 @@ export function start() {
     const stat = process.memoryUsage()
     if (stat.rss <= LIMIT) {
       armed = true
+      if (stat.rss > WARN_LIMIT && !warned) {
+        warned = true
+        log.warn("memory usage approaching limit", {
+          rss: stat.rss,
+          heap: stat.heapUsed,
+          external: stat.external,
+        })
+      }
+      if (stat.rss <= WARN_LIMIT) warned = false
       return
     }
     if (!armed) return
@@ -37,6 +52,8 @@ export function start() {
       heap: stat.heapUsed,
       file,
     })
+
+    gc()
 
     await Promise.resolve()
       .then(() => writeHeapSnapshot(file))

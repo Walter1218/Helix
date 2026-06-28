@@ -105,7 +105,7 @@ export interface TraceEvent {
   sessionId?: string
 }
 
-const MAX_TRACES = 10000
+const MAX_TRACES = 5000
 const traces: TraceEvent[] = []
 let logFile: string | null = null
 let enabled = true

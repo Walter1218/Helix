@@ -5,6 +5,7 @@ import { LocalContext } from "@/util"
 import { InstanceRef, WorkspaceRef } from "./instance-ref"
 import { registerDisposer } from "./instance-registry"
 import { WorkspaceContext } from "@/control-plane/workspace-context"
+import { Heap } from "@/cli/heap"
 
 const TypeId = "~opencode/InstanceState"
 
@@ -48,7 +49,7 @@ export const make = <A, E = never, R = never>(
     })
 
     const off = registerDisposer((directory) =>
-      Effect.runPromise(ScopedCache.invalidate(cache, directory).pipe(Effect.provide(EffectLogger.layer))),
+      Effect.runPromise(ScopedCache.invalidate(cache, directory).pipe(Effect.provide(EffectLogger.layer))).then(() => Heap.gc()),
     )
     yield* Effect.addFinalizer(() => Effect.sync(off))
 

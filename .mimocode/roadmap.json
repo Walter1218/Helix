@@ -146,7 +146,7 @@
           "id": "M4-T2",
           "title": "内存使用优化",
           "description": "减少常驻内存占用",
-          "status": "pending",
+          "status": "done",
           "priority": "low",
           "estimated_tokens": 60000,
           "tags": [
@@ -249,7 +249,7 @@
           "id": "M6-T2b",
           "title": "e2e 测试 - 消息与流式响应",
           "description": "测试发送消息、接收流式响应、断开重连",
-          "status": "in_progress",
+          "status": "done",
           "priority": "medium",
           "estimated_tokens": 50000,
           "tags": [
@@ -262,7 +262,7 @@
           "id": "M6-T3a",
           "title": "模式注册表 - 接口设计与 Ask/Build",
           "description": "设计 ModeHandler 接口，实现 Ask 和 Build 模式的注册表",
-          "status": "pending",
+          "status": "done",
           "priority": "low",
           "estimated_tokens": 60000,
           "tags": [
