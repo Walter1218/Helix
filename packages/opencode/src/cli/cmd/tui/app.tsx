@@ -231,21 +231,24 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
       const pluginRuntime = createPluginRuntime()
 
       yield* Effect.tryPromise(async () => {
-        // Prewarm palette before ThemeProvider mounts so `system` theme avoids a first-paint fallback flash.
         void renderer.getPalette({ size: 16 }).catch(() => undefined)
-        await render(() => {
-          return (
-            <box width={dimensions?.().width ?? 80} height={dimensions?.().height ?? 24} flexDirection="column">
-              <box flexGrow={1} alignItems="center" justifyContent="center">
-                <text><b>Helix TUI — OpenCode Base</b></text>
-                <box height={1} />
-                <text>Rendering pipeline works.</text>
-                <box height={1} />
-                <text>If you see this, providers & renderer are OK.</text>
+        console.error("[DEBUG] About to call render()...")
+        try {
+          await render(() => {
+            return (
+              <box width={dimensions?.().width ?? 80} height={dimensions?.().height ?? 24} flexDirection="column">
+                <box flexGrow={1} alignItems="center" justifyContent="center">
+                  <text><b>Helix TUI — OpenCode Base</b></text>
+                  <box height={1} />
+                  <text>Rendering pipeline works.</text>
+                </box>
               </box>
-            </box>
-          )
-        }, renderer)
+            )
+          }, renderer)
+        } catch (e) {
+          console.error("[DEBUG] render() threw:", e instanceof Error ? e.message : String(e), e instanceof Error ? e.stack?.split('\n').slice(0, 5).join('\n') : '')
+          throw e
+        }
       })
       yield* Deferred.await(shutdown)
       return { epilogue: exit.epilogue, reason: exit.reason }
