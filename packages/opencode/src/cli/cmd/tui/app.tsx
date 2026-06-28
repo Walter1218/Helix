@@ -193,8 +193,8 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
               useKittyKeyboard: {},
               autoFocus: false,
               openConsoleOnError: false,
-              openConsoleOnError: false,
               useMouse: !Flag.MIMOCODE_DISABLE_MOUSE && input.config.mouse,
+              screenMode: process.env.HELIX_SCREEN_MODE as any || "alternate-screen",
               consoleOptions: {
                 keyBindings: [{ name: "y", ctrl: true, action: "copy-selection" }],
               },
@@ -252,7 +252,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                       cwd: process.cwd(),
                       home: global.home,
                       state: global.state,
-                      worktree: global.state + "/worktree",
+                      worktree: global.data + "/worktree",
                     }}
                   >
                     <TuiTerminalEnvironmentProvider
