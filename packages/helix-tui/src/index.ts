@@ -1,6 +1,7 @@
 #!/usr/bin/env bun --conditions=browser
 // @ts-nocheck
 
+import { resolve } from "../../opencode/src/cli/cmd/tui/config/index.tsx"
 /**
  * Helix TUI — self-contained entry point.
  *
@@ -11,7 +12,7 @@
  */
 
 import { tui } from "../../opencode/src/cli/cmd/tui/app.tsx"
-import { TuiConfig } from "../../opencode/src/cli/cmd/tui/config/tui.ts"
+import { TuiConfig } from "../../opencode/src/cli/cmd/tui/config/index.tsx"
 
 import path from "path"
 import { existsSync } from "fs"
@@ -30,7 +31,7 @@ const cwd = findGitRoot(process.cwd())
 const externalUrl = process.env["HELIX_URL"]
 
 if (externalUrl) {
-  const config = await TuiConfig.get()
+  const config = resolve({}, { terminalSuspend: true })
   await tui({ url: externalUrl, config, directory: cwd, args: { continue: !!process.env["HELIX_CONTINUE"] || undefined } })
 } else {
   const { Rpc } = await import("../../opencode/src/util/index.ts")
@@ -67,7 +68,7 @@ if (externalUrl) {
 
   process.on("SIGUSR2", () => client.call("reload", undefined).catch(() => {}))
 
-  const config = await TuiConfig.get()
+  const config = resolve({}, { terminalSuspend: true })
 
   setTimeout(() => client.call("checkUpgrade", { directory: cwd }).catch(() => {}), 1000)
 

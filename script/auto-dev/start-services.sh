@@ -7,6 +7,7 @@ set -e
 
 PROJECT_ROOT="/Users/onetwo/Documents/trae_projects/Helix"
 LOG_DIR="$HOME/.local/share/mimocode/log"
+BUN="/Users/onetwo/.npm-global/bin/bun"
 SERVER_PORT=3095
 GATEWAY_PORT=3096
 SERVER_PASSWORD=test123
@@ -19,12 +20,11 @@ check_helix_server() {
     fi
     
     echo "🚀 启动 Helix Server..."
-    cd "$PROJECT_ROOT"
     MIMOCODE_HOME="$PROJECT_ROOT/.dev-home" \
     MIMOCODE_SKIP_MIGRATIONS=1 \
     MIMOCODE_SERVER_PASSWORD=$SERVER_PASSWORD \
     MIMOCODE_AUTONOMOUS=1 \
-    bun run --cwd packages/opencode --conditions=browser src/index.ts serve --port $SERVER_PORT > /tmp/mimo-serve.log 2>&1 &
+    "$BUN" run --cwd "$PROJECT_ROOT/packages/opencode" --conditions=browser src/index.ts serve --port $SERVER_PORT > /tmp/mimo-serve.log 2>&1 &
     
     # 等待 Server 健康检查通过
     echo "⏳ 等待 Helix Server 就绪..."
@@ -48,10 +48,9 @@ check_gateway() {
     fi
     
     echo "🚀 启动 Gateway..."
-    cd "$PROJECT_ROOT/packages/feishu-gateway"
     HELIX_URL=http://localhost:$SERVER_PORT \
     MIMOCODE_SERVER_PASSWORD=$SERVER_PASSWORD \
-    bun run src/index.ts > /tmp/feishu-gateway.log 2>&1 &
+    "$BUN" run --cwd "$PROJECT_ROOT/packages/feishu-gateway" src/index.ts > /tmp/feishu-gateway.log 2>&1 &
     
     # 等待 Gateway 健康检查通过
     echo "⏳ 等待 Gateway 就绪..."

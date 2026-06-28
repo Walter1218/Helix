@@ -6,7 +6,7 @@ import { tmpdir } from "../../fixture/fixture"
 import { createTuiPluginApi } from "../../fixture/tui-plugin"
 import { TuiConfig } from "../../../src/cli/cmd/tui/config/tui"
 
-const { TuiPluginRuntime } = await import("../../../src/cli/cmd/tui/plugin/runtime")
+const { TuiPluginRuntime } = await import("../../../src/cli/cmd/tui/plugin")
 
 test("installs plugin without loading it", async () => {
   await using tmp = await tmpdir({

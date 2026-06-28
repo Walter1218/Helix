@@ -12,9 +12,9 @@ import { withNetworkOptions, resolveNetworkOptionsNoConfig } from "@/cli/network
 import { Filesystem } from "@/util"
 import type { GlobalEvent } from "@mimo-ai/sdk/v2"
 import type { EventSource } from "./context/sdk"
-import { win32DisableProcessedInput, win32InstallCtrlCGuard } from "./win32"
+import { win32DisableProcessedInput, win32InstallCtrlCGuard } from "./terminal-win32"
 import { writeHeapSnapshot } from "v8"
-import { TuiConfig } from "./config/tui"
+import { resolve } from "./config/index";const TuiConfig = { get: async () => resolve({}, { terminalSuspend: true }) }
 import { MIMOCODE_PROCESS_ROLE, MIMOCODE_RUN_ID, ensureRunID, sanitizedProcessEnv } from "@/util/mimo-process"
 
 declare global {

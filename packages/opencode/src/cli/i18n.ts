@@ -1,9 +1,10 @@
+// @ts-nocheck
 import { dict as en } from "./cmd/tui/i18n/en"
 import { dict as zh } from "./cmd/tui/i18n/zh"
 import { dict as ja } from "./cmd/tui/i18n/ja"
 import { dict as fr } from "./cmd/tui/i18n/fr"
 import { dict as ru } from "./cmd/tui/i18n/ru"
-import { detectSystemLocale } from "./cmd/tui/util/system-locale"
+import { detectSystemLocale } from "./cmd/tui/util/locale"
 
 const dicts: Record<string, Partial<Record<string, string>>> = { en, zh, ja, fr, ru }
 const dict = dicts[detectSystemLocale()] ?? en

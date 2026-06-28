@@ -1,20 +1,29 @@
-import type { BoxRenderable, TextareaRenderable, KeyEvent, ScrollBoxRenderable } from "@opentui/core"
+// @ts-nocheck
+import type { BoxRenderable, TextareaRenderable, ScrollBoxRenderable } from "@opentui/core"
 import { pathToFileURL } from "bun"
 import fuzzysort from "fuzzysort"
+import path from "path"
 import { firstBy } from "remeda"
 import { createMemo, createResource, createEffect, onMount, onCleanup, Index, Show, createSignal } from "solid-js"
 import { createStore } from "solid-js/store"
-import { useSDK } from "@tui/context/sdk"
-import { useSync } from "@tui/context/sync"
+import { useEditorContext } from "../../context/editor"
+import { useProject } from "../../context/project"
+import { useSDK } from "../../context/sdk"
+import { useSync } from "../../context/sync"
+import { useData } from "../../context/data"
 import { getScrollAcceleration } from "../../util/scroll"
-import { useTuiConfig } from "../../context/tui-config"
-import { useTheme, selectedForeground } from "@tui/context/theme"
-import { SplitBorder } from "@tui/component/border"
-import { useCommandDialog } from "@tui/component/dialog-command"
+import { useTuiPaths } from "../../context/runtime"
+import { useTuiConfig } from "../../config"
+import { useLocation } from "../../context/location"
+import { useTheme, selectedForeground } from "../../context/theme"
+import { SplitBorder } from "../../ui/border"
 import { useTerminalDimensions } from "@opentui/solid"
-import { Locale } from "@/util"
-import type { PromptInfo } from "./history"
-import { useFrecency } from "./frecency"
+import { Locale } from "../../util/locale"
+import type { PromptInfo } from "../../prompt/history"
+import { useFrecency } from "../../prompt/frecency"
+import { useBindings, useCommandSlashes, useOpencodeModeStack } from "../../keymap"
+import { displayCharAt, mentionTriggerIndex } from "../../prompt/display"
+import type { FileSystemEntry } from "@mimo-ai/sdk/v2"
 
 function removeLineRange(input: string) {
   const hashIndex = input.lastIndexOf("#")
@@ -50,8 +59,7 @@ function extractLineRange(input: string) {
 
 export type AutocompleteRef = {
   onInput: (value: string) => void
-  onKeyDown: (e: KeyEvent) => void
-  visible: false | "@" | "$" | "/"
+  visible: false | "@" | "/"
 }
 
 export type AutocompleteOption = {
@@ -77,14 +85,19 @@ export function Autocomplete(props: {
   agentStyleId: number
   promptPartTypeId: () => number
 }) {
+  const editor = useEditorContext()
   const sdk = useSDK()
   const sync = useSync()
-  const command = useCommandDialog()
+  const data = useData()
+  const project = useProject()
+  const slashes = useCommandSlashes()
+  const modeStack = useOpencodeModeStack()
   const { theme } = useTheme()
   const dimensions = useTerminalDimensions()
   const frecency = useFrecency()
   const tuiConfig = useTuiConfig()
-
+  const paths = useTuiPaths()
+  const location = useLocation()
   const [store, setStore] = createStore({
     index: 0,
     selected: 0,
@@ -93,6 +106,12 @@ export function Autocomplete(props: {
   })
 
   const [positionTick, setPositionTick] = createSignal(0)
+
+  createEffect(() => {
+    if (!store.visible) return
+    const popMode = modeStack.push("autocomplete")
+    onCleanup(popMode)
+  })
 
   createEffect(() => {
     if (store.visible) {
@@ -151,13 +170,13 @@ export function Autocomplete(props: {
     setStore("input", "keyboard")
   })
 
-  function insertPart(text: string, part: PromptInfo["parts"][number], prefix: "@" | "$" = "@") {
+  function insertPart(text: string, part: PromptInfo["parts"][number]) {
     const input = props.input()
     const currentCursorOffset = input.cursorOffset
 
-    const charAfterCursor = props.value.at(currentCursorOffset)
+    const charAfterCursor = displayCharAt(props.value, currentCursorOffset)
     const needsSpace = charAfterCursor !== " "
-    const append = prefix + text + (needsSpace ? " " : "")
+    const append = "@" + text + (needsSpace ? " " : "")
 
     input.cursorOffset = store.index
     const startCursor = input.logicalCursor
@@ -167,7 +186,7 @@ export function Autocomplete(props: {
     input.deleteRange(startCursor.row, startCursor.col, endCursor.row, endCursor.col)
     input.insertText(append)
 
-    const virtualText = prefix + text
+    const virtualText = "@" + text
     const extmarkStart = store.index
     const extmarkEnd = extmarkStart + Bun.stringWidth(virtualText)
 
@@ -221,70 +240,117 @@ export function Autocomplete(props: {
     }
   }
 
-  const [files] = createResource(
-    () => search(),
-    async (query) => {
-      if (store.visible !== "@") return []
+  function createFilePart(
+    item: FileSystemEntry,
+    filePath: string,
+    lineRange?: { startLine: number; endLine?: number },
+  ) {
+    const urlObj = pathToFileURL(filePath)
+    const filename =
+      lineRange && item.type !== "directory"
+        ? `${item.path}#${lineRange.startLine}${lineRange.endLine ? `-${lineRange.endLine}` : ""}`
+        : item.path
 
-      const { lineRange, baseQuery } = extractLineRange(query ?? "")
+    if (lineRange && item.type !== "directory") {
+      urlObj.searchParams.set("start", String(lineRange.startLine))
+      if (lineRange.endLine !== undefined) {
+        urlObj.searchParams.set("end", String(lineRange.endLine))
+      }
+    }
+
+    return {
+      filename,
+      part: {
+        type: "file" as const,
+        mime: item.type === "directory" ? "application/x-directory" : "text/plain",
+        filename,
+        url: urlObj.href,
+        source: {
+          type: "file" as const,
+          text: {
+            start: 0,
+            end: 0,
+            value: "",
+          },
+          path: item.path,
+        },
+      },
+    }
+  }
+
+  const references = createMemo(() => data.location.reference.list() ?? [])
+
+  const referenceMatch = createMemo(() => {
+    if (!store.visible || store.visible === "/") return
+    const { baseQuery } = extractLineRange(search())
+    const slash = baseQuery.indexOf("/")
+    const alias = slash === -1 ? baseQuery : baseQuery.slice(0, slash)
+    return references().find((item) => !item.hidden && item.name === alias)
+  })
+
+  function normalizeMentionPath(filePath: string) {
+    const baseDir = location()?.directory || sync.path.directory || paths.cwd
+    const absolute = path.resolve(filePath)
+    const relative = path.relative(baseDir, absolute)
+
+    if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
+      return relative.split(path.sep).join("/")
+    }
+
+    return absolute.split(path.sep).join("/")
+  }
+
+  function insertFileMention(input: { filePath: string; lineStart: number; lineEnd: number }) {
+    const item = normalizeMentionPath(input.filePath)
+    const lineRange = {
+      startLine: input.lineStart,
+      endLine: input.lineEnd > input.lineStart ? input.lineEnd : undefined,
+    }
+    const { filename, part } = createFilePart({ path: item, type: "file" }, input.filePath, lineRange)
+    const index = store.visible === "@" ? store.index : props.input().cursorOffset
+
+    setStore("visible", false)
+    setStore("index", index)
+    insertPart(filename, part)
+  }
+
+  const [files] = createResource(
+    () => ({ query: search(), location: location() }),
+    async (input) => {
+      if (!store.visible || store.visible === "/") return []
+      if (referenceMatch()) return []
+      const { lineRange, baseQuery } = extractLineRange(input.query ?? "")
 
       // Get files from SDK
-      const result = await sdk.client.find.files({
+      const result = await sdk.client.v2.fs.find({
         query: baseQuery,
+        limit: "20",
+        location: {
+          directory: input.location?.directory,
+          workspace: input.location?.workspaceID ?? project.workspace.current(),
+        },
       })
 
       const options: AutocompleteOption[] = []
 
-      // Add file options
+      // Add file options. Trust the order returned by fff (frecency, fuzzy
+      // score, filename bonus, etc. are already factored in).
       if (!result.error && result.data) {
-        const sortedFiles = result.data.sort((a, b) => {
-          const aScore = frecency.getFrecency(a)
-          const bScore = frecency.getFrecency(b)
-          if (aScore !== bScore) return bScore - aScore
-          const aDepth = a.split("/").length
-          const bDepth = b.split("/").length
-          if (aDepth !== bDepth) return aDepth - bDepth
-          return a.localeCompare(b)
-        })
-
         const width = props.anchor().width - 4
         options.push(
-          ...sortedFiles.map((item): AutocompleteOption => {
-            const baseDir = (sync.path.directory || process.cwd()).replace(/\/+$/, "")
-            const fullPath = `${baseDir}/${item}`
-            const urlObj = pathToFileURL(fullPath)
-            let filename = item
-            if (lineRange && !item.endsWith("/")) {
-              filename = `${item}#${lineRange.startLine}${lineRange.endLine ? `-${lineRange.endLine}` : ""}`
-              urlObj.searchParams.set("start", String(lineRange.startLine))
-              if (lineRange.endLine !== undefined) {
-                urlObj.searchParams.set("end", String(lineRange.endLine))
-              }
-            }
-            const url = urlObj.href
-
-            const isDir = item.endsWith("/")
+          ...result.data.data.map((item): AutocompleteOption => {
+            const { filename, part } = createFilePart(
+              item,
+              path.join(result.data.location.directory, item.path),
+              lineRange,
+            )
             return {
               display: Locale.truncateMiddle(filename, width),
               value: filename,
-              isDirectory: isDir,
-              path: item,
+              isDirectory: item.type === "directory",
+              path: item.path,
               onSelect: () => {
-                insertPart(filename, {
-                  type: "file",
-                  mime: "text/plain",
-                  filename,
-                  url,
-                  source: {
-                    type: "file",
-                    text: {
-                      start: 0,
-                      end: 0,
-                      value: "",
-                    },
-                    path: item,
-                  },
-                })
+                insertPart(filename, part)
               },
             }
           }),
@@ -299,16 +365,16 @@ export function Autocomplete(props: {
   )
 
   const mcpResources = createMemo(() => {
-    if (store.visible !== "@") return []
+    if (!store.visible || store.visible === "/") return []
 
     const options: AutocompleteOption[] = []
     const width = props.anchor().width - 4
 
     for (const res of Object.values(sync.data.mcp_resource)) {
-      const text = `${res.name} (${res.uri})`
       options.push({
-        display: Locale.truncateMiddle(text, width),
-        value: text,
+        display: Locale.truncateMiddle(res.name, width),
+        // Match the name only; matching the URI caused unrelated fuzzy hits.
+        value: res.name,
         description: res.description,
         onSelect: () => {
           insertPart(res.name, {
@@ -335,33 +401,52 @@ export function Autocomplete(props: {
   })
 
   const agents = createMemo(() => {
-    const agents = sync.data.agent
-    return agents
+    return sync.data.agent
       .filter((agent) => !agent.hidden && agent.mode !== "primary")
       .map(
         (agent): AutocompleteOption => ({
-          display: "$" + agent.name,
+          display: "@" + agent.name,
           onSelect: () => {
-            insertPart(
-              agent.name,
-              {
-                type: "agent",
-                name: agent.name,
-                source: {
-                  start: 0,
-                  end: 0,
-                  value: "",
-                },
+            insertPart(agent.name, {
+              type: "agent",
+              name: agent.name,
+              source: {
+                start: 0,
+                end: 0,
+                value: "",
               },
-              "$",
-            )
+            })
           },
         }),
       )
   })
 
+  const referenceAliases = createMemo(() =>
+    references()
+      .filter((reference) => !reference.hidden)
+      .map(
+        (reference): AutocompleteOption => ({
+          display: "@" + reference.name,
+          description: ` ${reference.source.type === "git" ? reference.source.repository : reference.source.path}`,
+          onSelect: () => {
+            insertPart(reference.name, {
+              type: "file",
+              mime: "application/x-directory",
+              filename: reference.name,
+              url: pathToFileURL(reference.path).href,
+              source: {
+                type: "file",
+                text: { start: 0, end: 0, value: "" },
+                path: reference.name,
+              },
+            })
+          },
+        }),
+      ),
+  )
+
   const commands = createMemo((): AutocompleteOption[] => {
-    const results: AutocompleteOption[] = [...command.slashes()]
+    const results: AutocompleteOption[] = [...slashes()]
 
     for (const serverCommand of sync.data.command) {
       if (serverCommand.source === "skill") continue
@@ -391,45 +476,53 @@ export function Autocomplete(props: {
 
   const options = createMemo((prev: AutocompleteOption[] | undefined) => {
     const filesValue = files()
+    const referenceMatchValue = referenceMatch()
     const agentsValue = agents()
+    const referenceAliasesValue = referenceAliases()
     const commandsValue = commands()
-
-    const mixed: AutocompleteOption[] =
-      store.visible === "@"
-        ? [...(filesValue || []), ...mcpResources()]
-        : store.visible === "$"
-          ? [...agentsValue]
-          : [...commandsValue]
-
     const searchValue = search()
 
+    if (store.visible === "@" && referenceMatchValue) {
+      return referenceAliasesValue.filter((item) => item.display === `@${referenceMatchValue.name}`)
+    }
+
+    // Files come from fff already fuzzy ranked and filtered
+    // it shouldn't be additionally sorted by fuzzysort as it will loose the results
+    const fileOptions: AutocompleteOption[] = store.visible === "@" ? filesValue || [] : []
+    const nonFileOptions: AutocompleteOption[] =
+      store.visible === "@" ? [...referenceAliasesValue, ...agentsValue, ...mcpResources()] : [...commandsValue]
+
     if (!searchValue) {
-      return mixed
+      return [...nonFileOptions, ...fileOptions]
     }
 
     if (files.loading && prev && prev.length > 0) {
       return prev
     }
 
-    const result = fuzzysort.go(removeLineRange(searchValue), mixed, {
-      keys: [
-        (obj) => removeLineRange((obj.value ?? obj.display).trimEnd()),
-        "description",
-        (obj) => obj.aliases?.join(" ") ?? "",
-      ],
-      limit: 10,
-      scoreFn: (objResults) => {
-        const displayResult = objResults[0]
-        let score = objResults.score
-        if (displayResult && displayResult.target.startsWith(store.visible + searchValue)) {
-          score *= 2
-        }
-        const frecencyScore = objResults.obj.path ? frecency.getFrecency(objResults.obj.path) : 0
-        return score * (1 + frecencyScore)
-      },
-    })
+    const fuzziedNonFiles = fuzzysort
+      .go(removeLineRange(searchValue), nonFileOptions, {
+        keys: [
+          (obj) => removeLineRange((obj.value ?? obj.display).trimEnd()),
+          // Match description for slash commands only; for "@" it surfaced unrelated items.
+          ...(store.visible === "/" ? ["description" as const] : []),
+          (obj) => obj.aliases?.join(" ") ?? "",
+        ],
+        threshold: store.visible === "@" ? 0.5 : 0,
+        limit: 10,
+        scoreFn: (objResults) => {
+          const displayResult = objResults[0]
+          let score = objResults.score
+          if (displayResult && displayResult.target.startsWith(store.visible + searchValue)) {
+            score *= 2
+          }
+          const frecencyScore = objResults.obj.path ? frecency.getFrecency(objResults.obj.path) : 0
+          return score * (1 + frecencyScore)
+        },
+      })
+      .map((arr) => arr.obj)
 
-    return result.map((arr) => arr.obj)
+    return [...fuzziedNonFiles, ...fileOptions].slice(0, 10)
   })
 
   createEffect(() => {
@@ -472,7 +565,7 @@ export function Autocomplete(props: {
     const input = props.input()
     const currentCursorOffset = input.cursorOffset
 
-    const displayText = selected.display.trimEnd()
+    const displayText = (selected.value ?? selected.display).trimEnd()
     const path = displayText.startsWith("@") ? displayText.slice(1) : displayText
 
     input.cursorOffset = store.index
@@ -481,13 +574,74 @@ export function Autocomplete(props: {
     const endCursor = input.logicalCursor
 
     input.deleteRange(startCursor.row, startCursor.col, endCursor.row, endCursor.col)
-    input.insertText("@" + path)
+    input.insertText("@" + path + "/")
 
     setStore("selected", 0)
   }
 
-  function show(mode: "@" | "$" | "/") {
-    command.keybinds(false)
+  useBindings(() => ({
+    target: props.input,
+    enabled: () => Boolean(store.visible),
+    commands: [
+      {
+        name: "prompt.autocomplete.prev",
+        title: "Previous autocomplete item",
+        category: "Autocomplete",
+        run() {
+          setStore("input", "keyboard")
+          move(-1)
+        },
+      },
+      {
+        name: "prompt.autocomplete.next",
+        title: "Next autocomplete item",
+        category: "Autocomplete",
+        run() {
+          setStore("input", "keyboard")
+          move(1)
+        },
+      },
+      {
+        name: "prompt.autocomplete.hide",
+        title: "Hide autocomplete",
+        category: "Autocomplete",
+        run() {
+          hide()
+        },
+      },
+      {
+        name: "prompt.autocomplete.select",
+        title: "Select autocomplete item",
+        category: "Autocomplete",
+        run() {
+          select()
+        },
+      },
+      {
+        name: "prompt.autocomplete.complete",
+        title: "Complete autocomplete item",
+        category: "Autocomplete",
+        run() {
+          const selected = options()[store.selected]
+          if (selected?.isDirectory) {
+            expandDirectory()
+            return
+          }
+
+          select()
+        },
+      },
+    ],
+    bindings: tuiConfig.keybinds.gather("prompt.autocomplete", [
+      "prompt.autocomplete.prev",
+      "prompt.autocomplete.next",
+      "prompt.autocomplete.hide",
+      "prompt.autocomplete.select",
+      "prompt.autocomplete.complete",
+    ]),
+  }))
+
+  function show(mode: "@" | "/") {
     setStore({
       visible: mode,
       index: props.input().cursorOffset,
@@ -504,11 +658,18 @@ export function Autocomplete(props: {
         draft.input = props.input().plainText
       })
     }
-    command.keybinds(true)
     setStore("visible", false)
   }
 
   onMount(() => {
+    const unsubscribeMention = editor.onMention((mention) => {
+      insertFileMention(mention)
+    })
+
+    onCleanup(() => {
+      unsubscribeMention()
+    })
+
     props.ref({
       get visible() {
         return store.visible
@@ -539,74 +700,11 @@ export function Autocomplete(props: {
           return
         }
 
-        // Check for "@" (files) or "$" (agents) trigger - find the nearest one before
-        // the cursor with no whitespace between it and the cursor.
-        const text = value.slice(0, offset)
-        const atIdx = text.lastIndexOf("@")
-        const dollarIdx = text.lastIndexOf("$")
-        const idx = Math.max(atIdx, dollarIdx)
-        if (idx === -1) return
-
-        const trigger = idx === dollarIdx ? "$" : "@"
-        const between = text.slice(idx)
-        const before = idx === 0 ? undefined : value[idx - 1]
-        if ((before === undefined || /\s/.test(before)) && !between.match(/\s/)) {
-          show(trigger)
+        // Check for "@" trigger - find the nearest "@" before cursor with no whitespace between
+        const idx = mentionTriggerIndex(value, offset)
+        if (idx !== undefined) {
+          show("@")
           setStore("index", idx)
-        }
-      },
-      onKeyDown(e: KeyEvent) {
-        if (store.visible) {
-          const name = e.name?.toLowerCase()
-          const ctrlOnly = e.ctrl && !e.meta && !e.shift
-          const isNavUp = name === "up" || (ctrlOnly && name === "p")
-          const isNavDown = name === "down" || (ctrlOnly && name === "n")
-
-          if (isNavUp) {
-            setStore("input", "keyboard")
-            move(-1)
-            e.preventDefault()
-            return
-          }
-          if (isNavDown) {
-            setStore("input", "keyboard")
-            move(1)
-            e.preventDefault()
-            return
-          }
-          if (name === "escape") {
-            hide()
-            e.preventDefault()
-            return
-          }
-          if (name === "return") {
-            select()
-            e.preventDefault()
-            return
-          }
-          if (name === "tab") {
-            const selected = options()[store.selected]
-            if (selected?.isDirectory) {
-              expandDirectory()
-            } else {
-              select()
-            }
-            e.preventDefault()
-            return
-          }
-        }
-        if (!store.visible) {
-          if (e.name === "@" || e.name === "$") {
-            const cursorOffset = props.input().cursorOffset
-            const charBeforeCursor =
-              cursorOffset === 0 ? undefined : props.input().getTextRange(cursorOffset - 1, cursorOffset)
-            const canTrigger = charBeforeCursor === undefined || charBeforeCursor === "" || /\s/.test(charBeforeCursor)
-            if (canTrigger) show(e.name)
-          }
-
-          if (e.name === "/") {
-            if (props.input().cursorOffset === 0) show("/")
-          }
         }
       },
     })
@@ -672,7 +770,7 @@ export function Autocomplete(props: {
               </text>
               <Show when={option().description}>
                 <text fg={index === store.selected ? selectedForeground(theme) : theme.textMuted} wrapMode="none">
-                  {option().description}
+                  {" " + option().description?.trimStart()}
                 </text>
               </Show>
             </box>

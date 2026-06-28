@@ -83,10 +83,10 @@ export function HelixInfoPanel(_props: {
         return next.slice(0, 4)
       })
     }
-    events.on("judge.verdict", (p) => { const evt = p as Record<string, unknown>; addTrace("judge.verdict", String(evt.status ?? "")) })
-    events.on("cardinal.detected", (p) => { const evt = p as Record<string, unknown>; addTrace("cardinal.detected", String(evt.severity ?? "")) })
+    events.on("judge.verdict", (p) => { const evt = (p as Record<string, unknown>)?.properties as Record<string, unknown> ?? {}; addTrace("judge.verdict", String(evt.status ?? "")) })
+    events.on("cardinal.detected", (p) => { const evt = (p as Record<string, unknown>)?.properties as Record<string, unknown> ?? {}; addTrace("cardinal.detected", String(evt.severity ?? "")) })
     events.on("alignment.drift", () => addTrace("alignment.drift", ""))
-    events.on("mode.applied", (p) => { const evt = p as Record<string, unknown>; addTrace("mode.applied", String(evt.mode ?? "")) })
+    events.on("mode.applied", (p) => { const evt = (p as Record<string, unknown>)?.properties as Record<string, unknown> ?? {}; addTrace("mode.applied", String(evt.mode ?? "")) })
   })
 
   return (

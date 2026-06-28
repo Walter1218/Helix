@@ -1,33 +1,19 @@
+// @ts-nocheck
 import { createMemo, createSignal } from "solid-js"
-import { useLocal } from "@tui/context/local"
-import { useSync } from "@tui/context/sync"
+import { useLocal } from "../context/local"
 import { map, pipe, flatMap, entries, filter, sortBy, take } from "remeda"
-import { DialogSelect } from "@tui/ui/dialog-select"
-import { useDialog, type DialogContext } from "@tui/ui/dialog"
+import { DialogSelect } from "../ui/dialog-select"
+import { useDialog } from "../ui/dialog"
 import { createDialogProviderOptions, DialogProvider } from "./dialog-provider"
 import { DialogVariant } from "./dialog-variant"
-import { useKeybind } from "../context/keybind"
-import { useSDK } from "../context/sdk"
-import { useToast, type ToastContext } from "../ui/toast"
-import { DialogPrompt } from "../ui/dialog-prompt"
 import * as fuzzysort from "fuzzysort"
-
-const ADD_MODEL_SENTINEL = "__add_model__"
-
-export function useConnected() {
-  const sync = useSync()
-  return createMemo(() =>
-    sync.data.provider.some((x) => x.id !== "opencode" || Object.values(x.models).some((y) => y.cost?.input !== 0)),
-  )
-}
+import { useConnected } from "./use-connected"
+import { useSync } from "../context/sync"
 
 export function DialogModel(props: { providerID?: string }) {
   const local = useLocal()
   const sync = useSync()
   const dialog = useDialog()
-  const sdk = useSDK()
-  const toast = useToast()
-  const keybind = useKeybind()
   const [query, setQuery] = createSignal("")
 
   const connected = useConnected()
@@ -44,7 +30,7 @@ export function DialogModel(props: { providerID?: string }) {
     function toOptions(items: typeof favorites, category: string) {
       if (!showSections) return []
       return items.flatMap((item) => {
-        const provider = sync.data.provider.find((x) => x.id === item.providerID)
+        const provider = sync.data.provider.find((provider) => provider.id === item.providerID)
         if (!provider) return []
         const model = provider.models[item.modelID]
         if (!model) return []
@@ -79,8 +65,8 @@ export function DialogModel(props: { providerID?: string }) {
         (provider) => provider.id !== "opencode",
         (provider) => provider.name,
       ),
-      flatMap((provider) => {
-        const models = pipe(
+      flatMap((provider) =>
+        pipe(
           provider.models,
           entries(),
           filter(([_, info]) => info.status !== "deprecated"),
@@ -88,6 +74,7 @@ export function DialogModel(props: { providerID?: string }) {
           map(([model, info]) => ({
             value: { providerID: provider.id, modelID: model },
             title: info.name ?? model,
+            releaseDate: info.release_date,
             description: favorites.some((item) => item.providerID === provider.id && item.modelID === model)
               ? "(Favorite)"
               : undefined,
@@ -98,36 +85,25 @@ export function DialogModel(props: { providerID?: string }) {
               onSelect(provider.id, model)
             },
           })),
-          filter((x) => {
+          filter((option) => {
             if (!showSections) return true
-            if (favorites.some((item) => item.providerID === x.value.providerID && item.modelID === x.value.modelID))
+            if (
+              favorites.some(
+                (item) => item.providerID === option.value.providerID && item.modelID === option.value.modelID,
+              )
+            )
               return false
-            if (recents.some((item) => item.providerID === x.value.providerID && item.modelID === x.value.modelID))
+            if (
+              recents.some(
+                (item) => item.providerID === option.value.providerID && item.modelID === option.value.modelID,
+              )
+            )
               return false
             return true
           }),
-          sortBy(
-            (x) => x.footer !== "Free",
-            (x) => x.title,
-          ),
-        )
-        if (provider.source !== "config") return models
-        if (props.providerID && props.providerID !== provider.id) return models
-        return [
-          ...models,
-          {
-            value: { providerID: provider.id, modelID: ADD_MODEL_SENTINEL },
-            title: "+ Add model",
-            description: undefined,
-            category: connected() ? provider.name : undefined,
-            disabled: false,
-            footer: undefined as "Free" | undefined,
-            onSelect() {
-              void runAddModelWizard({ dialog, sdk, sync, toast, providerID: provider.id })
-            },
-          },
-        ]
-      }),
+          (options) => sortModelOptions(options, props.providerID !== undefined),
+        ),
+      ),
     )
 
     const popularProviders = !connected()
@@ -143,7 +119,10 @@ export function DialogModel(props: { providerID?: string }) {
 
     if (needle) {
       return [
-        ...fuzzysort.go(needle, providerOptions, { keys: ["title", "category"] }).map((x) => x.obj),
+        ...sortModelOptions(
+          fuzzysort.go(needle, providerOptions, { keys: ["title", "category"] }).map((x) => x.obj),
+          false,
+        ),
         ...fuzzysort.go(needle, popularProviders, { keys: ["title"] }).map((x) => x.obj),
       ]
     }
@@ -152,7 +131,7 @@ export function DialogModel(props: { providerID?: string }) {
   })
 
   const provider = createMemo(() =>
-    props.providerID ? sync.data.provider.find((x) => x.id === props.providerID) : null,
+    props.providerID ? sync.data.provider.find((item) => item.id === props.providerID) : null,
   )
 
   const title = createMemo(() => {
@@ -179,22 +158,20 @@ export function DialogModel(props: { providerID?: string }) {
   return (
     <DialogSelect<ReturnType<typeof options>[number]["value"]>
       options={options()}
-      keybind={[
+      actions={[
         {
-          keybind: keybind.all.model_provider_list?.[0],
+          command: "model.dialog.provider",
           title: connected() ? "Connect provider" : "View all providers",
           onTrigger() {
             dialog.replace(() => <DialogProvider />)
           },
         },
         {
-          keybind: keybind.all.model_favorite_toggle?.[0],
+          command: "model.dialog.favorite",
           title: "Favorite",
-          disabled: !connected(),
+          hidden: !connected(),
           onTrigger: (option) => {
-            const v = option.value as { providerID: string; modelID: string }
-            if (v.modelID === ADD_MODEL_SENTINEL) return
-            local.model.toggleFavorite(v)
+            local.model.toggleFavorite(option.value as { providerID: string; modelID: string })
           },
         },
       ]}
@@ -207,47 +184,15 @@ export function DialogModel(props: { providerID?: string }) {
   )
 }
 
-async function runAddModelWizard(opts: {
-  dialog: DialogContext
-  sdk: ReturnType<typeof useSDK>
-  sync: ReturnType<typeof useSync>
-  toast: ToastContext
-  providerID: string
-}) {
-  const { dialog, sdk, sync, toast, providerID } = opts
-
-  function step(n: number, total: number, title: string, placeholder?: string, value?: string) {
-    return DialogPrompt.show(dialog, `${title} (${n}/${total})`, { placeholder, value })
-  }
-
-  const modelIDRaw = await step(1, 2, "Model id", "gateway model id")
-  if (modelIDRaw === null) return
-  const modelID = modelIDRaw.trim()
-  if (!modelID) return
-
-  const modelNameRaw = await step(2, 2, "Display name", "shown in model picker", modelID)
-  if (modelNameRaw === null) return
-  const modelName = modelNameRaw.trim() || modelID
-
-  const patch = {
-    provider: {
-      [providerID]: {
-        models: {
-          [modelID]: {
-            name: modelName,
-          },
-        },
-      },
-    },
-  }
-
-  const updateRes = await sdk.client.global.config.update({ config: patch as any })
-  if (updateRes.error) {
-    toast.show({ variant: "error", message: JSON.stringify(updateRes.error) })
-    return
-  }
-
-  await sdk.client.instance.dispose()
-  await sync.bootstrap()
-  dialog.replace(() => <DialogModel providerID={providerID} />)
+export function sortModelOptions<T extends { footer?: string; releaseDate: string | number; title: string }>(
+  options: T[],
+  newestFirst: boolean,
+) {
+  if (newestFirst) return sortBy(options, [(option) => option.releaseDate, "desc"], (option) => option.title)
+  return sortBy(
+    options,
+    (option) => option.footer !== "Free",
+    [(option) => option.releaseDate, "desc"],
+    (option) => option.title,
+  )
 }

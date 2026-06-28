@@ -1,13 +1,13 @@
 import { createMemo, onMount } from "solid-js"
-import { useSync } from "@tui/context/sync"
-import { DialogSelect, type DialogSelectOption } from "@tui/ui/dialog-select"
+import { useSync } from "../../context/sync"
+import { DialogSelect, type DialogSelectOption } from "../../ui/dialog-select"
 import type { TextPart } from "@mimo-ai/sdk/v2"
-import { Locale } from "@/util"
-import { useSDK } from "@tui/context/sdk"
-import { useRoute } from "@tui/context/route"
+import { Locale } from "../../util/locale"
+import { useSDK } from "../../context/sdk"
+import { useRoute } from "../../context/route"
 import { useDialog, type DialogContext } from "../../ui/dialog"
-import type { PromptInfo } from "@tui/component/prompt/history"
-import { strip } from "@tui/component/prompt/part"
+import type { PromptInfo } from "../../component/prompt/history"
+import { stripPromptPartIDs as strip } from "../../prompt/part"
 
 export function DialogForkFromTimeline(props: { sessionID: string; onMove: (messageID?: string) => void }) {
   const sync = useSync()
@@ -20,7 +20,7 @@ export function DialogForkFromTimeline(props: { sessionID: string; onMove: (mess
   })
 
   const options = createMemo((): DialogSelectOption<string | undefined>[] => {
-    const messages = sync.data.message[props.sessionID]?.["main"] ?? []
+    const messages = sync.data.message[props.sessionID] ?? []
     const fullSession = {
       title: "Full session",
       value: undefined,

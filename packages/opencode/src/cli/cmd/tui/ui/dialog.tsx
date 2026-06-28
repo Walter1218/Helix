@@ -1,13 +1,12 @@
-import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"
-import { batch, createContext, Show, useContext, type JSX, type ParentProps } from "solid-js"
-import { useTheme } from "@tui/context/theme"
+import { useRenderer, useTerminalDimensions } from "@opentui/solid"
+import { batch, createContext, createEffect, onCleanup, Show, useContext, type JSX, type ParentProps } from "solid-js"
+import { useTheme } from "../context/theme"
 import { MouseButton, Renderable, RGBA } from "@opentui/core"
 import { createStore } from "solid-js/store"
 import { useToast } from "./toast"
 import { Flag } from "@/flag/flag"
-import * as Selection from "@tui/util/selection"
-import * as Clipboard from "@tui/util/clipboard"
-import { useLanguage } from "@tui/context/language"
+import { useBindings, useOpencodeModeStack } from "../keymap"
+import { useClipboard } from "../context/clipboard"
 
 export function Dialog(
   props: ParentProps<{
@@ -18,8 +17,6 @@ export function Dialog(
   const dimensions = useTerminalDimensions()
   const { theme } = useTheme()
   const renderer = useRenderer()
-  const toast = useToast()
-  const t = useLanguage().t
 
   let dismiss = false
   const width = () => {
@@ -51,16 +48,8 @@ export function Dialog(
       backgroundColor={RGBA.fromInts(0, 0, 0, 150)}
     >
       <box
-        onMouseUp={(e) => {
+        onMouseUp={(e: { stopPropagation(): void }) => {
           dismiss = false
-          if (!Flag.MIMOCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) {
-            const text = renderer.getSelection()?.getSelectedText()
-            if (text) {
-              Clipboard.copy(text)
-                .then(() => toast.show({ message: t("tui.toast.copied_to_clipboard"), variant: "info" }))
-                .catch(toast.error)
-            }
-          }
           e.stopPropagation()
         }}
         width={width()}
@@ -84,22 +73,12 @@ function init() {
   })
 
   const renderer = useRenderer()
+  const modeStack = useOpencodeModeStack()
 
-  useKeyboard((evt) => {
+  createEffect(() => {
     if (store.stack.length === 0) return
-    if (evt.defaultPrevented) return
-    if ((evt.name === "escape" || (evt.ctrl && evt.name === "c")) && renderer.getSelection()?.getSelectedText()) return
-    if (evt.name === "escape" || (evt.ctrl && evt.name === "c")) {
-      if (renderer.getSelection()) {
-        renderer.clearSelection()
-      }
-      const current = store.stack.at(-1)!
-      current.onClose?.()
-      setStore("stack", store.stack.slice(0, -1))
-      evt.preventDefault()
-      evt.stopPropagation()
-      refocus()
-    }
+    const popMode = modeStack.push("modal")
+    onCleanup(popMode)
   })
 
   let focus: Renderable | null
@@ -119,6 +98,40 @@ function init() {
       focus.focus()
     }, 1)
   }
+
+  useBindings(() => ({
+    enabled: store.stack.length > 0 && !renderer.getSelection()?.getSelectedText(),
+    bindings: [
+      {
+        key: "escape",
+        desc: "Close dialog",
+        group: "Dialog",
+        cmd: () => {
+          if (renderer.getSelection()) {
+            renderer.clearSelection()
+          }
+          const current = store.stack.at(-1)
+          current?.onClose?.()
+          setStore("stack", store.stack.slice(0, -1))
+          refocus()
+        },
+      },
+      {
+        key: "ctrl+c",
+        desc: "Close dialog",
+        group: "Dialog",
+        cmd: () => {
+          if (renderer.getSelection()) {
+            renderer.clearSelection()
+          }
+          const current = store.stack.at(-1)
+          current?.onClose?.()
+          setStore("stack", store.stack.slice(0, -1))
+          refocus()
+        },
+      },
+    ],
+  }))
 
   return {
     clear() {
@@ -167,26 +180,34 @@ export function DialogProvider(props: ParentProps) {
   const value = init()
   const renderer = useRenderer()
   const toast = useToast()
-  const t = useLanguage().t
+  const clipboard = useClipboard()
+
+  function copySelection() {
+    const text = renderer.getSelection()?.getSelectedText()
+    if (!text || !clipboard.write) return false
+    void clipboard.write(text).then(
+      () => toast.show({ message: "Copied to clipboard", variant: "info" }),
+      (error) => toast.error(error),
+    )
+    renderer.clearSelection()
+    return true
+  }
+
   return (
     <ctx.Provider value={value}>
       {props.children}
       <box
         position="absolute"
         zIndex={3000}
-        onMouseDown={(evt) => {
+        onMouseDown={(evt: { button: number; preventDefault(): void; stopPropagation(): void }) => {
           if (!Flag.MIMOCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) return
           if (evt.button !== MouseButton.RIGHT) return
 
-          if (!Selection.copy(renderer, toast, t("tui.toast.copied_to_clipboard"))) return
+          if (!copySelection()) return
           evt.preventDefault()
           evt.stopPropagation()
         }}
-        onMouseUp={
-          !Flag.MIMOCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT
-            ? () => Selection.copy(renderer, toast, t("tui.toast.copied_to_clipboard"))
-            : undefined
-        }
+        onMouseUp={!Flag.MIMOCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT ? copySelection : undefined}
       >
         <Show when={value.stack.length}>
           <Dialog onClose={() => value.clear()} size={value.size}>

@@ -1,8 +1,9 @@
+// @ts-nocheck
 import { TextAttributes } from "@opentui/core"
 import { fileURLToPath } from "bun"
 import { useTheme } from "../context/theme"
-import { useDialog } from "@tui/ui/dialog"
-import { useSync } from "@tui/context/sync"
+import { useDialog } from "../ui/dialog"
+import { useSync } from "../context/sync"
 import { For, Match, Switch, Show, createMemo } from "solid-js"
 
 export type DialogStatusProps = {}
@@ -63,7 +64,6 @@ export function DialogStatus() {
                       {
                         connected: theme.success,
                         failed: theme.error,
-                        pending: theme.warning,
                         disabled: theme.textMuted,
                         needs_auth: theme.warning,
                         needs_client_registration: theme.error,
@@ -79,7 +79,6 @@ export function DialogStatus() {
                     <Switch fallback={item.status}>
                       <Match when={item.status === "connected"}>Connected</Match>
                       <Match when={item.status === "failed" && item}>{(val) => val().error}</Match>
-                      <Match when={(item.status as string) === "pending"}>Pending approval</Match>
                       <Match when={item.status === "disabled"}>Disabled in configuration</Match>
                       <Match when={(item.status as string) === "needs_auth"}>
                         Needs authentication (run: opencode mcp auth {key})

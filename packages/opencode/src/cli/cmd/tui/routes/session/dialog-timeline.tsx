@@ -1,8 +1,8 @@
 import { createMemo, onMount } from "solid-js"
-import { useSync } from "@tui/context/sync"
-import { DialogSelect, type DialogSelectOption } from "@tui/ui/dialog-select"
+import { useSync } from "../../context/sync"
+import { DialogSelect, type DialogSelectOption } from "../../ui/dialog-select"
 import type { TextPart } from "@mimo-ai/sdk/v2"
-import { Locale } from "@/util"
+import { Locale } from "../../util/locale"
 import { DialogMessage } from "./dialog-message"
 import { useDialog } from "../../ui/dialog"
 import type { PromptInfo } from "../../component/prompt/history"
@@ -20,7 +20,7 @@ export function DialogTimeline(props: {
   })
 
   const options = createMemo((): DialogSelectOption<string>[] => {
-    const messages = sync.data.message[props.sessionID]?.["main"] ?? []
+    const messages = sync.data.message[props.sessionID] ?? []
     const result = [] as DialogSelectOption<string>[]
     for (const message of messages) {
       if (message.role !== "user") continue

@@ -3,8 +3,7 @@ import { useTheme } from "../context/theme"
 import { useDialog, type DialogContext } from "./dialog"
 import { createStore } from "solid-js/store"
 import { onMount, Show } from "solid-js"
-import { useKeyboard } from "@opentui/solid"
-import { useLanguage } from "@tui/context/language"
+import { useBindings } from "../keymap"
 
 export type DialogExportOptionsProps = {
   defaultFilename: string
@@ -25,7 +24,6 @@ export type DialogExportOptionsProps = {
 export function DialogExportOptions(props: DialogExportOptionsProps) {
   const dialog = useDialog()
   const { theme } = useTheme()
-  const t = useLanguage().t
   let textarea: TextareaRenderable
   const [store, setStore] = createStore({
     thinking: props.defaultThinking,
@@ -35,37 +33,44 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
     active: "filename" as "filename" | "thinking" | "toolDetails" | "assistantMetadata" | "openWithoutSaving",
   })
 
-  useKeyboard((evt) => {
-    if (evt.name === "return") {
-      props.onConfirm?.({
-        filename: textarea.plainText,
-        thinking: store.thinking,
-        toolDetails: store.toolDetails,
-        assistantMetadata: store.assistantMetadata,
-        openWithoutSaving: store.openWithoutSaving,
-      })
-    }
-    if (evt.name === "tab") {
-      const order: Array<"filename" | "thinking" | "toolDetails" | "assistantMetadata" | "openWithoutSaving"> = [
-        "filename",
-        "thinking",
-        "toolDetails",
-        "assistantMetadata",
-        "openWithoutSaving",
-      ]
-      const currentIndex = order.indexOf(store.active)
-      const nextIndex = (currentIndex + 1) % order.length
-      setStore("active", order[nextIndex])
-      evt.preventDefault()
-    }
-    if (evt.name === "space" || evt.name === " ") {
-      if (store.active === "thinking") setStore("thinking", !store.thinking)
-      if (store.active === "toolDetails") setStore("toolDetails", !store.toolDetails)
-      if (store.active === "assistantMetadata") setStore("assistantMetadata", !store.assistantMetadata)
-      if (store.active === "openWithoutSaving") setStore("openWithoutSaving", !store.openWithoutSaving)
-      evt.preventDefault()
-    }
-  })
+  useBindings(() => ({
+    bindings: [
+      {
+        key: "tab",
+        desc: "Next export option",
+        group: "Dialog",
+        cmd: () => {
+          const order: Array<"filename" | "thinking" | "toolDetails" | "assistantMetadata" | "openWithoutSaving"> = [
+            "filename",
+            "thinking",
+            "toolDetails",
+            "assistantMetadata",
+            "openWithoutSaving",
+          ]
+          const currentIndex = order.indexOf(store.active)
+          const nextIndex = (currentIndex + 1) % order.length
+          setStore("active", order[nextIndex])
+        },
+      },
+    ],
+  }))
+
+  useBindings(() => ({
+    enabled: store.active !== "filename",
+    bindings: [
+      {
+        key: "space",
+        desc: "Toggle export option",
+        group: "Dialog",
+        cmd: () => {
+          if (store.active === "thinking") setStore("thinking", !store.thinking)
+          if (store.active === "toolDetails") setStore("toolDetails", !store.toolDetails)
+          if (store.active === "assistantMetadata") setStore("assistantMetadata", !store.assistantMetadata)
+          if (store.active === "openWithoutSaving") setStore("openWithoutSaving", !store.openWithoutSaving)
+        },
+      },
+    ],
+  }))
 
   onMount(() => {
     dialog.setSize("medium")
@@ -80,15 +85,15 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
     <box paddingLeft={2} paddingRight={2} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
-          {t("tui.dialog.export.title")}
+          Export Options
         </text>
         <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          {t("tui.dialog.close_hint")}
+          esc
         </text>
       </box>
       <box gap={1}>
         <box>
-          <text fg={theme.text}>{t("tui.dialog.export.filename")}</text>
+          <text fg={theme.text}>Filename:</text>
         </box>
         <textarea
           onSubmit={() => {
@@ -101,13 +106,12 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
             })
           }}
           height={3}
-          keyBindings={[{ name: "return", action: "submit" }]}
           ref={(val: TextareaRenderable) => {
             textarea = val
             val.traits = { status: "FILENAME" }
           }}
           initialValue={props.defaultFilename}
-          placeholder={t("tui.dialog.export.filename_placeholder")}
+          placeholder="Enter filename"
           placeholderColor={theme.textMuted}
           textColor={theme.text}
           focusedTextColor={theme.text}
@@ -125,9 +129,7 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
           <text fg={store.active === "thinking" ? theme.primary : theme.textMuted}>
             {store.thinking ? "[x]" : "[ ]"}
           </text>
-          <text fg={store.active === "thinking" ? theme.primary : theme.text}>
-            {t("tui.dialog.export.include_thinking")}
-          </text>
+          <text fg={store.active === "thinking" ? theme.primary : theme.text}>Include thinking</text>
         </box>
         <box
           flexDirection="row"
@@ -139,9 +141,7 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
           <text fg={store.active === "toolDetails" ? theme.primary : theme.textMuted}>
             {store.toolDetails ? "[x]" : "[ ]"}
           </text>
-          <text fg={store.active === "toolDetails" ? theme.primary : theme.text}>
-            {t("tui.dialog.export.include_tool_details")}
-          </text>
+          <text fg={store.active === "toolDetails" ? theme.primary : theme.text}>Include tool details</text>
         </box>
         <box
           flexDirection="row"
@@ -153,9 +153,7 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
           <text fg={store.active === "assistantMetadata" ? theme.primary : theme.textMuted}>
             {store.assistantMetadata ? "[x]" : "[ ]"}
           </text>
-          <text fg={store.active === "assistantMetadata" ? theme.primary : theme.text}>
-            {t("tui.dialog.export.include_assistant_metadata")}
-          </text>
+          <text fg={store.active === "assistantMetadata" ? theme.primary : theme.text}>Include assistant metadata</text>
         </box>
         <box
           flexDirection="row"
@@ -167,23 +165,19 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
           <text fg={store.active === "openWithoutSaving" ? theme.primary : theme.textMuted}>
             {store.openWithoutSaving ? "[x]" : "[ ]"}
           </text>
-          <text fg={store.active === "openWithoutSaving" ? theme.primary : theme.text}>
-            {t("tui.dialog.export.open_without_saving")}
-          </text>
+          <text fg={store.active === "openWithoutSaving" ? theme.primary : theme.text}>Open without saving</text>
         </box>
       </box>
       <Show when={store.active !== "filename"}>
         <text fg={theme.textMuted} paddingBottom={1}>
-          {t("tui.dialog.export.hint.toggle_prefix")} <span style={{ fg: theme.text }}>space</span>{" "}
-          {t("tui.dialog.export.hint.toggle_action")}, <span style={{ fg: theme.text }}>return</span>{" "}
-          {t("tui.dialog.export.hint.confirm_action")}
+          Press <span style={{ fg: theme.text }}>space</span> to toggle, <span style={{ fg: theme.text }}>return</span>{" "}
+          to confirm
         </text>
       </Show>
       <Show when={store.active === "filename"}>
         <text fg={theme.textMuted} paddingBottom={1}>
-          {t("tui.dialog.export.hint.toggle_prefix")} <span style={{ fg: theme.text }}>return</span>{" "}
-          {t("tui.dialog.export.hint.confirm_action")}, <span style={{ fg: theme.text }}>tab</span>{" "}
-          {t("tui.dialog.export.hint.options_action")}
+          Press <span style={{ fg: theme.text }}>return</span> to confirm, <span style={{ fg: theme.text }}>tab</span>{" "}
+          for options
         </text>
       </Show>
     </box>

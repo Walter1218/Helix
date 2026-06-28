@@ -1,13 +1,16 @@
 #!/bin/bash
 # Wrapper script for launchd: ensures Helix Server + Gateway are running before scheduler
 # Used by com.helix.auto-dev.plist
+# All paths are absolute to avoid getcwd issues in launchd's restricted context.
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="/Users/onetwo/Documents/trae_projects/Helix"
+AUTO_DEV_DIR="$PROJECT_ROOT/script/auto-dev"
+BUN="/Users/onetwo/.npm-global/bin/bun"
 
 # 1. Start services (idempotent — skips if already running)
-bash "$SCRIPT_DIR/start-services.sh"
+bash "$AUTO_DEV_DIR/start-services.sh"
 
 # 2. Run scheduler
-exec /Users/onetwo/.npm-global/bin/bun run "$SCRIPT_DIR/scheduler.ts" "$@"
+exec "$BUN" run "$AUTO_DEV_DIR/scheduler.ts" "$@"

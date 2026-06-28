@@ -1,4 +1,5 @@
-import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@mimo-ai/plugin/tui"
+import type { TuiPlugin, TuiPluginApi } from "@mimo-ai/plugin/tui"
+import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, For, Match, Show, Switch, createSignal } from "solid-js"
 
 const id = "internal:sidebar-mcp"
@@ -19,7 +20,6 @@ function View(props: { api: TuiPluginApi }) {
   const dot = (status: string) => {
     if (status === "connected") return theme().success
     if (status === "failed") return theme().error
-    if (status === "pending") return theme().warning
     if (status === "disabled") return theme().textMuted
     if (status === "needs_auth") return theme().warning
     if (status === "needs_client_registration") return theme().error
@@ -63,7 +63,6 @@ function View(props: { api: TuiPluginApi }) {
                       <Match when={item.status === "failed"}>
                         <i>{item.error}</i>
                       </Match>
-                      <Match when={(item.status as string) === "pending"}>Pending approval</Match>
                       <Match when={item.status === "disabled"}>Disabled</Match>
                       <Match when={item.status === "needs_auth"}>Needs auth</Match>
                       <Match when={item.status === "needs_client_registration"}>Needs client ID</Match>
@@ -90,7 +89,7 @@ const tui: TuiPlugin = async (api) => {
   })
 }
 
-const plugin: TuiPluginModule & { id: string } = {
+const plugin: BuiltinTuiPlugin = {
   id,
   tui,
 }

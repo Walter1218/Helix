@@ -1,17 +1,27 @@
 import { createStore } from "solid-js/store"
 import { createSimpleContext } from "./helper"
-import { batch, createEffect, createMemo, createSignal } from "solid-js"
-import { useSync } from "@tui/context/sync"
-import { useTheme } from "@tui/context/theme"
-import { uniqueBy } from "remeda"
+import { batch, createEffect, createMemo } from "solid-js"
+import { useSync } from "./sync"
+import { useEvent } from "./event"
 import path from "path"
-import { Global } from "@/global"
-import { iife } from "@/util/iife"
-import { useToast } from "../ui/toast"
+import { useTuiPaths } from "./runtime"
 import { useArgs } from "./args"
 import { useSDK } from "./sdk"
 import { RGBA } from "@opentui/core"
-import { Filesystem } from "@/util"
+import { readJson, writeJsonAtomic } from "../util/persistence"
+import { useTheme } from "./theme"
+import { useToast } from "../ui/toast"
+import { useRoute } from "./route"
+
+export type LocalTheme = {
+  secondary: RGBA
+  accent: RGBA
+  success: RGBA
+  warning: RGBA
+  primary: RGBA
+  error: RGBA
+  info: RGBA
+}
 
 export function parseModel(model: string) {
   const [providerID, ...rest] = model.split("/")
@@ -21,15 +31,34 @@ export function parseModel(model: string) {
   }
 }
 
+export function recentModels(
+  model: { providerID: string; modelID: string },
+  recent: { providerID: string; modelID: string }[],
+) {
+  const seen = new Set<string>()
+  return [model, ...recent]
+    .filter((item) => {
+      const key = `${item.providerID}/${item.modelID}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .slice(0, 10)
+    .map((item) => ({ providerID: item.providerID, modelID: item.modelID }))
+}
+
 export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
   name: "Local",
   init: () => {
     const sync = useSync()
     const sdk = useSDK()
     const toast = useToast()
+    const theme = useTheme().theme
+    const route = useRoute()
+    const paths = useTuiPaths()
 
     function isModelValid(model: { providerID: string; modelID: string }) {
-      const provider = sync.data.provider.find((x) => x.id === model.providerID)
+      const provider = sync.data.provider.find((item) => item.id === model.providerID)
       return !!provider?.models[model.modelID]
     }
 
@@ -41,13 +70,12 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       }
     }
 
-    const agent = iife(() => {
-      const agents = createMemo(() => sync.data.agent.filter((x) => x.mode !== "subagent" && !x.hidden))
-      const visibleAgents = createMemo(() => sync.data.agent.filter((x) => !x.hidden))
+    function createAgent() {
+      const agents = createMemo(() => sync.data.agent.filter((agent) => agent.mode !== "subagent" && !agent.hidden))
+      const visibleAgents = createMemo(() => sync.data.agent.filter((agent) => !agent.hidden))
       const [agentStore, setAgentStore] = createStore({
         current: undefined as string | undefined,
       })
-      const { theme } = useTheme()
       const colors = createMemo(() => [
         theme.secondary,
         theme.accent,
@@ -98,9 +126,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           return colors()[index % colors().length]
         },
       }
-    })
+    }
 
-    const model = iife(() => {
+    const agent = createAgent()
+
+    function createModel() {
       const [modelStore, setModelStore] = createStore<{
         ready: boolean
         model: Record<
@@ -127,7 +157,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         variant: {},
       })
 
-      const filePath = path.join(Global.Path.state, "model.json")
+      const filePath = path.join(paths.state, "model.json")
       const state = {
         pending: false,
       }
@@ -138,18 +168,21 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           return
         }
         state.pending = false
-        void Filesystem.writeJson(filePath, {
+        void writeJsonAtomic(filePath, {
           recent: modelStore.recent,
           favorite: modelStore.favorite,
           variant: modelStore.variant,
         })
       }
 
-      Filesystem.readJson(filePath)
-        .then((x: any) => {
-          if (Array.isArray(x.recent)) setModelStore("recent", x.recent)
-          if (Array.isArray(x.favorite)) setModelStore("favorite", x.favorite)
-          if (typeof x.variant === "object" && x.variant !== null) setModelStore("variant", x.variant)
+      readJson<unknown>(filePath)
+        .then((x) => {
+          if (!x || typeof x !== "object") return
+          const value = x as Record<string, unknown>
+          if (Array.isArray(value.recent)) setModelStore("recent", value.recent)
+          if (Array.isArray(value.favorite)) setModelStore("favorite", value.favorite)
+          if (typeof value.variant === "object" && value.variant !== null)
+            setModelStore("variant", value.variant as Record<string, string | undefined>)
         })
         .catch(() => {})
         .finally(() => {
@@ -228,11 +261,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               reasoning: false,
             }
           }
-          const provider = sync.data.provider.find((x) => x.id === value.providerID)
+          const provider = sync.data.provider.find((item) => item.id === value.providerID)
           const info = provider?.models[value.modelID]
           return {
             provider: provider?.name ?? value.providerID,
-            model: value.modelID === "mimo-auto" ? "MiMo Auto（MiMo-V2.5 限免中）" : (info?.name ?? value.modelID),
+            model: info?.name ?? value.modelID,
             reasoning: info?.capabilities?.reasoning ?? false,
           }
         }),
@@ -278,12 +311,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           const a = agent.current()
           if (!a) return
           setModelStore("model", a.name, { ...next })
-          const uniq = uniqueBy([next, ...modelStore.recent], (x) => `${x.providerID}/${x.modelID}`)
-          if (uniq.length > 10) uniq.pop()
-          setModelStore(
-            "recent",
-            uniq.map((x) => ({ providerID: x.providerID, modelID: x.modelID })),
-          )
+          setModelStore("recent", recentModels(next, modelStore.recent))
           save()
         },
         set(model: { providerID: string; modelID: string }, options?: { recent?: boolean }) {
@@ -300,12 +328,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             if (!a) return
             setModelStore("model", a.name, model)
             if (options?.recent) {
-              const uniq = uniqueBy([model, ...modelStore.recent], (x) => `${x.providerID}/${x.modelID}`)
-              if (uniq.length > 10) uniq.pop()
-              setModelStore(
-                "recent",
-                uniq.map((x) => ({ providerID: x.providerID, modelID: x.modelID })),
-              )
+              setModelStore("recent", recentModels(model, modelStore.recent))
               save()
             }
           })
@@ -349,7 +372,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           list() {
             const m = currentModel()
             if (!m) return []
-            const provider = sync.data.provider.find((x) => x.id === m.providerID)
+            const provider = sync.data.provider.find((item) => item.id === m.providerID)
             const info = provider?.models[m.modelID]
             if (!info?.variants) return []
             return Object.keys(info.variants)
@@ -378,7 +401,105 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           },
         },
       }
-    })
+    }
+
+    const model = createModel()
+
+    function createSession() {
+      const [sessionStore, setSessionStore] = createStore<{
+        ready: boolean
+        pinned: string[]
+      }>({
+        ready: false,
+        pinned: [],
+      })
+
+      const filePath = path.join(paths.state, "session.json")
+      const state = {
+        pending: false,
+      }
+
+      function save() {
+        if (!sessionStore.ready) {
+          state.pending = true
+          return
+        }
+        state.pending = false
+        void writeJsonAtomic(filePath, {
+          pinned: sessionStore.pinned,
+        })
+      }
+
+      readJson<unknown>(filePath)
+        .then((x) => {
+          if (!x || typeof x !== "object") return
+          const pinned = (x as Record<string, unknown>).pinned
+          if (Array.isArray(pinned))
+            setSessionStore(
+              "pinned",
+              pinned.filter((item): item is string => typeof item === "string"),
+            )
+        })
+        .catch(() => {})
+        .finally(() => {
+          setSessionStore("ready", true)
+          if (state.pending) save()
+        })
+
+      const event = useEvent()
+
+      const slots = createMemo(() => {
+        const existing = new Set(sync.data.session.filter((x) => x.parentID === undefined).map((x) => x.id))
+        return sessionStore.pinned.filter((id) => existing.has(id)).slice(0, 9)
+      })
+
+      function prune(sessionID: string) {
+        batch(() => {
+          if (sessionStore.pinned.includes(sessionID)) {
+            setSessionStore(
+              "pinned",
+              sessionStore.pinned.filter((x) => x !== sessionID),
+            )
+          }
+          save()
+        })
+      }
+
+      event.on("session.deleted", (evt) => {
+        prune(evt.properties.info.id)
+      })
+
+      return {
+        get ready() {
+          return sessionStore.ready
+        },
+        pinned() {
+          return sessionStore.pinned
+        },
+        slots,
+        isPinned(sessionID: string) {
+          return sessionStore.pinned.includes(sessionID)
+        },
+        togglePin(sessionID: string) {
+          batch(() => {
+            const exists = sessionStore.pinned.includes(sessionID)
+            const next = exists
+              ? sessionStore.pinned.filter((x) => x !== sessionID)
+              : [...sessionStore.pinned, sessionID]
+            setSessionStore("pinned", next)
+            save()
+          })
+        },
+        quickSwitch(slot: number) {
+          const target = slots()[slot - 1]
+          if (!target) return
+          if (route.data.type === "session" && route.data.sessionID === target) return
+          route.navigate({ type: "session", sessionID: target })
+        },
+      }
+    }
+
+    const session = createSession()
 
     const mcp = {
       isEnabled(name: string) {
@@ -397,58 +518,22 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       },
     }
 
-    // never-ask: when on, the question tool returns a [Never-Ask] directive
-    // instead of blocking, and the model resolves decisions itself. The local
-    // signal drives the footer indicator; set() mirrors it to the server.
-    const neverAsk = iife(() => {
-      const [enabled, setEnabled] = createSignal(false)
-      return {
-        current: enabled,
-        set(value: boolean) {
-          const previous = enabled()
-          setEnabled(value)
-          // Roll back the local signal if the server rejects the change, so the
-          // footer never claims a state the question tool isn't actually in.
-          void sdk.client.question.setNeverAsk({ enabled: value }).catch(() => {
-            setEnabled(previous)
-            toast.show({
-              variant: "error",
-              message: `Failed to ${value ? "enable" : "disable"} never-ask`,
-              duration: 4000,
-            })
-          })
-        },
-        toggle() {
-          this.set(!enabled())
-          return enabled()
-        },
-      }
-    })
-
-    // Automatically update model when agent changes
     createEffect(() => {
       const value = agent.current()
-      if (!value) return
-      if (value.model) {
-        if (isModelValid(value.model))
-          model.set({
-            providerID: value.model.providerID,
-            modelID: value.model.modelID,
-          })
-        else
-          toast.show({
-            variant: "warning",
-            message: `Agent ${value.name}'s configured model ${value.model.providerID}/${value.model.modelID} is not valid`,
-            duration: 3000,
-          })
-      }
+      if (!value?.model) return
+      if (isModelValid(value.model)) return
+      toast.show({
+        variant: "warning",
+        message: `Agent ${value.name}'s configured model ${value.model.providerID}/${value.model.modelID} is not valid`,
+        duration: 3000,
+      })
     })
 
     const result = {
       model,
       agent,
       mcp,
-      neverAsk,
+      session,
     }
     return result
   },

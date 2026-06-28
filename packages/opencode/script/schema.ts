@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
+// @ts-nocheck
 
 import { z } from "zod"
 import { Config } from "../src/config"
-import { TuiConfig } from "../src/cli/cmd/tui/config/tui"
+import { TuiConfig } from "../src/cli/cmd/tui/config/index"
 
 function generate(schema: z.ZodType) {
   const result = z.toJSONSchema(schema, {

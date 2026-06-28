@@ -1,53 +1,65 @@
-import { BoxRenderable, RGBA, TextareaRenderable, MouseEvent, PasteEvent, decodePasteBytes } from "@opentui/core"
+// @ts-nocheck
+import {
+  BoxRenderable,
+  RGBA,
+  TextareaRenderable,
+  MouseEvent,
+  PasteEvent,
+  decodePasteBytes,
+  type KeyEvent,
+  type Renderable,
+} from "@opentui/core"
+import type { CommandContext } from "@opentui/keymap"
 import { createEffect, createMemo, onMount, createSignal, onCleanup, on, Show, Switch, Match } from "solid-js"
 import "opentui-spinner/solid"
 import path from "path"
 import { fileURLToPath } from "url"
-import { Filesystem } from "@/util"
-import { useLocal } from "@tui/context/local"
-import { tint, useTheme } from "@tui/context/theme"
-import { EmptyBorder, SplitBorder } from "@tui/component/border"
-import { useSDK } from "@tui/context/sdk"
-import { useRoute } from "@tui/context/route"
-import { useProject } from "@tui/context/project"
-import { useSync } from "@tui/context/sync"
-import { useEvent } from "@tui/context/event"
-import { MessageID, PartID } from "@/session/schema"
+import { useLocal } from "../../context/local"
+import { Flag } from "@/flag/flag"
+import { tint, useTheme } from "../../context/theme"
+import { EmptyBorder, SplitBorder } from "../../ui/border"
+import { useTuiPaths, useTuiTerminalEnvironment } from "../../context/runtime"
+import { useClipboard } from "../../context/clipboard"
+import { Spinner } from "../spinner"
+import { useSDK } from "../../context/sdk"
+import { useRoute } from "../../context/route"
+import { useProject } from "../../context/project"
+import { useSync } from "../../context/sync"
+import { useEvent } from "../../context/event"
+import { editorSelectionKey, useEditorContext, type EditorSelection } from "../../context/editor"
+import { normalizePromptContent, openEditor } from "../../editor"
+import { useExit } from "../../context/exit"
+import { promptOffsetWidth } from "../../prompt/display"
 import { createStore, produce, unwrap } from "solid-js/store"
-import { useKeybind } from "@tui/context/keybind"
-import { usePromptHistory, type PromptInfo } from "./history"
-import { assign } from "./part"
-import { usePromptStash } from "./stash"
+import { usePromptHistory, type PromptInfo } from "../../prompt/history"
+import { computePromptTraits } from "../../prompt/traits"
+import { expandPastedTextPlaceholders, expandTrackedPastedText } from "../../prompt/part"
+import { usePromptStash } from "../../prompt/stash"
 import { DialogStash } from "../dialog-stash"
 import { type AutocompleteRef, Autocomplete } from "./autocomplete"
-import { useCommandDialog } from "../dialog-command"
-import { useLanguage } from "@tui/context/language"
-import { useRenderer, type JSX } from "@opentui/solid"
-import * as Editor from "@tui/util/editor"
-import * as Voice from "@tui/util/voice"
-import { useExit } from "../../context/exit"
-import * as Clipboard from "../../util/clipboard"
+import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import type { AssistantMessage, FilePart, UserMessage } from "@mimo-ai/sdk/v2"
-import { TuiEvent } from "../../event"
-import { iife } from "@/util/iife"
-import { Locale } from "@/util"
-import { formatDuration } from "@/util/format"
-import { createColors, createFrames } from "../../ui/spinner.ts"
-import { useDialog } from "@tui/ui/dialog"
+import { Locale } from "../../util/locale"
+import { errorMessage } from "../../util/error"
+import { formatDuration } from "../../util/format"
+import { createColors, createFrames } from "../../ui/spinner"
+import { useDialog } from "../../ui/dialog"
 import { DialogProvider as DialogProviderConnect } from "../dialog-provider"
 import { DialogAlert } from "../../ui/dialog-alert"
 import { useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv"
 import { createFadeIn } from "../../util/signal"
-import { useTextareaKeybindings } from "../textarea-keybindings"
 import { DialogSkill } from "../dialog-skill"
-import { DialogWorkspaceCreate, restoreWorkspaceSession } from "../dialog-workspace-create"
 import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
-import { useArgs } from "@tui/context/args"
+import { useArgs } from "../../context/args"
+import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut, useLeaderActive, useOpencodeKeymap } from "../../keymap"
+import { useTuiConfig } from "../../config"
+import { usePromptWorkspace } from "./workspace"
+import { usePromptMove } from "./move"
+import { readLocalAttachment } from "./local-attachment"
 
 export type PromptProps = {
   sessionID?: string
-  workspaceID?: string
   visible?: boolean
   disabled?: boolean
   onSubmit?: () => void
@@ -61,6 +73,17 @@ export type PromptProps = {
   }
 }
 
+function pastedFilepath(value: string, platform: string) {
+  const raw = value.replace(/^['"]+|['"]+$/g, "")
+  if (raw.startsWith("file://")) {
+    try {
+      return fileURLToPath(raw)
+    } catch {}
+  }
+  if (platform === "win32") return raw
+  return raw.replace(/\\(.)/g, "$1")
+}
+
 export type PromptRef = {
   focused: boolean
   current: PromptInfo
@@ -69,13 +92,14 @@ export type PromptRef = {
   blur(): void
   focus(): void
   submit(): void
-  paste(): void
 }
 
 const money = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
 })
+
+const DRAFT_RETENTION_MIN_CHARS = 20
 
 function randomIndex(count: number) {
   if (count <= 0) return 0
@@ -86,263 +110,104 @@ function fadeColor(color: RGBA, alpha: number) {
   return RGBA.fromValues(color.r, color.g, color.b, color.a * alpha)
 }
 
-let stashed: { prompt: PromptInfo; cursor: number } | undefined
+function hasEditorRangeSelection(selection: EditorSelection["ranges"][number]) {
+  return (
+    selection.selection.start.line !== selection.selection.end.line ||
+    selection.selection.start.character !== selection.selection.end.character
+  )
+}
 
-// Module-level voice state: survives component remounts and route changes
-let activeVoice: {
-  handle: Voice.StreamingHandle
-  pending: number
-  appendText: (text: string) => void
-  setText: (text: string) => void
-  getPlainText: () => string
-  switchAgent: (name: string) => void
-  submit: () => Promise<unknown>
-  setState: (type: "listening" | "speaking" | "processing" | "finishing" | "idle") => void
-  showError: (msg: string) => void
-} | undefined
+function getEditorRangeLabel(selection: EditorSelection["ranges"][number]) {
+  if (!hasEditorRangeSelection(selection)) return
+  if (selection.selection.start.line === selection.selection.end.line) return `#${selection.selection.start.line}`
+  return `#${selection.selection.start.line}-${selection.selection.end.line}`
+}
+
+function formatEditorContext(selection: EditorSelection) {
+  const selected = selection.ranges.filter(hasEditorRangeSelection)
+  if (selected.length === 0)
+    return `<system-reminder>Note: The user opened the file "${selection.filePath}". This may or may not be relevant to the current task.</system-reminder>\n`
+
+  const ranges = selected.map((range, index) => {
+    const prefix = selected.length > 1 ? `Selection ${index + 1}: ` : ""
+    return `Note: The user selected ${prefix}${getEditorRangeLabel(range)} from "${selection.filePath}". \`\`\`${range.text}\`\`\`\n\n`
+  })
+
+  return `<system-reminder>${ranges.join("\n")} This may or may not be relevant to the current task.</system-reminder>\n`
+}
+
+let stashed: { prompt: PromptInfo; cursor: number } | undefined
 
 export function Prompt(props: PromptProps) {
   let input: TextareaRenderable
   let anchor: BoxRenderable
-  let autocomplete: AutocompleteRef
+  const [inputTarget, setInputTarget] = createSignal<TextareaRenderable | undefined>()
 
-  const keybind = useKeybind()
+  const leader = useLeaderActive()
   const local = useLocal()
   const args = useArgs()
+  const paths = useTuiPaths()
+  const terminalEnvironment = useTuiTerminalEnvironment()
+  const clipboard = useClipboard()
   const sdk = useSDK()
+  const editor = useEditorContext()
   const route = useRoute()
   const project = useProject()
   const sync = useSync()
+  const tuiConfig = useTuiConfig()
   const dialog = useDialog()
   const toast = useToast()
   const status = createMemo(() => sync.data.session_status?.[props.sessionID ?? ""] ?? { type: "idle" })
   const history = usePromptHistory()
   const stash = usePromptStash()
-  const command = useCommandDialog()
-  const t = useLanguage().t
+  const keymap = useOpencodeKeymap()
+  const agentShortcut = useCommandShortcut("agent.cycle")
+  const paletteShortcut = useCommandShortcut("command.palette.show")
   const renderer = useRenderer()
+  const exit = useExit()
+  const dimensions = useTerminalDimensions()
   const { theme, syntax } = useTheme()
   const kv = useKV()
   const animationsEnabled = createMemo(() => kv.get("animations_enabled", true))
-  const voiceEnabled = createMemo(() => kv.get("voice_enabled", false))
-  const voiceSendEnabled = createMemo(() => kv.get("voice_send_command", true))
-  const voiceControlEnabled = createMemo(() => kv.get("voice_control_enabled", false))
-  const [voiceState, setVoiceState] = createSignal<"idle" | "listening" | "speaking" | "processing" | "finishing">(
-    activeVoice ? (activeVoice.pending > 0 ? "processing" : "listening") : "idle",
-  )
-  const [voiceElapsed, setVoiceElapsed] = createSignal(0)
-
-  let voiceTimer: ReturnType<typeof setInterval> | undefined
-  let voiceSegmentStart = 0
-
-  function voiceTimerStart() {
-    voiceTimerStop()
-    voiceSegmentStart = Date.now()
-    voiceTimer = setInterval(() => {
-      setVoiceElapsed(Math.floor((Date.now() - voiceSegmentStart) / 1000))
-    }, 200)
-  }
-  function voiceTimerStop() {
-    if (voiceTimer) {
-      clearInterval(voiceTimer)
-      voiceTimer = undefined
-    }
-    setVoiceElapsed(0)
-  }
-
-  function voiceAppendText(text: string) {
-    if (!input || input.isDestroyed) return
-    const current = store.prompt.input
-    if (current.length > 0 && /[.?!]$/.test(current) && text.length > 0 && text[0] !== " ") {
-      input.insertText(" " + text)
-      setStore("prompt", "input", current + " " + text)
-    } else {
-      input.insertText(text)
-      setStore("prompt", "input", current + text)
-    }
-    setTimeout(() => {
-      if (!input || input.isDestroyed) return
-      input.getLayoutNode().markDirty()
-      input.gotoBufferEnd()
-      renderer.requestRender()
-    }, 0)
-  }
-
-  function voiceSetText(text: string) {
-    if (!input || input.isDestroyed) return
-    input.clear()
-    input.insertText(text)
-    setStore("prompt", "input", text)
-    setTimeout(() => {
-      if (!input || input.isDestroyed) return
-      input.getLayoutNode().markDirty()
-      input.gotoBufferEnd()
-      renderer.requestRender()
-    }, 0)
-  }
-
-  function voiceGetPlainText() {
-    return store.prompt.input
-  }
-
-  function voiceSwitchAgent(name: string) {
-    const match = local.agent.list().find((x) => x.name.toLowerCase() === name.toLowerCase())
-    if (match) local.agent.set(match.name)
-    else toast.show({ message: t("tui.voice.error.unknown_agent", { name: name }), variant: "error", duration: 3000 })
-  }
-
-  function voiceSetState(type: "idle" | "listening" | "speaking" | "processing" | "finishing") {
-    setVoiceState(type)
-    if (type === "speaking") voiceTimerStart()
-    if (type === "idle" || type === "listening" || type === "processing") voiceTimerStop()
-  }
-
-  // Wire module-level callbacks to current component instance
-  if (activeVoice) {
-    activeVoice.appendText = voiceAppendText
-    activeVoice.setText = voiceSetText
-    activeVoice.getPlainText = voiceGetPlainText
-    activeVoice.switchAgent = voiceSwitchAgent
-    activeVoice.submit = () => submit()
-    activeVoice.setState = voiceSetState
-    activeVoice.showError = (msg) => toast.show({ message: msg, variant: "error", duration: 3000 })
-  }
-  onCleanup(() => {
-    voiceTimerStop()
-  })
-
-  async function voiceToggle() {
-    const state = voiceState()
-    if (state === "listening" || state === "speaking" || state === "processing") {
-      voiceTimerStop()
-      setVoiceState("finishing")
-      if (activeVoice) {
-        const handle = activeVoice.handle
-        const av = activeVoice
-        activeVoice = undefined
-        await Voice.stopStreaming(handle)
-        if (av.pending <= 0) setVoiceState("idle")
-      }
-      return
-    }
-    if (state === "finishing") return
-    // Start streaming
-    const xiaomi = sync.data.provider.find((p) => p.id === "xiaomi")
-    if (!xiaomi?.key) {
-      toast.show({ message: t("tui.voice.error.no_auth"), variant: "error" })
-      return
-    }
-    if (!Voice.isAvailable()) {
-      toast.show({ message: t("tui.voice.error.no_recorder"), variant: "error" })
-      return
-    }
-    const apiKey = xiaomi.key
-    const baseUrl = (xiaomi.options?.baseURL as string) || "https://api.xiaomimimo.com/v1"
-
-    const av: NonNullable<typeof activeVoice> = {
-      handle: undefined!,
-      pending: 0,
-      appendText: voiceAppendText,
-      setText: voiceSetText,
-      getPlainText: voiceGetPlainText,
-      switchAgent: voiceSwitchAgent,
-      submit: () => submit(),
-      setState: voiceSetState,
-      showError: (msg) => toast.show({ message: msg, variant: "error", duration: 3000 }),
-    }
-
-    let voiceControlChain: Promise<void> = Promise.resolve()
-
-    const handle = Voice.startStreaming({
-      onSegment: (segment) => {
-        av.pending++
-        av.setState("processing")
-
-        if (voiceControlEnabled()) {
-          voiceControlChain = voiceControlChain.then(async () => {
-            try {
-              if (!activeVoice) return
-              av.setState("processing")
-              const currentText = av.getPlainText()
-              const currentAgent = local.agent.current()?.name ?? ""
-              const availableAgents = local.agent.list().map((x) => x.name)
-
-              const ctrl = await Voice.processVoiceControl({
-                audio: segment.audio,
-                apiKey,
-                baseUrl,
-                currentText,
-                currentAgent,
-                availableAgents,
-                sendEnabled: voiceSendEnabled(),
-              })
-
-              if (ctrl) {
-                for (const action of ctrl.actions) {
-                  if (action.action === "edit") av.setText(action.text)
-                  else if (action.action === "send") {
-                    if (voiceSendEnabled() && av.getPlainText().trim()) await av.submit()
-                    else if (!av.getPlainText().trim()) av.showError(t("tui.voice.error.empty_send"))
-                  } else if (action.action === "agent") {
-                    av.switchAgent(action.agent)
-                  }
-                }
-              } else {
-                av.showError(t("tui.voice.error.network"))
-              }
-            } finally {
-              av.pending--
-              if (activeVoice === av) av.setState("listening")
-              if (!activeVoice && av.pending <= 0) av.setState("idle")
-            }
-          }).catch(() => {})
-        } else {
-          Voice.transcribeAudio({
-            audio: segment.audio,
-            apiKey,
-            baseUrl,
-          }).then((text) => {
-            if (text) {
-              if (voiceSendEnabled() && Voice.SEND_RE.test(text.replace(/[\s。.!！？?，,]+$/g, "").trim())) {
-                av.submit()
-              } else {
-                av.appendText(text.trim())
-              }
-            } else {
-              av.showError(t("tui.voice.error.network"))
-            }
-            av.pending--
-            if (activeVoice === av) av.setState("listening")
-            if (!activeVoice && av.pending <= 0) av.setState("idle")
-          }).catch(() => {
-            av.pending--
-            if (activeVoice === av) av.setState("listening")
-            if (!activeVoice && av.pending <= 0) av.setState("idle")
-          })
-        }
-      },
-      onActiveChange: (active) => {
-        if (active && activeVoice === av) av.setState("speaking")
-      },
-      onError: () => {
-        av.showError(t("tui.voice.error.no_recorder"))
-        activeVoice = undefined
-        av.setState("idle")
-      },
-    })
-    if (!handle) {
-      toast.show({ message: t("tui.voice.error.no_recorder"), variant: "error" })
-      return
-    }
-    av.handle = handle
-    activeVoice = av
-    setVoiceState("listening")
-  }
-
   const list = createMemo(() => props.placeholders?.normal ?? [])
   const shell = createMemo(() => props.placeholders?.shell ?? [])
+  const fileContextEnabled = createMemo(() => kv.get("file_context_enabled", true))
+  const [dismissedEditorSelectionKey, setDismissedEditorSelectionKey] = createSignal<string>()
+  const editorContext = createMemo(() => {
+    const selection = fileContextEnabled() ? editor.selection() : undefined
+    if (!selection) return
+    return editorSelectionKey(selection) === dismissedEditorSelectionKey() ? undefined : selection
+  })
+  const editorPath = createMemo(() => editorContext()?.filePath)
+  const editorSelectionLabel = createMemo(() => {
+    const ranges = editorContext()?.ranges
+    if (!ranges) return
+    const first = ranges.find(hasEditorRangeSelection) ?? ranges[0]
+    if (!first) return
+    return [getEditorRangeLabel(first), ranges.length > 1 ? `+${ranges.length - 1}` : undefined]
+      .filter(Boolean)
+      .join(" ")
+  })
+  const editorFileLabel = createMemo(() => {
+    const value = editorPath()
+    if (!value) return
+    const filename = path.basename(value)
+    const file = /^index\.[^./]+$/.test(filename)
+      ? [path.basename(path.dirname(value)), filename].filter(Boolean).join("/")
+      : filename
+    return `${file.split(path.sep).join("/")}${editorSelectionLabel() ?? ""}`
+  })
+  const editorFileLabelDisplay = createMemo(() => {
+    const file = editorFileLabel()
+    if (!file) return
+    return Locale.truncateMiddle(file, Math.max(12, Math.min(48, Math.floor(dimensions().width / 3))))
+  })
+  const editorContextLabelState = createMemo(() => editor.labelState())
   const [auto, setAuto] = createSignal<AutocompleteRef>()
-  const [ghost, setGhost] = createSignal("")
+  const workspace = usePromptWorkspace(props.sessionID)
+  const move = usePromptMove({ projectID: project.project, sessionID: () => props.sessionID })
+  const [cursorVersion, setCursorVersion] = createSignal(0)
+  const currentProviderLabel = createMemo(() => local.model.parsed().provider)
   const hasRightContent = createMemo(() => Boolean(props.right))
 
   function promptModelWarning() {
@@ -356,15 +221,18 @@ export function Prompt(props: PromptProps) {
     }
   }
 
-  const textareaKeybindings = useTextareaKeybindings()
-
+  function dismissEditorContext() {
+    setDismissedEditorSelectionKey(editorSelectionKey(editorContext()))
+    editor.clearSelection()
+  }
   const fileStyleId = syntax().getStyleId("extmark.file")!
   const agentStyleId = syntax().getStyleId("extmark.agent")!
   const pasteStyleId = syntax().getStyleId("extmark.paste")!
   let promptPartTypeId = 0
   const event = useEvent()
 
-  event.on(TuiEvent.PromptAppend.type, (evt) => {
+  event.on("tui.prompt.append", (evt, { workspace }) => {
+    if (workspace !== project.workspace.current()) return
     if (!input || input.isDestroyed) return
     input.insertText(evt.properties.text)
     setTimeout(() => {
@@ -377,72 +245,22 @@ export function Prompt(props: PromptProps) {
   })
 
   createEffect(() => {
+    if (!input || input.isDestroyed) return
     if (props.disabled) input.cursorColor = theme.backgroundElement
     if (!props.disabled) input.cursorColor = theme.text
   })
 
   const lastUserMessage = createMemo(() => {
     if (!props.sessionID) return undefined
-    const messages = sync.data.message[props.sessionID]?.["main"]
+    const messages = sync.data.message[props.sessionID]
     if (!messages) return undefined
     return messages.findLast((m): m is UserMessage => m.role === "user")
   })
 
-  // After the agent finishes a turn, predict the user's likely next prompt and
-  // show it as ghost text in the empty input (accept with Tab). Only fires on
-  // an idle transition while the input is empty so it never clobbers typing.
-  let ghostRequest = 0
-  async function fetchGhost(sessionID: string) {
-    if (props.showPlaceholder === false) return
-    const token = ++ghostRequest
-    const userMessageID = lastUserMessage()?.id
-    const res = await sdk.client.session.predict({ sessionID }).catch(() => undefined)
-    const text = res?.data?.prediction?.trim()
-    if (!text) return
-    // Drop the result if anything that defined its context changed while the
-    // request was in flight: superseded by a newer fetch, session switched, a
-    // new run started, the conversation advanced, or the user began typing.
-    if (token !== ghostRequest) return
-    if (props.sessionID !== sessionID) return
-    if (status().type !== "idle") return
-    if (lastUserMessage()?.id !== userMessageID) return
-    if (!input || input.isDestroyed || input.plainText !== "") return
-    setGhost(text)
-  }
-  createEffect(
-    on(
-      () => status().type,
-      (type, prev) => {
-        if (type !== "idle") {
-          // A new run started (or the session went non-idle): invalidate any
-          // in-flight prediction and hide a stale suggestion.
-          ghostRequest++
-          if (ghost()) setGhost("")
-          return
-        }
-        if (prev === "idle") return
-        const sessionID = props.sessionID
-        if (!sessionID || !input || input.isDestroyed || input.plainText !== "") return
-        if (!lastUserMessage()) return
-        fetchGhost(sessionID)
-      },
-    ),
-  )
-  // While a ghost suggestion is showing, suspend global command keybinds so Tab
-  // reaches the textarea's onKeyDown (where we accept it) instead of being
-  // consumed by the agent-cycle keybind. Global keyboard handlers run before
-  // renderable handlers, so without this the suggestion can never be accepted.
-  // The cleanup resumes keybinds on any dismissal (typing, accept, submit,
-  // session change, status leaving idle).
-  createEffect(() => {
-    if (!ghost()) return
-    command.keybinds(false)
-    onCleanup(() => command.keybinds(true))
-  })
-
   const usage = createMemo(() => {
     if (!props.sessionID) return
-    const msg = sync.data.message[props.sessionID]?.["main"] ?? []
+    const session = sync.session.get(props.sessionID)
+    const msg = sync.data.message[props.sessionID] ?? []
     const last = msg.findLast((item): item is AssistantMessage => item.role === "assistant" && item.tokens.output > 0)
     if (!last) return
 
@@ -452,7 +270,7 @@ export function Prompt(props: PromptProps) {
 
     const model = sync.data.provider.find((item) => item.id === last.providerID)?.models[last.modelID]
     const pct = model?.limit.context ? `${Math.round((tokens / model.limit.context) * 100)}%` : undefined
-    const cost = msg.reduce((sum, item) => sum + (item.role === "assistant" ? item.cost : 0), 0)
+    const cost = session?.cost ?? 0
     return {
       context: pct ? `${Locale.number(tokens)} (${pct})` : Locale.number(tokens),
       cost: cost > 0 ? money.format(cost) : undefined,
@@ -480,7 +298,6 @@ export function Prompt(props: PromptProps) {
     on(
       () => props.sessionID,
       () => {
-        setGhost("")
         setStore("placeholder", randomIndex(list().length))
       },
       { defer: true },
@@ -511,26 +328,24 @@ export function Prompt(props: PromptProps) {
     }
   })
 
-  command.register(() => {
-    return [
+  const promptCommands = createMemo(() =>
+    [
       {
-        title: t("tui.command.prompt.clear.title"),
-        value: "prompt.clear",
-        category: "prompt",
+        title: "Clear prompt",
+        name: "prompt.clear",
+        category: "Prompt",
         hidden: true,
-        onSelect: (dialog) => {
-          input.extmarks.clear()
-          input.clear()
+        run: () => {
+          clearPrompt()
           dialog.clear()
         },
       },
       {
-        title: t("tui.command.prompt.submit.title"),
-        value: "prompt.submit",
-        keybind: "input_submit",
-        category: "prompt",
+        title: "Submit prompt",
+        name: "prompt.submit",
+        category: "Prompt",
         hidden: true,
-        onSelect: async (dialog) => {
+        run: async () => {
           if (!input.focused) return
           const handled = await submit()
           if (!handled) return
@@ -539,24 +354,45 @@ export function Prompt(props: PromptProps) {
         },
       },
       {
-        title: t("tui.command.prompt.paste.title"),
-        value: "prompt.paste",
-        keybind: "input_paste",
-        category: "prompt",
-        hidden: true,
-        onSelect: async () => {
-          await pasteFromClipboard()
+        title: "Remove editor context",
+        name: "prompt.editor_context.clear",
+        category: "Prompt",
+        enabled: Boolean(editorContext()),
+        run: () => {
+          dismissEditorContext()
+          dialog.clear()
         },
       },
       {
-        title: t("tui.command.session.interrupt.title"),
-        value: "session.interrupt",
-        keybind: "session_interrupt",
-        category: "session",
+        title: "Paste",
+        name: "prompt.paste",
+        category: "Prompt",
+        hidden: true,
+        run: async (ctx: CommandContext<Renderable, KeyEvent>) => {
+          ctx.event.preventDefault()
+          ctx.event.stopPropagation()
+          const content = await clipboard.read?.()
+          if (content?.mime.startsWith("image/")) {
+            await pasteAttachment({
+              filename: "clipboard",
+              mime: content.mime,
+              content: content.data,
+            })
+            return
+          }
+          if (content?.mime === "text/plain") {
+            await pasteInputText(content.data)
+          }
+        },
+      },
+      {
+        title: "Interrupt session",
+        name: "session.interrupt",
+        category: "Session",
         hidden: true,
         enabled: status().type !== "idle",
-        onSelect: (dialog) => {
-          if (autocomplete.visible) return
+        run: () => {
+          if (auto()?.visible) return
           if (!input.focused) return
           // TODO: this should be its own command
           if (store.mode === "shell") {
@@ -581,14 +417,11 @@ export function Prompt(props: PromptProps) {
         },
       },
       {
-        title: t("tui.command.prompt.editor.title"),
-        category: "session",
-        keybind: "editor_open",
-        value: "prompt.editor",
-        slash: {
-          name: "editor",
-        },
-        onSelect: async (dialog) => {
+        title: "Open editor",
+        category: "Session",
+        name: "prompt.editor",
+        slashName: "editor",
+        run: async () => {
           dialog.clear()
 
           // replace summarized text parts with the actual text
@@ -602,10 +435,18 @@ export function Prompt(props: PromptProps) {
           const nonTextParts = store.prompt.parts.filter((p) => p.type !== "text")
 
           const value = text
-          const content = await Editor.open({ value, renderer })
+          const content = await openEditor({
+            renderer,
+            value,
+            cwd:
+              (project.instance.path().worktree === "/" ? undefined : project.instance.path().worktree) ||
+              project.instance.directory() ||
+              paths.cwd,
+          })
           if (!content) return
+          const normalized = normalizePromptContent(content)
 
-          input.setText(content)
+          input.setText(normalized)
 
           // Update positions for nonTextParts based on their location in new content
           // Filter out parts whose virtual text was deleted
@@ -622,7 +463,7 @@ export function Prompt(props: PromptProps) {
 
               if (!virtualText) return part
 
-              const newStart = content.indexOf(virtualText)
+              const newStart = normalized.indexOf(virtualText)
               // if the virtual text is deleted, remove the part
               if (newStart === -1) return null
 
@@ -658,23 +499,21 @@ export function Prompt(props: PromptProps) {
             .filter((part) => part !== null)
 
           setStore("prompt", {
-            input: content,
+            input: normalized,
             // keep only the non-text parts because the text parts were
             // already expanded inline
             parts: updatedNonTextParts,
           })
           restoreExtmarksFromParts(updatedNonTextParts)
-          input.cursorOffset = Bun.stringWidth(content)
+          input.cursorOffset = Bun.stringWidth(normalized)
         },
       },
       {
-        title: t("tui.command.prompt.skills.title"),
-        value: "prompt.skills",
-        category: "prompt",
-        slash: {
-          name: "skills",
-        },
-        onSelect: () => {
+        title: "Skills",
+        name: "prompt.skills",
+        category: "Prompt",
+        slashName: "skills",
+        run: () => {
           dialog.replace(() => (
             <DialogSkill
               onSelect={(skill) => {
@@ -690,59 +529,51 @@ export function Prompt(props: PromptProps) {
         },
       },
       {
-        title: voiceEnabled() ? t("tui.command.voice.toggle.title_on") : t("tui.command.voice.toggle.title_off"),
-        value: "voice.toggle",
-        category: "prompt",
-        slash: {
-          name: "voice",
-        },
-        onSelect: () => {
-          const next = !voiceEnabled()
-          kv.set("voice_enabled", next)
-          if (!next && activeVoice) void voiceToggle()
-          toast.show({
-            message: next ? t("tui.voice.enabled") : t("tui.voice.disabled"),
-            variant: "info",
-            duration: 3000,
-          })
+        title: "Warp",
+        desc: "Change the workspace for the session",
+        name: "workspace.set",
+        category: "Session",
+        enabled: Flag.MIMOCODE_EXPERIMENTAL_WORKSPACES,
+        slashName: "warp",
+        run: () => {
+          workspace.open()
         },
       },
       {
-        title: voiceSendEnabled() ? t("tui.command.voice.send.title_on") : t("tui.command.voice.send.title_off"),
-        value: "voice.send",
-        category: "prompt",
-        slash: {
-          name: "voice-send",
-        },
-        onSelect: () => {
-          const next = !voiceSendEnabled()
-          kv.set("voice_send_command", next)
-          toast.show({
-            message: next ? t("tui.voice.send.enabled") : t("tui.voice.send.disabled"),
-            variant: "info",
-            duration: 3000,
-          })
+        title: "Move session",
+        desc: "Move to another project dir",
+        name: "session.move",
+        category: "Session",
+        slashName: "move",
+        run: () => {
+          move.open()
         },
       },
-      {
-        title: voiceControlEnabled() ? t("tui.command.voice.control.title_on") : t("tui.command.voice.control.title_off"),
-        value: "voice.control",
-        category: "prompt",
-        slash: {
-          name: "voice-control",
-        },
-        onSelect: () => {
-          const next = !voiceControlEnabled()
-          kv.set("voice_control_enabled", next)
-          toast.show({
-            message: next ? t("tui.voice.control.enabled") : t("tui.voice.control.disabled"),
-            variant: "info",
-            duration: 3000,
-          })
-        },
-      },
-    ]
-  })
+    ].map((entry) => ({
+      namespace: "palette",
+      ...entry,
+    })),
+  )
+
+  useBindings(() => ({
+    commands: promptCommands(),
+  }))
+
+  useBindings(() => ({
+    mode: OPENCODE_BASE_MODE,
+    bindings: tuiConfig.keybinds.gather("prompt.palette", [
+      "prompt.submit",
+      "prompt.editor",
+      "prompt.editor_context.clear",
+      "prompt.stash",
+      "prompt.stash.pop",
+      "prompt.stash.list",
+      "prompt.skills",
+      "session.interrupt",
+      "workspace.set",
+      "session.move",
+    ]),
+  }))
 
   const ref: PromptRef = {
     get focused() {
@@ -775,9 +606,6 @@ export function Prompt(props: PromptProps) {
     submit() {
       void submit()
     },
-    paste() {
-      void pasteFromClipboard()
-    },
   }
 
   onMount(() => {
@@ -796,6 +624,7 @@ export function Prompt(props: PromptProps) {
     if (store.prompt.input) {
       stashed = { prompt: unwrap(store.prompt), cursor: input.cursorOffset }
     }
+    setInputTarget(undefined)
     props.ref?.(undefined)
   })
 
@@ -813,16 +642,12 @@ export function Prompt(props: PromptProps) {
 
   createEffect(() => {
     if (!input || input.isDestroyed) return
-    const capture =
-      store.mode === "normal"
-        ? auto()?.visible
-          ? (["escape", "navigate", "submit", "tab"] as const)
-          : (["tab"] as const)
-        : undefined
     input.traits = {
-      capture,
-      suspend: !!props.disabled || store.mode === "shell",
-      status: store.mode === "shell" ? "SHELL" : undefined,
+      ...input.traits,
+      ...computePromptTraits({
+        mode: store.mode,
+        autocompleteVisible: !!auto()?.visible,
+      }),
     }
   })
 
@@ -904,63 +729,220 @@ export function Prompt(props: PromptProps) {
     )
   }
 
-  command.register(() => [
-    {
-      title: t("tui.command.prompt.stash.title"),
-      value: "prompt.stash",
-      category: "prompt",
-      enabled: !!store.prompt.input,
-      onSelect: (dialog) => {
-        if (!store.prompt.input) return
-        stash.push({
-          input: store.prompt.input,
-          parts: store.prompt.parts,
-        })
-        input.extmarks.clear()
-        input.clear()
-        setStore("prompt", { input: "", parts: [] })
-        setStore("extmarkToPartIndex", new Map())
-        dialog.clear()
+  const stashCommands = createMemo(() =>
+    [
+      {
+        title: "Stash prompt",
+        name: "prompt.stash",
+        category: "Prompt",
+        enabled: !!store.prompt.input,
+        run: () => {
+          if (!store.prompt.input) return
+          stash.push({
+            input: store.prompt.input,
+            parts: store.prompt.parts,
+          })
+          input.extmarks.clear()
+          input.clear()
+          setStore("prompt", { input: "", parts: [] })
+          setStore("extmarkToPartIndex", new Map())
+          dialog.clear()
+        },
       },
-    },
-    {
-      title: t("tui.command.prompt.stash.pop.title"),
-      value: "prompt.stash.pop",
-      category: "prompt",
-      enabled: stash.list().length > 0,
-      onSelect: (dialog) => {
-        const entry = stash.pop()
-        if (entry) {
-          input.setText(entry.input)
-          setStore("prompt", { input: entry.input, parts: entry.parts })
-          restoreExtmarksFromParts(entry.parts)
-          input.gotoBufferEnd()
-        }
-        dialog.clear()
+      {
+        title: "Stash pop",
+        name: "prompt.stash.pop",
+        category: "Prompt",
+        enabled: stash.list().length > 0,
+        run: () => {
+          const entry = stash.pop()
+          if (entry) {
+            input.setText(entry.input)
+            setStore("prompt", { input: entry.input, parts: entry.parts })
+            restoreExtmarksFromParts(entry.parts)
+            input.gotoBufferEnd()
+          }
+          dialog.clear()
+        },
       },
-    },
-    {
-      title: t("tui.command.prompt.stash.list.title"),
-      value: "prompt.stash.list",
-      category: "prompt",
-      enabled: stash.list().length > 0,
-      onSelect: (dialog) => {
-        dialog.replace(() => (
-          <DialogStash
-            onSelect={(entry) => {
-              input.setText(entry.input)
-              setStore("prompt", { input: entry.input, parts: entry.parts })
-              restoreExtmarksFromParts(entry.parts)
-              input.gotoBufferEnd()
-            }}
-          />
-        ))
+      {
+        title: "Stash list",
+        name: "prompt.stash.list",
+        category: "Prompt",
+        enabled: stash.list().length > 0,
+        run: () => {
+          dialog.replace(() => (
+            <DialogStash
+              onSelect={(entry) => {
+                input.setText(entry.input)
+                setStore("prompt", { input: entry.input, parts: entry.parts })
+                restoreExtmarksFromParts(entry.parts)
+                input.gotoBufferEnd()
+              }}
+            />
+          ))
+        },
       },
-    },
-  ])
+    ].map((entry) => ({
+      namespace: "palette",
+      ...entry,
+    })),
+  )
 
+  useBindings(() => ({
+    commands: stashCommands(),
+  }))
+
+  useBindings(() => {
+    return {
+      target: inputTarget,
+      enabled: inputTarget() !== undefined && !props.disabled,
+      bindings: tuiConfig.keybinds.get("prompt.paste"),
+    }
+  })
+
+  useBindings(() => {
+    return {
+      target: inputTarget,
+      enabled: inputTarget() !== undefined && !props.disabled && store.prompt.input !== "",
+      bindings: tuiConfig.keybinds.get("prompt.clear"),
+    }
+  })
+
+  useBindings(() => {
+    return {
+      target: inputTarget,
+      enabled: (() => {
+        cursorVersion()
+        return (
+          inputTarget() !== undefined &&
+          !props.disabled &&
+          store.mode === "normal" &&
+          !auto()?.visible &&
+          input?.visualCursor.offset === 0
+        )
+      })(),
+      bindings: [
+        {
+          key: "!",
+          desc: "Shell mode",
+          group: "Prompt",
+          cmd: () => {
+            setStore("placeholder", randomIndex(shell().length))
+            setStore("mode", "shell")
+          },
+        },
+      ],
+    }
+  })
+
+  useBindings(() => {
+    return {
+      target: inputTarget,
+      enabled: inputTarget() !== undefined && store.mode === "shell",
+      bindings: [{ key: "escape", desc: "Exit shell mode", group: "Prompt", cmd: () => setStore("mode", "normal") }],
+    }
+  })
+
+  useBindings(() => {
+    return {
+      target: inputTarget,
+      enabled: (() => {
+        cursorVersion()
+        return inputTarget() !== undefined && store.mode === "shell" && input?.visualCursor.offset === 0
+      })(),
+      bindings: [{ key: "backspace", desc: "Exit shell mode", group: "Prompt", cmd: () => setStore("mode", "normal") }],
+    }
+  })
+
+  useBindings(() => {
+    return {
+      target: inputTarget,
+      enabled: (() => {
+        cursorVersion()
+        return inputTarget() !== undefined && !props.disabled && !auto()?.visible && input !== undefined
+      })(),
+      commands: [
+        {
+          name: "prompt.history.previous",
+          title: "Previous prompt history",
+          category: "Prompt",
+          run() {
+            if (input.cursorOffset !== 0) {
+              if (input.scrollY + input.visualCursor.visualRow === 0) input.cursorOffset = 0
+              return false
+            }
+
+            const item = history.move(-1, input.plainText)
+            if (!item) return false
+            input.setText(item.input)
+            setStore("prompt", item)
+            setStore("mode", item.mode ?? "normal")
+            restoreExtmarksFromParts(item.parts)
+            input.cursorOffset = 0
+          },
+        },
+      ],
+      bindings: tuiConfig.keybinds.get("prompt.history.previous"),
+    }
+  })
+
+  useBindings(() => {
+    return {
+      target: inputTarget,
+      enabled: (() => {
+        cursorVersion()
+        return inputTarget() !== undefined && !props.disabled && !auto()?.visible && input !== undefined
+      })(),
+      commands: [
+        {
+          name: "prompt.history.next",
+          title: "Next prompt history",
+          category: "Prompt",
+          run() {
+            if (input.cursorOffset !== input.plainText.length) {
+              if (
+                input.scrollY + input.visualCursor.visualRow ===
+                Math.max(0, input.editorView.getTotalVirtualLineCount() - 1)
+              )
+                input.cursorOffset = input.plainText.length
+              return false
+            }
+
+            const item = history.move(1, input.plainText)
+            if (!item) return false
+            input.setText(item.input)
+            setStore("prompt", item)
+            setStore("mode", item.mode ?? "normal")
+            restoreExtmarksFromParts(item.parts)
+            input.cursorOffset = input.plainText.length
+          },
+        },
+      ],
+      bindings: tuiConfig.keybinds.get("prompt.history.next"),
+    }
+  })
+
+  let submitting = false
   async function submit() {
-    setGhost("")
+    // Prevent overlapping invocations (e.g. a double-pressed Enter, or the
+    // input's native onSubmit racing another dispatch). Without this guard,
+    // a second call slips past the empty-input check before the first call
+    // clears `store.prompt.input`, then awaits its own `session.create` and
+    // ultimately reads the now-empty store — sending a phantom empty prompt
+    // to a freshly created session.
+    if (submitting) return false
+    submitting = true
+    try {
+      return await submitInner()
+    } finally {
+      submitting = false
+    }
+  }
+
+  async function submitInner() {
+    workspace.clearNotice()
+
     // IME: double-defer may fire before onContentChange flushes the last
     // composed character (e.g. Korean hangul) to the store, so read
     // plainText directly and sync before any downstream reads.
@@ -969,7 +951,8 @@ export function Prompt(props: PromptProps) {
       syncExtmarksWithPromptParts()
     }
     if (props.disabled) return false
-    if (autocomplete?.visible) return false
+    if (workspace.creating() || move.creating()) return false
+    if (auto()?.visible) return false
     if (!store.prompt.input) return false
     const agent = local.agent.current()
     if (!agent) return false
@@ -991,32 +974,38 @@ export function Prompt(props: PromptProps) {
       dialog.replace(() => (
         <DialogWorkspaceUnavailable
           onRestore={() => {
-            dialog.replace(() => (
-              <DialogWorkspaceCreate
-                onSelect={(nextWorkspaceID) =>
-                  restoreWorkspaceSession({
-                    dialog,
-                    sdk,
-                    sync,
-                    project,
-                    toast,
-                    workspaceID: nextWorkspaceID,
-                    sessionID: props.sessionID!,
-                  })
-                }
-              />
-            ))
+            workspace.open()
+            return false
           }}
         />
       ))
       return false
     }
 
+    const variant = local.model.variant.current()
     let sessionID = props.sessionID
+    let finishMoveProgress = false
     if (sessionID == null) {
-      const res = await sdk.client.session.create({ workspace: props.workspaceID })
+      const selectedWorkspace = workspace.selection()
+      const workspaceID = selectedWorkspace?.type === "existing" ? selectedWorkspace.workspaceID : undefined
+
+      const directory = await move.getDirectory(store.prompt.input)
+      if (move.pending() && !directory) return false
+      finishMoveProgress = Boolean(move.progress())
+
+      const res = await sdk.client.session.create({
+        directory,
+        workspace: workspaceID,
+        agent: agent.name,
+        model: {
+          providerID: selectedModel.providerID,
+          id: selectedModel.modelID,
+          variant,
+        },
+      })
 
       if (res.error) {
+        if (finishMoveProgress) move.finishSubmit()
         console.log("Creating a session failed:", res.error)
 
         toast.show({
@@ -1030,37 +1019,41 @@ export function Prompt(props: PromptProps) {
       sessionID = res.data.id
     }
 
-    const messageID = MessageID.ascending()
-    let inputText = store.prompt.input
-
-    // Expand pasted text inline before submitting
-    const allExtmarks = input.extmarks.getAllForTypeId(promptPartTypeId)
-    const sortedExtmarks = allExtmarks.sort((a: { start: number }, b: { start: number }) => b.start - a.start)
-
-    for (const extmark of sortedExtmarks) {
-      const partIndex = store.extmarkToPartIndex.get(extmark.id)
-      if (partIndex !== undefined) {
-        const part = store.prompt.parts[partIndex]
-        if (part?.type === "text" && part.text) {
-          const before = inputText.slice(0, extmark.start)
-          const after = inputText.slice(extmark.end)
-          inputText = before + part.text + after
-        }
-      }
-    }
+    const inputText = expandTrackedPastedText(
+      store.prompt.input,
+      input.extmarks.getAllForTypeId(promptPartTypeId).flatMap((extmark) => {
+        const partIndex = store.extmarkToPartIndex.get(extmark.id)
+        const part = partIndex === undefined ? undefined : store.prompt.parts[partIndex]
+        if (part?.type !== "text") return []
+        return [{ start: extmark.start, end: extmark.end, text: part.text }]
+      }),
+    )
 
     // Filter out text parts (pasted content) since they're now expanded inline
     const nonTextParts = store.prompt.parts.filter((part) => part.type !== "text")
 
     // Capture mode before it gets reset
     const currentMode = store.mode
-    const variant = local.model.variant.current()
-
-    const clientSlash = inputText.startsWith("/")
-      ? command.slashes().find((s) => s.display === inputText.trim())
-      : undefined
+    const editorSelection = editorContext()
+    const editorParts =
+      editorSelection && editor.labelState() === "pending"
+        ? [
+            {
+              type: "text" as const,
+              text: formatEditorContext(editorSelection),
+              synthetic: true,
+              metadata: {
+                kind: "editor_context",
+                source: editorSelection.source ?? "editor",
+                filePath: editorSelection.filePath,
+                ranges: editorSelection.ranges,
+              },
+            },
+          ]
+        : []
 
     if (store.mode === "shell") {
+      move.startSubmit()
       void sdk.client.session.shell({
         sessionID,
         agent: agent.name,
@@ -1071,16 +1064,11 @@ export function Prompt(props: PromptProps) {
         command: inputText,
       })
       setStore("mode", "normal")
-    } else if (clientSlash) {
-      clientSlash.onSelect?.()
     } else if (
       inputText.startsWith("/") &&
-      iife(() => {
-        const firstLine = inputText.split("\n")[0]
-        const command = firstLine.split(" ")[0].slice(1)
-        return sync.data.command.some((x) => x.name === command)
-      })
+      sync.data.command.some((x) => x.name === inputText.split("\n")[0].split(" ")[0].slice(1))
     ) {
+      move.startSubmit()
       // Parse command from first line, preserve multi-line content in arguments
       const firstLineEnd = inputText.indexOf("\n")
       const firstLine = firstLineEnd === -1 ? inputText : inputText.slice(0, firstLineEnd)
@@ -1094,39 +1082,38 @@ export function Prompt(props: PromptProps) {
         arguments: args,
         agent: agent.name,
         model: `${selectedModel.providerID}/${selectedModel.modelID}`,
-        messageID,
         variant,
-        parts: nonTextParts
-          .filter((x) => x.type === "file")
-          .map((x) => ({
-            id: PartID.ascending(),
-            ...x,
-          })),
+        parts: nonTextParts.filter((x) => x.type === "file"),
       })
     } else {
+      move.startSubmit()
       sdk.client.session
-        .promptAsync({
-          sessionID,
-          ...selectedModel,
-          messageID,
-          agent: agent.name,
-          model: selectedModel,
-          variant,
-          parts: [
-            {
-              id: PartID.ascending(),
-              type: "text",
-              text: inputText,
-            },
-            ...nonTextParts.map(assign),
-          ],
-        })
-        .catch((err) => {
+        .prompt(
+          {
+            sessionID,
+            ...selectedModel,
+            agent: agent.name,
+            model: selectedModel,
+            variant,
+            parts: [
+              ...editorParts,
+              {
+                type: "text",
+                text: inputText,
+              },
+              ...nonTextParts,
+            ],
+          },
+          { throwOnError: true },
+        )
+        .catch((error) => {
           toast.show({
-            message: err instanceof Error ? err.message : "Failed to send message",
+            title: "Failed to send prompt",
+            message: errorMessage(error),
             variant: "error",
           })
         })
+      if (editorParts.length > 0) editor.markSelectionSent()
     }
     history.append({
       ...store.prompt,
@@ -1141,22 +1128,24 @@ export function Prompt(props: PromptProps) {
     props.onSubmit?.()
 
     // temporary hack to make sure the message is sent
-    if (!props.sessionID)
+    if (!props.sessionID) {
+      if (editorParts.length > 0) editor.preserveSelectionFromNewSession()
       setTimeout(() => {
         route.navigate({
           type: "session",
           sessionID,
         })
       }, 50)
+    }
     input.clear()
+    if (finishMoveProgress) move.finishSubmit()
     return true
   }
-  const exit = useExit()
 
   function pasteText(text: string, virtualText: string) {
-    const currentOffset = input.visualCursor.offset
+    const currentOffset = input.cursorOffset
     const extmarkStart = currentOffset
-    const extmarkEnd = extmarkStart + virtualText.length
+    const extmarkEnd = extmarkStart + promptOffsetWidth(virtualText)
 
     input.insertText(virtualText + " ")
 
@@ -1187,84 +1176,49 @@ export function Prompt(props: PromptProps) {
     )
   }
 
-  async function pastePlainText(normalizedText: string) {
+  async function pasteInputText(text: string) {
+    const normalizedText = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
     const pastedContent = normalizedText.trim()
-    if (!pastedContent) return
-
-    const filepath = iife(() => {
-      const raw = pastedContent.replace(/^['"]+|['"]+$/g, "")
-      if (raw.startsWith("file://")) {
-        try {
-          return fileURLToPath(raw)
-        } catch {}
-      }
-      if (process.platform === "win32") return raw
-      return raw.replace(/\\(.)/g, "$1")
-    })
+    const filepath = pastedFilepath(pastedContent, terminalEnvironment.platform)
     const isUrl = /^(https?):\/\//.test(filepath)
     if (!isUrl) {
-      try {
-        const mime = await Filesystem.mimeType(filepath)
-        const filename = path.basename(filepath)
-        // Handle SVG as raw text content, not as base64 image
-        if (mime === "image/svg+xml") {
-          const content = await Filesystem.readText(filepath).catch(() => {})
-          if (content) {
-            pasteText(content, `[SVG: ${filename ?? "image"}]`)
-            return
-          }
-        }
-        if (mime.startsWith("image/") || mime === "application/pdf") {
-          const content = await Filesystem.readArrayBuffer(filepath)
-            .then((buffer) => Buffer.from(buffer).toString("base64"))
-            .catch(() => {})
-          if (content) {
-            await pasteAttachment({
-              filename,
-              filepath,
-              mime,
-              content,
-            })
-            return
-          }
-        }
-      } catch {}
+      const attachment = await readLocalAttachment(filepath)
+      const filename = path.basename(filepath)
+      if (attachment?.type === "text") {
+        pasteText(attachment.content, `[SVG: ${filename ?? "image"}]`)
+        return
+      }
+      if (attachment?.type === "binary") {
+        await pasteAttachment({
+          filename,
+          filepath,
+          mime: attachment.mime,
+          content: Buffer.from(attachment.content).toString("base64"),
+        })
+        return
+      }
     }
 
     const lineCount = (pastedContent.match(/\n/g)?.length ?? 0) + 1
-    if ((lineCount >= 3 || pastedContent.length > 150) && !sync.data.config.experimental?.disable_paste_summary) {
+    if (
+      (lineCount >= 3 || pastedContent.length > 150) &&
+      kv.get("paste_summary_enabled", !sync.data.config.experimental?.disable_paste_summary)
+    ) {
       pasteText(pastedContent, `[Pasted ~${lineCount} lines]`)
       return
     }
 
     input.insertText(normalizedText)
 
-    // Force layout update and render for the pasted content
     setTimeout(() => {
-      // setTimeout is a workaround and needs to be addressed properly
       if (!input || input.isDestroyed) return
       input.getLayoutNode().markDirty()
       renderer.requestRender()
     }, 0)
   }
 
-  async function pasteFromClipboard() {
-    if (props.disabled) return
-    const content = await Clipboard.read()
-    if (!content) return
-    if (content.mime.startsWith("image/")) {
-      await pasteAttachment({
-        filename: "clipboard",
-        mime: content.mime,
-        content: content.data,
-      })
-      return
-    }
-    await pastePlainText(content.data.replace(/\r\n/g, "\n").replace(/\r/g, "\n"))
-  }
-
   async function pasteAttachment(file: { filename?: string; filepath?: string; content: string; mime: string }) {
-    const currentOffset = input.visualCursor.offset
+    const currentOffset = input.cursorOffset
     const extmarkStart = currentOffset
     const pdf = file.mime === "application/pdf"
     const count = store.prompt.parts.filter((x) => {
@@ -1311,8 +1265,24 @@ export function Prompt(props: PromptProps) {
     return
   }
 
+  function clearPrompt() {
+    if (store.prompt.input.trim().length >= DRAFT_RETENTION_MIN_CHARS || store.prompt.parts.length > 0) {
+      history.append({
+        ...store.prompt,
+        mode: store.mode,
+      })
+    }
+    input.clear()
+    input.extmarks.clear()
+    setStore("prompt", {
+      input: "",
+      parts: [],
+    })
+    setStore("extmarkToPartIndex", new Map())
+  }
+
   const highlight = createMemo(() => {
-    if (keybind.leader) return theme.border
+    if (leader()) return theme.border
     if (store.mode === "shell") return theme.primary
     const agent = local.agent.current()
     if (!agent) return theme.border
@@ -1336,68 +1306,46 @@ export function Prompt(props: PromptProps) {
 
   const placeholderText = createMemo(() => {
     if (props.showPlaceholder === false) return undefined
-    if (store.mode === "normal" && ghost()) return t("tui.prompt.ghost", { prediction: ghost() })
     if (store.mode === "shell") {
       if (!shell().length) return undefined
-      return t("tui.prompt.placeholder.shell", { example: shell()[store.placeholder % shell().length] })
+      const example = shell()[store.placeholder % shell().length]
+      return `Run a command... "${example}"`
     }
     if (!list().length) return undefined
-    return t("tui.prompt.placeholder.normal", { example: list()[store.placeholder % list().length] })
+    return `Ask anything... "${list()[store.placeholder % list().length]}"`
   })
 
   const spinnerDef = createMemo(() => {
-    const agent = local.agent.current()
+    const agent =
+      status().type !== "idle"
+        ? (local.agent.list().find((a) => a.name === lastUserMessage()?.agent) ?? local.agent.current())
+        : local.agent.current()
     const color = agent ? local.agent.color(agent.name) : theme.border
     return {
       frames: createFrames({
         color,
-        style: "plane",
-        width: 14,
-        holdStart: 8,
-        holdEnd: 8,
+        style: "blocks",
         inactiveFactor: 0.6,
         // enableFading: false,
         minAlpha: 0.3,
       }),
       color: createColors({
         color,
-        style: "plane",
-        holdStart: 8,
-        holdEnd: 8,
+        style: "blocks",
         inactiveFactor: 0.6,
         // enableFading: false,
         minAlpha: 0.3,
       }),
     }
   })
+  const maxHeight = createMemo(() => tuiConfig.prompt?.max_height ?? Math.max(6, Math.floor(dimensions().height / 3)))
+  const moveLabelWidth = createMemo(() => Math.max(12, Math.min(44, dimensions().width - 48)))
 
   return (
     <>
-      <Autocomplete
-        sessionID={props.sessionID}
-        ref={(r) => {
-          autocomplete = r
-          setAuto(() => r)
-        }}
-        anchor={() => anchor}
-        input={() => input}
-        setPrompt={(cb) => {
-          setStore("prompt", produce(cb))
-        }}
-        setExtmark={(partIndex, extmarkId) => {
-          setStore("extmarkToPartIndex", (map: Map<number, number>) => {
-            const newMap = new Map(map)
-            newMap.set(extmarkId, partIndex)
-            return newMap
-          })
-        }}
-        value={store.prompt.input}
-        fileStyleId={fileStyleId}
-        agentStyleId={agentStyleId}
-        promptPartTypeId={() => promptPartTypeId}
-      />
-      <box ref={(r) => (anchor = r)} visible={props.visible !== false}>
+      <box ref={(r: BoxRenderable) => (anchor = r)} visible={props.visible !== false} width="100%">
         <box
+          width="100%"
           border={["left"]}
           borderColor={borderHighlight()}
           customBorderChars={{
@@ -1412,119 +1360,28 @@ export function Prompt(props: PromptProps) {
             flexShrink={0}
             backgroundColor={theme.backgroundElement}
             flexGrow={1}
+            width="100%"
           >
             <textarea
+              width="100%"
               placeholder={placeholderText()}
               placeholderColor={theme.textMuted}
-              textColor={keybind.leader ? theme.textMuted : theme.text}
-              focusedTextColor={keybind.leader ? theme.textMuted : theme.text}
+              textColor={leader() ? theme.textMuted : theme.text}
+              focusedTextColor={leader() ? theme.textMuted : theme.text}
               minHeight={1}
-              maxHeight={6}
+              maxHeight={maxHeight()}
               onContentChange={() => {
                 const value = input.plainText
-                if (value !== "" && ghost()) setGhost("")
                 setStore("prompt", "input", value)
-                autocomplete.onInput(value)
+                auto()?.onInput(value)
                 syncExtmarksWithPromptParts()
+                setCursorVersion((value) => value + 1)
               }}
-              keyBindings={textareaKeybindings()}
-              onKeyDown={async (e) => {
+              onCursorChange={() => setCursorVersion((value) => value + 1)}
+              onKeyDown={(e: { preventDefault(): void }) => {
                 if (props.disabled) {
                   e.preventDefault()
                   return
-                }
-                // Check clipboard for images before terminal-handled paste runs.
-                // This helps terminals that forward Ctrl+V to the app; Windows
-                // Terminal 1.25+ usually handles Ctrl+V before this path.
-                if (keybind.match("input_paste", e)) {
-                  const content = await Clipboard.read()
-                  if (content?.mime.startsWith("image/")) {
-                    e.preventDefault()
-                    await pasteAttachment({
-                      filename: "clipboard",
-                      mime: content.mime,
-                      content: content.data,
-                    })
-                    return
-                  }
-                  // If no image, let the default paste behavior continue
-                }
-                if (keybind.match("input_clear", e) && store.prompt.input !== "") {
-                  input.clear()
-                  input.extmarks.clear()
-                  setStore("prompt", {
-                    input: "",
-                    parts: [],
-                  })
-                  setStore("extmarkToPartIndex", new Map())
-                  return
-                }
-                if (keybind.match("app_exit", e)) {
-                  if (store.prompt.input === "") {
-                    if (props.sessionID && status().type !== "idle") {
-                      void sdk.client.session.abort({ sessionID: props.sessionID })
-                      e.preventDefault()
-                      return
-                    }
-                    await exit()
-                    // Don't preventDefault - let textarea potentially handle the event
-                    e.preventDefault()
-                    return
-                  }
-                }
-                if (e.name === "!" && input.visualCursor.offset === 0) {
-                  setStore("placeholder", randomIndex(shell().length))
-                  setStore("mode", "shell")
-                  e.preventDefault()
-                  return
-                }
-                if (store.mode === "shell") {
-                  if ((e.name === "backspace" && input.visualCursor.offset === 0) || e.name === "escape") {
-                    setStore("mode", "normal")
-                    e.preventDefault()
-                    return
-                  }
-                }
-                if (ghost() && store.mode === "normal" && !autocomplete.visible && input.plainText === "") {
-                  if (e.name === "tab") {
-                    const text = ghost()
-                    setGhost("")
-                    input.setText(text)
-                    setStore("prompt", "input", text)
-                    input.gotoBufferEnd()
-                    e.preventDefault()
-                    return
-                  }
-                  if (e.name === "escape") {
-                    setGhost("")
-                    e.preventDefault()
-                    return
-                  }
-                }
-                if (store.mode === "normal") autocomplete.onKeyDown(e)
-                if (!autocomplete.visible) {
-                  if (
-                    (keybind.match("history_previous", e) && input.cursorOffset === 0) ||
-                    (keybind.match("history_next", e) && input.cursorOffset === input.plainText.length)
-                  ) {
-                    const direction = keybind.match("history_previous", e) ? -1 : 1
-                    const item = history.move(direction, input.plainText)
-
-                    if (item) {
-                      input.setText(item.input)
-                      setStore("prompt", item)
-                      setStore("mode", item.mode ?? "normal")
-                      restoreExtmarksFromParts(item.parts)
-                      e.preventDefault()
-                      if (direction === -1) input.cursorOffset = 0
-                      if (direction === 1) input.cursorOffset = input.plainText.length
-                    }
-                    return
-                  }
-
-                  if (keybind.match("history_previous", e) && input.visualCursor.visualRow === 0) input.cursorOffset = 0
-                  if (keybind.match("history_next", e) && input.visualCursor.visualRow === input.height - 1)
-                    input.cursorOffset = input.plainText.length
                 }
               }}
               onSubmit={() => {
@@ -1542,21 +1399,27 @@ export function Prompt(props: PromptProps) {
                 // Windows ConPTY/Terminal often sends CR-only newlines in bracketed paste
                 // Replace CRLF first, then any remaining CR
                 const normalizedText = decodePasteBytes(event.bytes).replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+                const pastedContent = normalizedText.trim()
 
                 // Windows Terminal <1.25 can surface image-only clipboard as an
                 // empty bracketed paste. Windows Terminal 1.25+ does not.
-                if (!normalizedText.trim()) {
-                  command.trigger("prompt.paste")
+                if (!pastedContent) {
+                  keymap.dispatchCommand("prompt.paste")
                   return
                 }
 
                 // Once we cross an async boundary below, the terminal may perform its
                 // default paste unless we suppress it first and handle insertion ourselves.
                 event.preventDefault()
-                await pastePlainText(normalizedText)
+
+                await pasteInputText(normalizedText)
               }}
               ref={(r: TextareaRenderable) => {
                 input = r
+                Object.assign(r, {
+                  getClipboardText: (text: string) => expandPastedTextPlaceholders(text, store.prompt.parts),
+                })
+                setInputTarget(r)
                 if (promptPartTypeId === 0) {
                   promptPartTypeId = input.extmarks.registerType("prompt-part")
                 }
@@ -1569,7 +1432,7 @@ export function Prompt(props: PromptProps) {
               }}
               onMouseDown={(r: MouseEvent) => r.target?.focus()}
               focusedBackgroundColor={theme.backgroundElement}
-              cursorColor={theme.text}
+              cursorColor={props.disabled ? theme.backgroundElement : theme.text}
               syntaxStyle={syntax()}
             />
             <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="space-between">
@@ -1585,10 +1448,11 @@ export function Prompt(props: PromptProps) {
                           <text fg={fadeColor(theme.textMuted, modelMetaAlpha())}>·</text>
                           <text
                             flexShrink={0}
-                            fg={fadeColor(keybind.leader ? theme.textMuted : theme.text, modelMetaAlpha())}
+                            fg={fadeColor(leader() ? theme.textMuted : theme.text, modelMetaAlpha())}
                           >
                             {local.model.parsed().model}
                           </text>
+                          <text fg={fadeColor(theme.textMuted, modelMetaAlpha())}>{currentProviderLabel()}</text>
                           <Show when={showVariant()}>
                             <text fg={fadeColor(theme.textMuted, variantMetaAlpha())}>·</text>
                             <text>
@@ -1602,44 +1466,12 @@ export function Prompt(props: PromptProps) {
                     </>
                   )}
                 </Show>
-                <Show when={local.neverAsk.current()}>
-                  <text>
-                    <span style={{ fg: theme.error, bold: true }}>«never-ask»</span>
-                  </text>
-                </Show>
               </box>
-              <box flexDirection="row" gap={1} alignItems="center">
-                <Show when={hasRightContent()}>
+              <Show when={hasRightContent()}>
+                <box flexDirection="row" gap={1} alignItems="center">
                   {props.right}
-                </Show>
-                <Show when={voiceEnabled()}>
-                  <Switch>
-                    <Match when={voiceState() === "idle"}>
-                      <text fg={theme.textMuted} selectable={false} onMouseUp={() => voiceToggle()}>
-                        {"[ 🎙  Voice ]"}
-                      </text>
-                    </Match>
-                    <Match when={voiceState() === "listening"}>
-                      <text fg={theme.primary} selectable={false} onMouseUp={() => voiceToggle()}>
-                        {"[ 🎙  -:-- ]"}
-                      </text>
-                    </Match>
-                    <Match when={voiceState() === "speaking"}>
-                      <text fg={theme.primary} selectable={false} onMouseUp={() => voiceToggle()}>
-                        {`[ 🎙  ${Math.floor(voiceElapsed() / 60)}:${String(voiceElapsed() % 60).padStart(2, "0")} ]`}
-                      </text>
-                    </Match>
-                    <Match when={voiceState() === "processing"}>
-                      <text fg={theme.primary} selectable={false} onMouseUp={() => voiceToggle()}>
-                        {"[ 🎙  .... ]"}
-                      </text>
-                    </Match>
-                    <Match when={voiceState() === "finishing"}>
-                      <text fg={theme.textMuted} selectable={false}>{"[ 🎙  .... ]"}</text>
-                    </Match>
-                  </Switch>
-                </Show>
-              </box>
+                </box>
+              </Show>
             </box>
           </box>
         </box>
@@ -1670,143 +1502,198 @@ export function Prompt(props: PromptProps) {
           />
         </box>
         <box width="100%" flexDirection="row" justifyContent="space-between">
-          <Show when={status().type !== "idle"} fallback={props.hint ?? <text />}>
-            <box
-              flexDirection="row"
-              gap={1}
-              flexGrow={1}
-              justifyContent={status().type === "retry" ? "space-between" : "flex-start"}
-            >
-              <box flexShrink={0} flexDirection="row" gap={1}>
-                <box marginLeft={1}>
-                  <Show when={kv.get("animations_enabled", true)} fallback={<text fg={theme.textMuted}>[⋯]</text>}>
-                    <spinner color={spinnerDef().color} frames={spinnerDef().frames} interval={40} />
-                  </Show>
-                </box>
-                {(() => {
-                  const busyMessage = createMemo(() => {
-                    const s = status()
-                    return s.type === "busy" ? s.message : undefined
-                  })
-                  return (
-                    <Show when={busyMessage()}>
-                      <text fg={theme.textMuted}>{busyMessage()}</text>
+          <Switch>
+            <Match when={status().type !== "idle"}>
+              <box
+                flexDirection="row"
+                gap={1}
+                flexGrow={1}
+                justifyContent={status().type === "retry" ? "space-between" : "flex-start"}
+              >
+                <box flexShrink={0} flexDirection="row" gap={1}>
+                  <box marginLeft={1}>
+                    <Show when={kv.get("animations_enabled", true)} fallback={<text fg={theme.textMuted}>[⋯]</text>}>
+                      <spinner color={spinnerDef().color} frames={spinnerDef().frames} interval={40} />
                     </Show>
-                  )
-                })()}
-                <box flexDirection="row" gap={1} flexShrink={0}>
-                  {(() => {
-                    const retry = createMemo(() => {
-                      const s = status()
-                      if (s.type !== "retry") return
-                      return s
-                    })
-                    const message = createMemo(() => {
-                      const r = retry()
-                      if (!r) return
-                      if (r.message.includes("exceeded your current quota") && r.message.includes("gemini"))
-                        return "gemini is way too hot right now"
-                      if (r.message.length > 80) return r.message.slice(0, 80) + "..."
-                      return r.message
-                    })
-                    const isTruncated = createMemo(() => {
-                      const r = retry()
-                      if (!r) return false
-                      return r.message.length > 120
-                    })
-                    const [seconds, setSeconds] = createSignal(0)
-                    onMount(() => {
-                      const timer = setInterval(() => {
-                        const next = retry()?.next
-                        if (next) setSeconds(Math.round((next - Date.now()) / 1000))
-                      }, 1000)
-
-                      onCleanup(() => {
-                        clearInterval(timer)
+                  </box>
+                  <box flexDirection="row" gap={1} flexShrink={0}>
+                    {(() => {
+                      const retry = createMemo(() => {
+                        const s = status()
+                        if (s.type !== "retry") return
+                        return s
                       })
-                    })
-                    const handleMessageClick = () => {
-                      const r = retry()
-                      if (!r) return
-                      if (isTruncated()) {
-                        void DialogAlert.show(dialog, "Retry Error", r.message)
+                      const message = createMemo(() => {
+                        const r = retry()
+                        if (!r) return
+                        if (r.message.includes("exceeded your current quota") && r.message.includes("gemini"))
+                          return "gemini is way too hot right now"
+                        if (r.message.length > 80) return r.message.slice(0, 80) + "..."
+                        return r.message
+                      })
+                      const isTruncated = createMemo(() => {
+                        const r = retry()
+                        if (!r) return false
+                        return r.message.length > 120
+                      })
+                      const [seconds, setSeconds] = createSignal(0)
+                      onMount(() => {
+                        const timer = setInterval(() => {
+                          const next = retry()?.next
+                          if (next) setSeconds(Math.round((next - Date.now()) / 1000))
+                        }, 1000)
+
+                        onCleanup(() => {
+                          clearInterval(timer)
+                        })
+                      })
+                      const handleMessageClick = () => {
+                        const r = retry()
+                        if (!r) return
+                        if (isTruncated()) {
+                          void DialogAlert.show(dialog, "Retry Error", r.message)
+                        }
                       }
-                    }
 
-                    const retryText = () => {
-                      const r = retry()
-                      if (!r) return ""
-                      const baseMessage = message()
-                      const truncatedHint = isTruncated() ? " (click to expand)" : ""
-                      const duration = formatDuration(seconds())
-                      const retryInfo = ` [retrying ${duration ? `in ${duration} ` : ""}attempt #${r.attempt}]`
-                      return baseMessage + truncatedHint + retryInfo
-                    }
+                      const retryText = () => {
+                        const r = retry()
+                        if (!r) return ""
+                        const baseMessage = message()
+                        const truncatedHint = isTruncated() ? " (click to expand)" : ""
+                        const duration = formatDuration(seconds())
+                        const retryInfo = ` [retrying ${duration ? `in ${duration} ` : ""}attempt #${r.attempt}]`
+                        return baseMessage + truncatedHint + retryInfo
+                      }
 
-                    return (
-                      <Show when={retry()}>
-                        <box onMouseUp={handleMessageClick}>
-                          <text fg={theme.error}>{retryText()}</text>
-                        </box>
-                      </Show>
-                    )
-                  })()}
+                      return (
+                        <Show when={retry()}>
+                          <box onMouseUp={handleMessageClick}>
+                            <text fg={theme.error}>{retryText()}</text>
+                          </box>
+                        </Show>
+                      )
+                    })()}
+                  </box>
                 </box>
+                <text fg={store.interrupt > 0 ? theme.primary : theme.text}>
+                  esc{" "}
+                  <span style={{ fg: store.interrupt > 0 ? theme.primary : theme.textMuted }}>
+                    {store.interrupt > 0 ? "again to interrupt" : "interrupt"}
+                  </span>
+                </text>
               </box>
-              <text fg={store.interrupt > 0 ? theme.primary : theme.text}>
-                esc{" "}
-                <span style={{ fg: store.interrupt > 0 ? theme.primary : theme.textMuted }}>
-                  {store.interrupt > 0 ? "again to interrupt" : "interrupt"}
-                </span>
-              </text>
-            </box>
-          </Show>
+            </Match>
+            <Match when={workspace.notice()}>
+              {(notice) => (
+                <box paddingLeft={3}>
+                  <text fg={theme.accent}>{notice()}</text>
+                </box>
+              )}
+            </Match>
+            <Match when={workspace.label()}>
+              {(label) => (
+                <box paddingLeft={3} flexDirection="row" gap={1}>
+                  <Show when={workspace.creating()}>
+                    <Spinner color={theme.accent} />
+                  </Show>
+                  <text fg={workspace.creating() ? theme.accent : theme.text}>
+                    {(() => {
+                      const item = label()
+                      if (item.type === "new") {
+                        if (workspace.creating())
+                          return `Creating ${item.workspaceType}${".".repeat(workspace.creatingDots())}`
+                        return (
+                          <>
+                            Workspace <span style={{ fg: theme.textMuted }}>(new {item.workspaceType})</span>
+                          </>
+                        )
+                      }
+                      return (
+                        <>
+                          Workspace <span style={{ fg: theme.textMuted }}>{item.workspaceName}</span>
+                        </>
+                      )
+                    })()}
+                  </text>
+                </box>
+              )}
+            </Match>
+            <Match when={move.progress()}>
+              {(progress) => (
+                <box paddingLeft={3}>
+                  <Spinner color={theme.accent}>
+                    {progress()}
+                    <span style={{ fg: theme.textMuted }}>{".".repeat(move.creatingDots())}</span>
+                  </Spinner>
+                </box>
+              )}
+            </Match>
+            <Match when={move.pendingNew()}>
+              <box paddingLeft={3}>
+                <text fg={theme.accent}>(new working copy)</text>
+              </box>
+            </Match>
+            <Match when={true}>{props.hint ?? <text />}</Match>
+          </Switch>
           <Show when={status().type !== "retry"}>
-            <box gap={2} flexGrow={1} flexDirection="row" justifyContent="space-between">
+            <box gap={2} flexDirection="row">
+              <Show when={editorContextLabelState() !== "none" ? editorFileLabelDisplay() : undefined}>
+                {(file) => (
+                  <text fg={editorContextLabelState() === "pending" ? theme.secondary : theme.textMuted}>{file()}</text>
+                )}
+              </Show>
               <Switch>
                 <Match when={store.mode === "normal"}>
-                  <box gap={2} flexDirection="row">
-                    <Show when={usage()}>
+                  <Switch>
+                    <Match when={usage()}>
                       {(item) => (
                         <text fg={theme.textMuted} wrapMode="none">
                           {[item().context, item().cost].filter(Boolean).join(" · ")}
                         </text>
                       )}
-                    </Show>
-                    <text fg={theme.text}>
-                      {keybind.print("agent_cycle")} <span style={{ fg: theme.textMuted }}>{t("tui.prompt.hint.switch_mode")}</span>
-                    </text>
-                    <text fg={theme.text}>
-                      {keybind.print("command_list")}{" "}
-                      <span style={{ fg: theme.textMuted }}>{t("tui.prompt.hint.settings")}</span>
-                    </text>
-                  </box>
-                  <Show when={status().type === "idle"}>
-                    <box gap={2} flexDirection="row">
+                    </Match>
+                    <Match when={true}>
                       <text fg={theme.text}>
-                        @ <span style={{ fg: theme.textMuted }}>{t("tui.prompt.hint.attach_file")}</span>
+                        {agentShortcut()} <span style={{ fg: theme.textMuted }}>agents</span>
                       </text>
-                      <text fg={theme.text}>
-                        $ <span style={{ fg: theme.textMuted }}>{t("tui.prompt.hint.subagent")}</span>
-                      </text>
-                      <text fg={theme.text}>
-                        / <span style={{ fg: theme.textMuted }}>{t("tui.prompt.hint.commands")}</span>
-                      </text>
-                    </box>
-                  </Show>
+                    </Match>
+                  </Switch>
+                  <text fg={theme.text}>
+                    {paletteShortcut()} <span style={{ fg: theme.textMuted }}>commands</span>
+                  </text>
                 </Match>
                 <Match when={store.mode === "shell"}>
-                  <box flexGrow={1} flexDirection="row" justifyContent="flex-end">
-                    <text fg={theme.text}>
-                      esc <span style={{ fg: theme.textMuted }}>exit shell mode</span>
-                    </text>
-                  </box>
+                  <text fg={theme.text}>
+                    esc <span style={{ fg: theme.textMuted }}>exit shell mode</span>
+                  </text>
                 </Match>
               </Switch>
             </box>
           </Show>
         </box>
       </box>
+      <Autocomplete
+        sessionID={props.sessionID}
+        ref={(r) => {
+          setAuto(() => r)
+        }}
+        anchor={() => anchor}
+        input={() => input}
+        setPrompt={(cb) => {
+          setStore("prompt", produce(cb))
+        }}
+        setExtmark={(partIndex, extmarkId) => {
+          setStore("extmarkToPartIndex", (map: Map<number, number>) => {
+            const newMap = new Map(map)
+            newMap.set(extmarkId, partIndex)
+            return newMap
+          })
+        }}
+        value={store.prompt.input}
+        fileStyleId={fileStyleId}
+        agentStyleId={agentStyleId}
+        promptPartTypeId={() => promptPartTypeId}
+      />
     </>
   )
 }

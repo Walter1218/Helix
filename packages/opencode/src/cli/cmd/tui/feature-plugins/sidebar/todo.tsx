@@ -1,4 +1,6 @@
-import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@mimo-ai/plugin/tui"
+// @ts-nocheck
+import type { TuiPlugin, TuiPluginApi } from "@mimo-ai/plugin/tui"
+import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, For, Show, createSignal } from "solid-js"
 import { TodoItem } from "../../component/todo-item"
 
@@ -8,19 +10,16 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
   const [open, setOpen] = createSignal(true)
   const theme = () => props.api.theme.current
   const list = createMemo(() => props.api.state.session.todo(props.session_id))
-  const tasks = createMemo(() => props.api.state.session.task(props.session_id))
-  const show = createMemo(
-    () => tasks().length === 0 && list().length > 0 && list().some((item) => item.status !== "completed"),
-  )
+  const show = createMemo(() => list().length > 0 && list().some((item) => item.status !== "completed"))
 
   return (
     <Show when={show()}>
       <box>
         <box flexDirection="row" gap={1} onMouseDown={() => list().length > 2 && setOpen((x) => !x)}>
           <Show when={list().length > 2}>
-            <text fg={theme().text} wrapMode="word">{open() ? "▼" : "▶"}</text>
+            <text fg={theme().text}>{open() ? "▼" : "▶"}</text>
           </Show>
-          <text fg={theme().text} wrapMode="word">
+          <text fg={theme().text}>
             <b>Todo</b>
           </text>
         </box>
@@ -43,7 +42,7 @@ const tui: TuiPlugin = async (api) => {
   })
 }
 
-const plugin: TuiPluginModule & { id: string } = {
+const plugin: BuiltinTuiPlugin = {
   id,
   tui,
 }

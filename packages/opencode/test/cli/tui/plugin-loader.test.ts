@@ -9,7 +9,7 @@ import { TuiConfig } from "../../../src/cli/cmd/tui/config/tui"
 import { Filesystem } from "../../../src/util/"
 
 const { allThemes, addTheme } = await import("../../../src/cli/cmd/tui/context/theme")
-const { TuiPluginRuntime } = await import("../../../src/cli/cmd/tui/plugin/runtime")
+const { TuiPluginRuntime } = await import("../../../src/cli/cmd/tui/plugin")
 
 type Row = Record<string, unknown>
 

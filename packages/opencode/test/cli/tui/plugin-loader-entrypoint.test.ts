@@ -7,7 +7,7 @@ import { createTuiPluginApi } from "../../fixture/tui-plugin"
 import { TuiConfig } from "../../../src/cli/cmd/tui/config/tui"
 import { Npm } from "../../../src/npm"
 
-const { TuiPluginRuntime } = await import("../../../src/cli/cmd/tui/plugin/runtime")
+const { TuiPluginRuntime } = await import("../../../src/cli/cmd/tui/plugin")
 
 test("loads npm tui plugin from package ./tui export", async () => {
   await using tmp = await tmpdir({

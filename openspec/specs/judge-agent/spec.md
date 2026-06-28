@@ -1215,8 +1215,20 @@ The system SHALL detect and block assertion deletions in test files.
 
 
 
-**Status**: ✅ implemented (2026-06-27)
-**Tokens**: 998,154
+
+
+
+
+
+
+
+
+
+
+
+
+**Status**: ✅ implemented (2026-06-28)
+**Tokens**: 286,623
 
 ### Structural change detection
 The system SHALL detect removal of test cases.

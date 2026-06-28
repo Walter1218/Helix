@@ -7,6 +7,12 @@ import { JudgeVerdictDialog, type JudgeVerdictData } from "./components/dialog-j
 import { CardinalAlertDialog, type CardinalAlertData } from "./components/dialog-cardinal"
 import { PreflightResultDialog, type PreflightResultData } from "./components/dialog-preflight"
 import { HelixHeader, HelixFooter, HelixInfoPanel } from "./layout"
+import { DreamDistillRoute } from "./dream-distill"
+import { FSMViewerRoute } from "./fsm-viewer"
+import { DPOBrowserRoute } from "./dpo-browser"
+import { RulesManagerRoute } from "./rules-manager"
+import { NotificationsCenterRoute } from "./notifications-center"
+import { PreflightPanelRoute } from "./preflight-panel"
 import * as trace from "./trace"
 
 const id = "internal:helix-core"
@@ -46,9 +52,33 @@ const tui: TuiPlugin = async (api) => {
       name: "helix-evolution",
       render: () => <EvolutionRoute api={api} />,
     },
+    {
+      name: "helix-dream",
+      render: () => <DreamDistillRoute api={api} />,
+    },
+    {
+      name: "helix-fsm",
+      render: () => <FSMViewerRoute api={api} />,
+    },
+    {
+      name: "helix-dpo",
+      render: () => <DPOBrowserRoute api={api} />,
+    },
+    {
+      name: "helix-rules",
+      render: () => <RulesManagerRoute api={api} />,
+    },
+    {
+      name: "helix-notifications",
+      render: () => <NotificationsCenterRoute api={api} />,
+    },
+    {
+      name: "helix-preflight",
+      render: () => <PreflightPanelRoute api={api} />,
+    },
   ])
 
-  trace.emit("ui.render", "info", "Helix routes registered", { routes: ["monitor", "project", "evolution"] })
+  trace.emit("ui.render", "info", "Helix routes registered", { routes: ["monitor", "project", "evolution", "dream", "fsm", "dpo", "rules", "notifications", "preflight"] })
 
   api.command.register(() => [
     {
@@ -65,6 +95,36 @@ const tui: TuiPlugin = async (api) => {
       title: "Helix Evolution", value: "helix.evolution", category: "Helix",
       slash: { name: "evolution" },
       onSelect: () => { trace.emit("user.navigate", "info", "Helix Evolution"); api.route.navigate("helix-evolution") },
+    },
+    {
+      title: "Helix Dream & Distill", value: "helix.dream", category: "Helix",
+      slash: { name: "dream" },
+      onSelect: () => { trace.emit("user.navigate", "info", "Helix Dream"); api.route.navigate("helix-dream") },
+    },
+    {
+      title: "Helix FSM Viewer", value: "helix.fsm", category: "Helix",
+      slash: { name: "fsm" },
+      onSelect: () => { trace.emit("user.navigate", "info", "Helix FSM"); api.route.navigate("helix-fsm") },
+    },
+    {
+      title: "Helix DPO Browser", value: "helix.dpo", category: "Helix",
+      slash: { name: "dpo" },
+      onSelect: () => { trace.emit("user.navigate", "info", "Helix DPO"); api.route.navigate("helix-dpo") },
+    },
+    {
+      title: "Helix Rules", value: "helix.rules", category: "Helix",
+      slash: { name: "rules" },
+      onSelect: () => { trace.emit("user.navigate", "info", "Helix Rules"); api.route.navigate("helix-rules") },
+    },
+    {
+      title: "Helix Notifications", value: "helix.notifications", category: "Helix",
+      slash: { name: "notifications" },
+      onSelect: () => { trace.emit("user.navigate", "info", "Helix Notifications"); api.route.navigate("helix-notifications") },
+    },
+    {
+      title: "Helix Preflight", value: "helix.preflight", category: "Helix",
+      slash: { name: "preflight" },
+      onSelect: () => { trace.emit("user.navigate", "info", "Helix Preflight"); api.route.navigate("helix-preflight") },
     },
   ])
 
@@ -151,7 +211,7 @@ const tui: TuiPlugin = async (api) => {
 
   events.on("judge.verdict", (payload) => {
     if (!payload || typeof payload !== "object") return
-    const evt = payload as Record<string, unknown>
+    const evt = (payload as Record<string, unknown>)?.properties as Record<string, unknown> ?? {}
     const data: JudgeVerdictData = {
       sessionID: String(evt.sessionID ?? ""),
       id: String(evt.id ?? ""),
@@ -189,7 +249,7 @@ const tui: TuiPlugin = async (api) => {
 
   events.on("cardinal.detected", (payload) => {
     if (!payload || typeof payload !== "object") return
-    const evt = payload as Record<string, unknown>
+    const evt = (payload as Record<string, unknown>)?.properties as Record<string, unknown> ?? {}
     const data: CardinalAlertData = {
       sessionID: String(evt.sessionID ?? ""),
       id: String(evt.id ?? ""),
@@ -219,7 +279,7 @@ const tui: TuiPlugin = async (api) => {
 
   events.on("alignment.drift", (payload) => {
     if (!payload || typeof payload !== "object") return
-    const evt = payload as Record<string, unknown>
+    const evt = (payload as Record<string, unknown>)?.properties as Record<string, unknown> ?? {}
     alignmentDrifts++
     const alertType = String(evt.alertType ?? evt.type ?? "")
     const sessionID = String(evt.sessionID ?? "")
@@ -232,7 +292,7 @@ const tui: TuiPlugin = async (api) => {
 
   events.on("preflight.result", (payload) => {
     if (!payload || typeof payload !== "object") return
-    const evt = payload as Record<string, unknown>
+    const evt = (payload as Record<string, unknown>)?.properties as Record<string, unknown> ?? {}
     const data: PreflightResultData = {
       sessionID: String(evt.sessionID ?? ""), passed: Boolean(evt.passed), blocked: Boolean(evt.blocked), paused: Boolean(evt.paused),
       results: Array.isArray(evt.results)
@@ -254,7 +314,7 @@ const tui: TuiPlugin = async (api) => {
 
   events.on("mode.applied", (payload) => {
     if (!payload || typeof payload !== "object") return
-    const evt = payload as Record<string, unknown>
+    const evt = (payload as Record<string, unknown>)?.properties as Record<string, unknown> ?? {}
     currentMode = String(evt.mode ?? currentMode)
     const sid = String(evt.sessionID ?? "")
     if (sid) setHelixSessionId(sid)
@@ -267,7 +327,7 @@ const tui: TuiPlugin = async (api) => {
 
   events.on("session.error", (payload: unknown) => {
     if (!payload || typeof payload !== "object") return
-    const evt = payload as Record<string, unknown>
+    const evt = (payload as Record<string, unknown>)?.properties as Record<string, unknown> ?? {}
     const error = evt.error
     if (!error || typeof error !== "object") return
     const errObj = error as Record<string, unknown>

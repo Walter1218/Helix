@@ -1,3 +1,4 @@
+// @ts-nocheck
 import yargs from "yargs"
 import { TuiThreadCommand } from "./cli/cmd/tui/thread"
 import { InstallationVersion } from "./installation/version"

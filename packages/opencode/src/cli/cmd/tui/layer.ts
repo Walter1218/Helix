@@ -1,6 +1,7 @@
-import { Layer } from "effect"
-import { TuiConfig } from "./config/tui"
-import { Npm } from "@/npm"
-import { Observability } from "@/effect/observability"
+import { run as runTui } from "./app"
+import type { TuiInput } from "./app"
+import { Effect } from "effect"
 
-export const CliLayer = Observability.layer.pipe(Layer.merge(TuiConfig.layer), Layer.provide(Npm.defaultLayer))
+export function run(input: TuiInput) {
+  return runTui(input)
+}

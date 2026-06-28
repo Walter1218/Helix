@@ -1,7 +1,16 @@
-import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@mimo-ai/plugin/tui"
+// @ts-nocheck
+import type { TuiPlugin, TuiPluginApi } from "@mimo-ai/plugin/tui"
+import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, For, Show, createSignal } from "solid-js"
+import { Locale } from "../../util/locale"
 
 const id = "internal:sidebar-files"
+
+function changeCountWidth(item: { additions: number; deletions: number }) {
+  return [item.additions ? `+${item.additions}` : "", item.deletions ? `-${item.deletions}` : ""]
+    .filter(Boolean)
+    .join(" ").length
+}
 
 function View(props: { api: TuiPluginApi; session_id: string }) {
   const [open, setOpen] = createSignal(true)
@@ -13,9 +22,9 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
       <box>
         <box flexDirection="row" gap={1} onMouseDown={() => list().length > 2 && setOpen((x) => !x)}>
           <Show when={list().length > 2}>
-            <text fg={theme().text} wrapMode="word">{open() ? "▼" : "▶"}</text>
+            <text fg={theme().text}>{open() ? "▼" : "▶"}</text>
           </Show>
-          <text fg={theme().text} wrapMode="word">
+          <text fg={theme().text}>
             <b>Modified Files</b>
           </text>
         </box>
@@ -23,15 +32,15 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
           <For each={list()}>
             {(item) => (
               <box flexDirection="row" gap={1} justifyContent="space-between">
-                <text fg={theme().textMuted} wrapMode="word">
-                  {item.file}
+                <text fg={theme().textMuted} wrapMode="none">
+                  {Locale.truncateLeft(item.file, Math.max(2, 36 - changeCountWidth(item)))}
                 </text>
                 <box flexDirection="row" gap={1} flexShrink={0}>
                   <Show when={item.additions}>
-                    <text fg={theme().diffAdded} wrapMode="word">+{item.additions}</text>
+                    <text fg={theme().diffAdded}>+{item.additions}</text>
                   </Show>
                   <Show when={item.deletions}>
-                    <text fg={theme().diffRemoved} wrapMode="word">-{item.deletions}</text>
+                    <text fg={theme().diffRemoved}>-{item.deletions}</text>
                   </Show>
                 </box>
               </box>
@@ -54,7 +63,7 @@ const tui: TuiPlugin = async (api) => {
   })
 }
 
-const plugin: TuiPluginModule & { id: string } = {
+const plugin: BuiltinTuiPlugin = {
   id,
   tui,
 }

@@ -1,10 +1,10 @@
 import { TextareaRenderable, TextAttributes } from "@opentui/core"
 import { useTheme } from "../context/theme"
 import { useDialog, type DialogContext } from "./dialog"
-import { Show, createEffect, onMount, type JSX } from "solid-js"
-import { useKeyboard } from "@opentui/solid"
+import { Show, createEffect, createSignal, onMount, type JSX } from "solid-js"
 import { Spinner } from "../component/spinner"
-import { useLanguage } from "@tui/context/language"
+import { useTuiConfig } from "../config"
+import { useBindings, useCommandShortcut } from "../keymap"
 
 export type DialogPromptProps = {
   title: string
@@ -20,20 +20,31 @@ export type DialogPromptProps = {
 export function DialogPrompt(props: DialogPromptProps) {
   const dialog = useDialog()
   const { theme } = useTheme()
-  const t = useLanguage().t
+  const tuiConfig = useTuiConfig()
+  const submitShortcut = useCommandShortcut("dialog.prompt.submit")
+  const [textareaTarget, setTextareaTarget] = createSignal<TextareaRenderable>()
   let textarea: TextareaRenderable
 
-  useKeyboard((evt) => {
-    if (props.busy) {
-      if (evt.name === "escape") return
-      evt.preventDefault()
-      evt.stopPropagation()
-      return
-    }
-    if (evt.name === "return") {
-      props.onConfirm?.(textarea.plainText)
-    }
-  })
+  function confirm() {
+    if (props.busy) return
+    props.onConfirm?.(textarea.plainText)
+  }
+
+  useBindings(() => ({
+    target: textareaTarget,
+    enabled: textareaTarget() !== undefined && !props.busy,
+    // Dialog form semantics must win over the global managed textarea input layer.
+    priority: 1,
+    commands: [
+      {
+        name: "dialog.prompt.submit",
+        title: "Submit dialog prompt",
+        category: "Dialog",
+        run: confirm,
+      },
+    ],
+    bindings: tuiConfig.keybinds.gather("dialog.prompt", ["dialog.prompt.submit"]),
+  }))
 
   onMount(() => {
     dialog.setSize("medium")
@@ -68,43 +79,35 @@ export function DialogPrompt(props: DialogPromptProps) {
           {props.title}
         </text>
         <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          {t("tui.dialog.close_hint")}
+          esc
         </text>
       </box>
       <box gap={1}>
         {props.description}
         <textarea
-          onSubmit={() => {
-            if (props.busy) return
-            props.onConfirm?.(textarea.plainText)
-          }}
           height={3}
-          keyBindings={props.busy ? [] : [{ name: "return", action: "submit" }]}
           ref={(val: TextareaRenderable) => {
             textarea = val
+            setTextareaTarget(val)
           }}
           initialValue={props.value}
-          placeholder={props.placeholder ?? t("tui.dialog.prompt.placeholder")}
+          placeholder={props.placeholder ?? "Enter text"}
           placeholderColor={theme.textMuted}
           textColor={props.busy ? theme.textMuted : theme.text}
           focusedTextColor={props.busy ? theme.textMuted : theme.text}
           cursorColor={props.busy ? theme.backgroundElement : theme.text}
         />
         <Show when={props.busy}>
-          <Spinner color={theme.textMuted}>{props.busyText ?? t("tui.dialog.prompt.busy")}</Spinner>
+          <Spinner color={theme.textMuted}>{props.busyText ?? "Working..."}</Spinner>
         </Show>
       </box>
       <box paddingBottom={1} gap={1} flexDirection="row">
-        <Show when={!props.busy} fallback={<text fg={theme.textMuted}>{t("tui.dialog.prompt.processing")}</text>}>
-          <text
-            fg={theme.text}
-            onMouseUp={() => {
-              props.onConfirm?.(textarea.plainText)
-            }}
-          >
-            {t("tui.dialog.prompt.submit_key")}{" "}
-            <span style={{ fg: theme.textMuted }}>{t("tui.dialog.prompt.submit_action")}</span>
-          </text>
+        <Show when={!props.busy} fallback={<text fg={theme.textMuted}>processing...</text>}>
+          <Show when={submitShortcut()}>
+            <text fg={theme.text}>
+              {submitShortcut()} <span style={{ fg: theme.textMuted }}>submit</span>
+            </text>
+          </Show>
         </Show>
       </box>
     </box>

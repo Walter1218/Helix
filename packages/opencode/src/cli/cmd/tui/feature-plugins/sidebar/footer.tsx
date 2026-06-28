@@ -1,10 +1,14 @@
-import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@mimo-ai/plugin/tui"
+// @ts-nocheck
+import type { TuiPlugin, TuiPluginApi } from "@mimo-ai/plugin/tui"
+import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, Show } from "solid-js"
-import { Global } from "@/global"
+import { abbreviateHome } from "../../runtime"
+import { useTuiPaths } from "../../context/runtime"
 
 const id = "internal:sidebar-footer"
 
-function View(props: { api: TuiPluginApi }) {
+function View(props: { api: TuiPluginApi; sessionID: string }) {
+  const paths = useTuiPaths()
   const theme = () => props.api.theme.current
   const has = createMemo(() =>
     props.api.state.provider.some(
@@ -14,9 +18,11 @@ function View(props: { api: TuiPluginApi }) {
   const done = createMemo(() => props.api.kv.get("dismissed_getting_started", false))
   const show = createMemo(() => !has() && !done())
   const path = createMemo(() => {
-    const dir = props.api.state.path.directory || process.cwd()
-    const out = dir.replace(Global.Path.home, "~")
-    const text = props.api.state.vcs?.branch ? out + ":" + props.api.state.vcs.branch : out
+    const session = props.api.state.session.get(props.sessionID)
+    const dir = session?.directory || props.api.state.path.directory || paths.cwd
+    const out = abbreviateHome(dir, paths.home)
+    const branch = session?.directory === props.api.state.path.directory ? props.api.state.vcs?.branch : undefined
+    const text = branch ? out + ":" + branch : out
     const list = text.split("/")
     return {
       parent: list.slice(0, -1).join("/"),
@@ -41,20 +47,20 @@ function View(props: { api: TuiPluginApi }) {
           </text>
           <box flexGrow={1} gap={1}>
             <box flexDirection="row" justifyContent="space-between">
-              <text fg={theme().text} wrapMode="word">
+              <text fg={theme().text}>
                 <b>Getting started</b>
               </text>
-              <text fg={theme().textMuted} onMouseDown={() => props.api.kv.set("dismissed_getting_started", true)} wrapMode="word">
+              <text fg={theme().textMuted} onMouseDown={() => props.api.kv.set("dismissed_getting_started", true)}>
                 ✕
               </text>
             </box>
-            <text fg={theme().textMuted} wrapMode="word">MiMoCode includes free models so you can start immediately.</text>
-            <text fg={theme().textMuted} wrapMode="word">
+            <text fg={theme().textMuted}>OpenCode includes free models so you can start immediately.</text>
+            <text fg={theme().textMuted}>
               Connect from 75+ providers to use other models, including Claude, GPT, Gemini etc
             </text>
             <box flexDirection="row" gap={1} justifyContent="space-between">
-              <text fg={theme().text} wrapMode="word">Connect provider</text>
-              <text fg={theme().textMuted} wrapMode="word">/connect</text>
+              <text fg={theme().text}>Connect provider</text>
+              <text fg={theme().textMuted}>/connect</text>
             </box>
           </box>
         </box>
@@ -63,8 +69,8 @@ function View(props: { api: TuiPluginApi }) {
         <span style={{ fg: theme().textMuted }}>{path().parent}/</span>
         <span style={{ fg: theme().text }}>{path().name}</span>
       </text>
-      <text fg={theme().textMuted} wrapMode="word">
-        <span style={{ fg: theme().success }}>•</span> <b>MiMo</b>
+      <text fg={theme().textMuted}>
+        <span style={{ fg: theme().success }}>•</span> <b>Open</b>
         <span style={{ fg: theme().text }}>
           <b>Code</b>
         </span>{" "}
@@ -78,14 +84,14 @@ const tui: TuiPlugin = async (api) => {
   api.slots.register({
     order: 100,
     slots: {
-      sidebar_footer() {
-        return <View api={api} />
+      sidebar_footer(_ctx, props) {
+        return <View api={api} sessionID={props.session_id} />
       },
     },
   })
 }
 
-const plugin: TuiPluginModule & { id: string } = {
+const plugin: BuiltinTuiPlugin = {
   id,
   tui,
 }

@@ -6,7 +6,7 @@ import { tmpdir } from "../../fixture/fixture"
 import { createTuiPluginApi } from "../../fixture/tui-plugin"
 import { TuiConfig } from "../../../src/cli/cmd/tui/config/tui"
 
-const { TuiPluginRuntime } = await import("../../../src/cli/cmd/tui/plugin/runtime")
+const { TuiPluginRuntime } = await import("../../../src/cli/cmd/tui/plugin")
 
 test("toggles plugin runtime state by exported id", async () => {
   await using tmp = await tmpdir({

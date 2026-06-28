@@ -1,11 +1,11 @@
 import { createMemo } from "solid-js"
-import { useSync } from "@tui/context/sync"
-import { DialogSelect } from "@tui/ui/dialog-select"
-import { useSDK } from "@tui/context/sdk"
-import { useRoute } from "@tui/context/route"
-import * as Clipboard from "@tui/util/clipboard"
-import type { PromptInfo } from "@tui/component/prompt/history"
-import { strip } from "@tui/component/prompt/part"
+import { useSync } from "../../context/sync"
+import { DialogSelect } from "../../ui/dialog-select"
+import { useSDK } from "../../context/sdk"
+import { useRoute } from "../../context/route"
+import { useClipboard } from "../../context/clipboard"
+import type { PromptInfo } from "../../component/prompt/history"
+import { stripPromptPartIDs as strip } from "../../prompt/part"
 
 export function DialogMessage(props: {
   messageID: string
@@ -14,16 +14,9 @@ export function DialogMessage(props: {
 }) {
   const sync = useSync()
   const sdk = useSDK()
-  const message = createMemo(() => {
-    const buckets = sync.data.message[props.sessionID]
-    if (!buckets) return undefined
-    for (const aid of Object.keys(buckets)) {
-      const found = buckets[aid].find((x) => x.id === props.messageID)
-      if (found) return found
-    }
-    return undefined
-  })
+  const message = createMemo(() => sync.data.message[props.sessionID]?.find((x) => x.id === props.messageID))
   const route = useRoute()
+  const clipboard = useClipboard()
 
   return (
     <DialogSelect
@@ -76,7 +69,7 @@ export function DialogMessage(props: {
               return agg
             }, "")
 
-            await Clipboard.copy(text)
+            await clipboard.write?.(text)
             dialog.clear()
           },
         },

@@ -1,8 +1,7 @@
 import { createOpencodeClient } from "@mimo-ai/sdk/v2"
 import type { GlobalEvent } from "@mimo-ai/sdk/v2"
-import { createSimpleContext } from "./helper"
-import { createGlobalEmitter } from "@solid-primitives/event-bus"
 import { Flag } from "@/flag/flag"
+import { createSimpleContext } from "./helper"
 import { batch, onCleanup, onMount } from "solid-js"
 
 export type EventSource = {
@@ -21,23 +20,30 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
     const abort = new AbortController()
     let sse: AbortController | undefined
 
-    let currentDirectory = props.directory
-
-    function createSDK(directory?: string) {
+    function createSDK() {
       return createOpencodeClient({
         baseUrl: props.url,
         signal: abort.signal,
-        directory,
+        directory: props.directory,
         fetch: props.fetch,
         headers: props.headers,
       })
     }
 
-    let sdk = createSDK(currentDirectory)
+    let sdk = createSDK()
 
-    const emitter = createGlobalEmitter<{
-      event: GlobalEvent
-    }>()
+    const handlers = new Set<(event: GlobalEvent) => void>()
+    const emitter = {
+      emit(_type: "event", event: GlobalEvent) {
+        for (const handler of handlers) handler(event)
+      },
+      on(_type: "event", handler: (event: GlobalEvent) => void) {
+        handlers.add(handler)
+        return () => {
+          handlers.delete(handler)
+        }
+      },
+    }
 
     let queue: GlobalEvent[] = []
     let timer: Timer | undefined
@@ -129,19 +135,14 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
       abort.abort()
       sse?.abort()
       if (timer) clearTimeout(timer)
+      handlers.clear()
     })
 
     return {
       get client() {
         return sdk
       },
-      get directory() {
-        return currentDirectory
-      },
-      switchDirectory(next: string) {
-        currentDirectory = next
-        sdk = createSDK(next)
-      },
+      directory: props.directory,
       event: emitter,
       fetch: props.fetch ?? fetch,
       url: props.url,

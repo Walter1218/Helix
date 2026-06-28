@@ -51,3 +51,7 @@ if (version !== CACHE_VERSION) {
 }
 
 export * as Global from "."
+
+import { Context } from "effect"
+
+export class Service extends Context.Service<Service, { home: string; data: string; state: string; worktree: string }>()("@opencode/Global") {}

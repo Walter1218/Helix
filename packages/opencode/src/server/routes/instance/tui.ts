@@ -19,6 +19,9 @@ type TuiRequest = z.infer<typeof TuiRequest>
 const request = new AsyncQueue<TuiRequest>()
 const response = new AsyncQueue<any>()
 
+const pendingState = new Map<string, (v: any) => void>()
+const pendingSnapshot = new Map<string, (v: any) => void>()
+
 export async function callTui(ctx: Context) {
   const body = await ctx.req.json()
   request.push({
@@ -78,6 +81,30 @@ const TuiControlRoutes = new Hono()
 
 export const TuiRoutes = lazy(() =>
   new Hono()
+    .post(
+      "/state-response",
+      async (c) => {
+        const body = await c.req.json()
+        const resolve = pendingState.get(body.requestID)
+        if (resolve) {
+          pendingState.delete(body.requestID)
+          resolve(body.state)
+        }
+        return c.json(true)
+      },
+    )
+    .post(
+      "/snapshot-response",
+      async (c) => {
+        const body = await c.req.json()
+        const resolve = pendingSnapshot.get(body.requestID)
+        if (resolve) {
+          pendingSnapshot.delete(body.requestID)
+          resolve({ ansi: body.ansi, width: body.width, height: body.height })
+        }
+        return c.json(true)
+      },
+    )
     .post(
       "/append-prompt",
       describeRoute({
@@ -378,6 +405,38 @@ export const TuiRoutes = lazy(() =>
         )
         await Bus.publish(TuiEvent.SessionSelect, { sessionID })
         return c.json(true)
+      },
+    )
+    .get(
+      "/state",
+      async (c) => {
+        const requestID = crypto.randomUUID()
+        const result = await new Promise<any>((resolve) => {
+          const timeout = setTimeout(() => {
+            pendingState.delete(requestID)
+            resolve(null)
+          }, 5000)
+          pendingState.set(requestID, resolve)
+          Bus.publish(TuiEvent.StateQuery, { requestID })
+        })
+        if (!result) return c.json({ error: "TUI state query timed out" }, 504)
+        return c.json(result)
+      },
+    )
+    .get(
+      "/snapshot",
+      async (c) => {
+        const requestID = crypto.randomUUID()
+        const result = await new Promise<any>((resolve) => {
+          const timeout = setTimeout(() => {
+            pendingSnapshot.delete(requestID)
+            resolve(null)
+          }, 5000)
+          pendingSnapshot.set(requestID, resolve)
+          Bus.publish(TuiEvent.SnapshotQuery, { requestID })
+        })
+        if (!result) return c.json({ error: "TUI snapshot query timed out" }, 504)
+        return c.json(result)
       },
     )
     .route("/control", TuiControlRoutes),

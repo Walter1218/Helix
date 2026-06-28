@@ -74,14 +74,14 @@ export function MonitorRoute(_props: { api: TuiPluginApi }) {
 
     events.on("judge.verdict", (payload) => {
       if (!payload || typeof payload !== "object") return
-      const evt = payload as Record<string, unknown>
+      const evt = (payload as Record<string, unknown>)?.properties as Record<string, unknown> ?? {}
       if (evt.status === "pass") setJudgePass((n) => n + 1)
       else setJudgeFail((n) => n + 1)
     })
 
     events.on("cardinal.detected", (payload) => {
       if (!payload || typeof payload !== "object") return
-      const evt = payload as Record<string, unknown>
+      const evt = (payload as Record<string, unknown>)?.properties as Record<string, unknown> ?? {}
       const sev = String(evt.severity ?? "")
       if (sev === "block") setCardinalBlock((n) => n + 1)
       else if (sev === "pause" || sev === "stop") setCardinalPause((n) => n + 1)

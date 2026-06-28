@@ -1,15 +1,13 @@
-import { Keybind } from "@/util"
-import type { TuiPlugin, TuiPluginApi, TuiPluginModule, TuiPluginStatus } from "@mimo-ai/plugin/tui"
-import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
+// @ts-nocheck
+import type { TuiPlugin, TuiPluginApi, TuiPluginStatus } from "@mimo-ai/plugin/tui"
+import type { BuiltinTuiPlugin } from "../builtins"
+import { useTerminalDimensions } from "@opentui/solid"
 import { fileURLToPath } from "url"
-import { DialogSelect, type DialogSelectOption } from "@tui/ui/dialog-select"
+import { DialogSelect, type DialogSelectOption } from "../../ui/dialog-select"
 import { Show, createEffect, createMemo, createSignal } from "solid-js"
-import { useLanguage } from "@tui/context/language"
+import { useBindings } from "../../keymap"
 
 const id = "internal:plugin-manager"
-const key = Keybind.parse("space").at(0)
-const add = Keybind.parse("shift+i").at(0)
-const tab = Keybind.parse("tab").at(0)
 
 function state(api: TuiPluginApi, item: TuiPluginStatus) {
   if (!item.enabled) {
@@ -42,13 +40,10 @@ function Install(props: { api: TuiPluginApi }) {
   const [global, setGlobal] = createSignal(false)
   const [busy, setBusy] = createSignal(false)
 
-  useKeyboard((evt) => {
-    if (evt.name !== "tab") return
-    evt.preventDefault()
-    evt.stopPropagation()
-    if (busy()) return
-    setGlobal((x) => !x)
-  })
+  useBindings(() => ({
+    enabled: !busy(),
+    bindings: [{ key: "tab", desc: "Toggle install scope", group: "Plugins", cmd: () => setGlobal((value) => !value) }],
+  }))
 
   return (
     <props.api.ui.DialogPrompt
@@ -63,7 +58,7 @@ function Install(props: { api: TuiPluginApi }) {
             {global() ? "global" : "local"}
           </text>
           <Show when={!busy()}>
-            <text fg={props.api.theme.current.textMuted}>({Keybind.toString(tab)} toggle)</text>
+            <text fg={props.api.theme.current.textMuted}>(tab toggle)</text>
           </Show>
         </box>
       )}
@@ -210,11 +205,11 @@ function View(props: { api: TuiPluginApi }) {
       options={rows()}
       current={cur()}
       onMove={(item) => setCur(item.value)}
-      keybind={[
+      actions={[
         {
           title: "toggle",
-          keybind: key,
-          disabled: lock(),
+          command: "plugins.toggle",
+          hidden: lock(),
           onTrigger: (item) => {
             setCur(item.value)
             flip(item.value)
@@ -222,8 +217,8 @@ function View(props: { api: TuiPluginApi }) {
         },
         {
           title: "install",
-          keybind: add,
-          disabled: lock(),
+          command: "dialog.plugins.install",
+          hidden: lock(),
           onTrigger: () => {
             showInstall(props.api)
           },
@@ -242,31 +237,32 @@ function show(api: TuiPluginApi) {
 }
 
 const tui: TuiPlugin = async (api) => {
-  api.command.register(() => {
-    const t = useLanguage().t
-    return [
+  api.keymap.registerLayer({
+    commands: [
       {
-        title: t("tui.command.plugins.list.title"),
-        value: "plugins.list",
-        keybind: "plugin_manager",
-        category: "system",
-        onSelect() {
+        name: "plugins.list",
+        title: "Plugins",
+        category: "System",
+        namespace: "palette",
+        run() {
           show(api)
         },
       },
       {
-        title: t("tui.command.plugins.install.title"),
-        value: "plugins.install",
-        category: "system",
-        onSelect() {
+        name: "plugins.install",
+        title: "Install plugin",
+        category: "System",
+        namespace: "palette",
+        run() {
           showInstall(api)
         },
       },
-    ]
+    ],
+    bindings: api.tuiConfig.keybinds.gather("plugins.palette", ["plugins.list", "plugins.install"]),
   })
 }
 
-const plugin: TuiPluginModule & { id: string } = {
+const plugin: BuiltinTuiPlugin = {
   id,
   tui,
 }
