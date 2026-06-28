@@ -298,7 +298,7 @@
           "id": "M6-T4b",
           "title": "Cardinal 阻塞降级后端",
           "description": "实现 session/cardinal.ts，block/pause/stop/warn 四级阻塞",
-          "status": "pending",
+          "status": "in_progress",
           "priority": "low",
           "estimated_tokens": 50000,
           "tags": [
